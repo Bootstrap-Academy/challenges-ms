@@ -1,6 +1,7 @@
 alias r := run
 alias c := check
 alias t := test
+alias p := psql
 
 _default:
     @just --list
@@ -13,3 +14,6 @@ check *args:
 
 test *args:
     cargo test --locked {{args}}
+
+psql *args:
+    psql "$DATABASE_URL" {{args}}
