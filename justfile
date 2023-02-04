@@ -2,6 +2,7 @@ alias r := run
 alias c := check
 alias t := test
 alias p := psql
+alias m := migrate
 
 _default:
     @just --list
@@ -17,3 +18,6 @@ test *args:
 
 psql *args:
     psql "$DATABASE_URL" {{args}}
+
+migrate *args:
+    sea migrate {{args}}
