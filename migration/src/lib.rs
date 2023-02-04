@@ -4,6 +4,7 @@ pub struct Migrator;
 
 mod m20230204_171617_create_companies_table;
 mod m20230204_171643_create_jobs_table;
+mod m20230204_180119_create_skill_requirements_table;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -11,6 +12,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20230204_171617_create_companies_table::Migration),
             Box::new(m20230204_171643_create_jobs_table::Migration),
+            Box::new(m20230204_180119_create_skill_requirements_table::Migration),
         ]
     }
 }
