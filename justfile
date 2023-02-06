@@ -3,6 +3,7 @@ alias c := check
 alias t := test
 alias p := psql
 alias m := migrate
+alias e := entity
 
 _default:
     @just --list
@@ -21,3 +22,6 @@ psql *args:
 
 migrate *args:
     sea migrate {{args}}
+
+entity:
+    sea generate entity -l -o entity/src --with-copy-enums

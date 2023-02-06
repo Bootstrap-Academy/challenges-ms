@@ -1,5 +1,9 @@
 [workspace]
-members = ["migration"]
+members = [
+  "migration",
+  "entity",
+]
 
 [workspace.dependencies]
+sea-orm = { version = "0.10.7", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "postgres-array"] }
 tokio = { version = "1.25.0", default-features = false, features = ["macros", "rt-multi-thread"] }
