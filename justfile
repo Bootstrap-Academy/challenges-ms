@@ -4,6 +4,7 @@ alias t := test
 alias p := psql
 alias m := migrate
 alias e := entity
+alias b := bacon
 
 _default:
     @just --list
@@ -25,3 +26,6 @@ migrate *args:
 
 entity:
     sea generate entity -l -o entity/src --with-copy-enums
+
+bacon:
+    bacon clippy
