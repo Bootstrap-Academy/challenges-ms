@@ -1,4 +1,5 @@
 use entity::jobs_companies;
+use lib::patch_value::PatchValue;
 use poem_openapi::Object;
 use uuid::Uuid;
 
@@ -77,23 +78,23 @@ pub struct CreateCompany {
 pub struct UpdateCompany {
     /// The name of the company
     #[oai(validator(max_length = 255))]
-    pub name: Option<String>,
+    pub name: PatchValue<String>,
     /// The description of the company
     #[oai(validator(max_length = 255))]
-    pub description: Option<Option<String>>,
+    pub description: PatchValue<Option<String>>,
     /// The website of the company
     #[oai(validator(max_length = 255))]
-    pub website: Option<Option<String>>,
+    pub website: PatchValue<Option<String>>,
     /// A link to a YouTube video of the company
     #[oai(validator(max_length = 255))]
-    pub youtube_video: Option<Option<String>>,
+    pub youtube_video: PatchValue<Option<String>>,
     /// The Twitter handle of the company
     #[oai(validator(max_length = 255))]
-    pub twitter_handle: Option<Option<String>>,
+    pub twitter_handle: PatchValue<Option<String>>,
     /// The Instagram handle of the company
     #[oai(validator(max_length = 255))]
-    pub instagram_handle: Option<Option<String>>,
+    pub instagram_handle: PatchValue<Option<String>>,
     /// The logo of the company
     #[oai(validator(max_length = 255))]
-    pub logo_url: Option<Option<String>>,
+    pub logo_url: PatchValue<Option<String>>,
 }

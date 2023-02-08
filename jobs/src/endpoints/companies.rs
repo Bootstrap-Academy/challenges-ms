@@ -5,9 +5,7 @@ use entity::jobs_companies;
 use poem::error::InternalServerError;
 use poem::Result;
 use poem_openapi::{param::Path, payload::Json, ApiResponse, OpenApi};
-use sea_orm::{
-    ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, ModelTrait, Set, Unchanged,
-};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, ModelTrait, Set, Unchanged};
 use uuid::Uuid;
 
 pub struct Companies {
@@ -62,13 +60,13 @@ impl Companies {
             Some(company) => UpdateResponse::Ok(Json(
                 jobs_companies::ActiveModel {
                     id: Unchanged(company.id),
-                    name: update(company.name, data.0.name),
-                    description: update(company.description, data.0.description),
-                    website: update(company.website, data.0.website),
-                    youtube_video: update(company.youtube_video, data.0.youtube_video),
-                    twitter_handle: update(company.twitter_handle, data.0.twitter_handle),
-                    instagram_handle: update(company.instagram_handle, data.0.instagram_handle),
-                    logo_url: update(company.logo_url, data.0.logo_url),
+                    name: data.0.name.update(company.name),
+                    description: data.0.description.update(company.description),
+                    website: data.0.website.update(company.website),
+                    youtube_video: data.0.youtube_video.update(company.youtube_video),
+                    twitter_handle: data.0.twitter_handle.update(company.twitter_handle),
+                    instagram_handle: data.0.instagram_handle.update(company.instagram_handle),
+                    logo_url: data.0.logo_url.update(company.logo_url),
                 }
                 .update(&self.db)
                 .await
@@ -121,13 +119,5 @@ impl Companies {
             .one(&self.db)
             .await
             .map_err(InternalServerError)
-    }
-}
-
-fn update<T: Into<sea_orm::Value>>(old: T, new: Option<T>) -> ActiveValue<T> {
-    if let Some(new) = new {
-        Set(new)
-    } else {
-        Unchanged(old)
     }
 }

@@ -8,6 +8,7 @@ publish = false
 anyhow = { workspace = true }
 config = { workspace = true }
 entity = { workspace = true }
+lib = { workspace = true }
 poem = { workspace = true }
 poem-openapi = { workspace = true }
 sea-orm = { workspace = true }
