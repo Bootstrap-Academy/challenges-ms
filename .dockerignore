@@ -1,0 +1,7 @@
+*
+!Cargo.toml
+!Cargo.lock
+!migration
+!entity
+!lib
+!jobs
