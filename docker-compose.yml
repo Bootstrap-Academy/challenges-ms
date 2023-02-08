@@ -1,0 +1,25 @@
+version: '3.10'
+
+x-service-base: &service-base
+  image: ghcr.io/bootstrap-academy/backend
+  build: .
+  restart: always
+  init: true
+  environment:
+    RUST_LOG: info
+    CONFIG_PATH: /config.toml
+  volumes:
+    - ./.config.toml:/config.toml:ro
+
+services:
+
+  migration:
+    << : *service-base
+    restart: 'no'
+    entrypoint: /migration
+
+  jobs:
+    << : *service-base
+    entrypoint: /jobs
+    ports:
+      - 127.0.0.1:8003:8003
