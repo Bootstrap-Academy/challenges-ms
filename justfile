@@ -19,7 +19,7 @@ test *args:
     cargo test --locked {{args}}
 
 psql *args:
-    psql "$DATABASE_URL" {{args}}
+    psql "$(tomlq -r .database_url < config.toml)" {{args}}
 
 migrate *args:
     sea migrate {{args}}

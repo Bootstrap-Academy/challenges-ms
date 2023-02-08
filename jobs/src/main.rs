@@ -2,6 +2,7 @@
 #![warn(clippy::dbg_macro, clippy::use_debug)]
 
 use anyhow::Context;
+use lib::config;
 use poem::{
     listener::TcpListener,
     middleware::{CatchPanic, Tracing},
@@ -13,7 +14,6 @@ use tracing::info;
 
 use crate::endpoints::get_api;
 
-mod config;
 mod endpoints;
 mod schemas;
 
@@ -39,8 +39,8 @@ async fn main() -> anyhow::Result<()> {
         .with(Tracing)
         .with(CatchPanic::new());
 
-    info!("Listening on {}:{}", config.host, config.port);
-    Server::new(TcpListener::bind((config.host, config.port)))
+    info!("Listening on {}:{}", config.jobs.host, config.jobs.port);
+    Server::new(TcpListener::bind((config.jobs.host, config.jobs.port)))
         .run(app)
         .await?;
 

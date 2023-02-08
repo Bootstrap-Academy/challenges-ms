@@ -6,13 +6,11 @@ publish = false
 
 [dependencies]
 anyhow = { workspace = true }
-config = { workspace = true }
 entity = { workspace = true }
 lib = { workspace = true }
 poem = { workspace = true }
 poem-openapi = { workspace = true }
 sea-orm = { workspace = true }
-serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
