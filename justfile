@@ -13,7 +13,7 @@ run *args:
     cargo run --locked {{args}}
 
 check *args:
-    cargo clippy --locked {{args}}
+    cargo clippy {{args}}
 
 test *args:
     cargo test --locked {{args}}
@@ -27,5 +27,10 @@ migrate *args:
 entity:
     sea generate entity -l -o entity/src --with-copy-enums
 
-bacon:
-    bacon clippy
+bacon *args:
+    bacon clippy {{args}}
+
+pre-commit:
+    cargo fmt --check
+    cargo clippy -- -D warnings
+    cargo test --locked
