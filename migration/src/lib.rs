@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![warn(clippy::dbg_macro, clippy::use_debug)]
+
 pub use sea_orm_migration::prelude::*;
 
 pub struct Migrator;

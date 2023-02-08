@@ -11,6 +11,6 @@ pub enum Tags {
     Companies,
 }
 
-pub fn get_endpoints(db: DatabaseConnection) -> impl OpenApi {
+pub fn get_api(db: DatabaseConnection) -> impl OpenApi {
     Companies { db }
 }

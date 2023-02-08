@@ -7,7 +7,7 @@ pub struct Config {
     pub database_url: String,
 }
 
-pub fn load_config() -> anyhow::Result<Config> {
+pub fn load() -> anyhow::Result<Config> {
     Ok(config::Config::builder()
         .add_source(config::Environment::default())
         .build()?

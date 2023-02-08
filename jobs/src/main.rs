@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![warn(clippy::dbg_macro, clippy::use_debug)]
+
 use anyhow::Context;
 use poem::{
     listener::TcpListener,
@@ -8,7 +11,7 @@ use poem_openapi::OpenApiService;
 use sea_orm::Database;
 use tracing::info;
 
-use crate::endpoints::get_endpoints;
+use crate::endpoints::get_api;
 
 mod config;
 mod endpoints;
@@ -18,12 +21,12 @@ mod schemas;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let config = config::load_config().context("loading config")?;
+    let config = config::load().context("loading config")?;
 
     let db = Database::connect(&config.database_url).await?;
 
     let api_service = OpenApiService::new(
-        get_endpoints(db),
+        get_api(db),
         "Bootstrap Academy Backend: Jobs Microservice",
         env!("CARGO_PKG_VERSION"),
     )
