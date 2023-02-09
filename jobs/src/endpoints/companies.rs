@@ -30,8 +30,8 @@ impl Companies {
 
     /// Create a company.
     #[oai(path = "/companies", method = "post")]
-    async fn create_company(&self, data: Json<CreateCompany>) -> Result<Json<Company>> {
-        Ok(Json(
+    async fn create_company(&self, data: Json<CreateCompany>) -> Result<CreateResponse> {
+        Ok(CreateResponse::Ok(Json(
             jobs_companies::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 name: Set(data.0.name),
@@ -46,7 +46,7 @@ impl Companies {
             .await
             .map_err(InternalServerError)?
             .into(),
-        ))
+        )))
     }
 
     /// Update a company.
@@ -91,6 +91,13 @@ impl Companies {
             None => DeleteResponse::NotFound,
         })
     }
+}
+
+#[derive(ApiResponse)]
+enum CreateResponse {
+    /// Company has been created successfully
+    #[oai(status = 201)]
+    Ok(Json<Company>),
 }
 
 #[derive(ApiResponse)]
