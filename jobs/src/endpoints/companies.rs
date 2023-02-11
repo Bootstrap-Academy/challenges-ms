@@ -2,6 +2,7 @@ use crate::schemas::companies::{Company, CreateCompany, UpdateCompany};
 
 use super::Tags;
 use entity::jobs_companies;
+use lib::auth::AdminAuth;
 use poem::error::InternalServerError;
 use poem::Result;
 use poem_openapi::{param::Path, payload::Json, ApiResponse, OpenApi};
@@ -16,7 +17,7 @@ pub struct Companies {
 impl Companies {
     /// List all companies.
     #[oai(path = "/companies", method = "get")]
-    async fn list_companies(&self) -> Result<Json<Vec<Company>>> {
+    async fn list_companies(&self, _auth: AdminAuth) -> Result<Json<Vec<Company>>> {
         Ok(Json(
             jobs_companies::Entity::find()
                 .all(&self.db)
@@ -30,7 +31,11 @@ impl Companies {
 
     /// Create a company.
     #[oai(path = "/companies", method = "post")]
-    async fn create_company(&self, data: Json<CreateCompany>) -> Result<CreateResponse> {
+    async fn create_company(
+        &self,
+        data: Json<CreateCompany>,
+        _auth: AdminAuth,
+    ) -> Result<CreateResponse> {
         Ok(CreateResponse::Ok(Json(
             jobs_companies::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -55,6 +60,7 @@ impl Companies {
         &self,
         company_id: Path<Uuid>,
         data: Json<UpdateCompany>,
+        _auth: AdminAuth,
     ) -> Result<UpdateResponse> {
         Ok(match self.get_company(company_id.0).await? {
             Some(company) => UpdateResponse::Ok(Json(
@@ -79,7 +85,11 @@ impl Companies {
 
     /// Delete a company.
     #[oai(path = "/companies/:company_id", method = "delete")]
-    async fn delete_company(&self, company_id: Path<Uuid>) -> Result<DeleteResponse> {
+    async fn delete_company(
+        &self,
+        company_id: Path<Uuid>,
+        _auth: AdminAuth,
+    ) -> Result<DeleteResponse> {
         Ok(match self.get_company(company_id.0).await? {
             Some(company) => {
                 company

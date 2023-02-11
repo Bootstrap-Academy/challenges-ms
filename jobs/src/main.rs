@@ -2,7 +2,7 @@
 #![warn(clippy::dbg_macro, clippy::use_debug)]
 
 use anyhow::Context;
-use lib::config;
+use lib::{config, jwt::JwtSecret};
 use poem::{
     listener::TcpListener,
     middleware::{CatchPanic, Tracing},
@@ -37,7 +37,8 @@ async fn main() -> anyhow::Result<()> {
         .nest("/redoc", api_service.redoc())
         .nest("/", api_service)
         .with(Tracing)
-        .with(CatchPanic::new());
+        .with(CatchPanic::new())
+        .data(JwtSecret::try_from(config.jwt_secret.as_str())?);
 
     info!("Listening on {}:{}", config.jobs.host, config.jobs.port);
     Server::new(TcpListener::bind((config.jobs.host, config.jobs.port)))

@@ -10,6 +10,7 @@ mod jobs;
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub database_url: String,
+    pub jwt_secret: String,
     pub jobs: JobsConfig,
 }
 

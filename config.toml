@@ -1,4 +1,5 @@
 database_url = "postgres://academy:academy@localhost/academy"
+jwt_secret = "changeme"
 
 [jobs]
 host = "127.0.0.1"

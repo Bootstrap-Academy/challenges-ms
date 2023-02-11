@@ -6,6 +6,10 @@ publish = false
 
 [dependencies]
 config = { workspace = true }
+hmac = { workspace = true }
+jwt = { workspace = true }
+poem = { workspace = true }
 poem-openapi = { workspace = true }
 sea-orm = { workspace = true }
 serde = { workspace = true }
+sha2 = { workspace = true }
