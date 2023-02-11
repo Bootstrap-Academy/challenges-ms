@@ -2,9 +2,8 @@ use crate::schemas::companies::{Company, CreateCompany, UpdateCompany};
 
 use super::Tags;
 use entity::jobs_companies;
-use lib::auth::AdminAuth;
+use lib::{auth::AdminAuth, types::Response};
 use poem::error::InternalServerError;
-use poem::Result;
 use poem_openapi::{param::Path, payload::Json, ApiResponse, OpenApi};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, ModelTrait, Set, Unchanged};
 use uuid::Uuid;
@@ -17,7 +16,7 @@ pub struct Companies {
 impl Companies {
     /// List all companies.
     #[oai(path = "/companies", method = "get")]
-    async fn list_companies(&self, _auth: AdminAuth) -> Result<Json<Vec<Company>>> {
+    async fn list_companies(&self, _auth: AdminAuth) -> Response<AdminAuth, Json<Vec<Company>>> {
         Ok(Json(
             jobs_companies::Entity::find()
                 .all(&self.db)
@@ -25,8 +24,9 @@ impl Companies {
                 .map_err(InternalServerError)?
                 .into_iter()
                 .map(Into::into)
-                .collect(),
-        ))
+                .collect::<Vec<_>>(),
+        )
+        .into())
     }
 
     /// Create a company.
@@ -35,7 +35,7 @@ impl Companies {
         &self,
         data: Json<CreateCompany>,
         _auth: AdminAuth,
-    ) -> Result<CreateResponse> {
+    ) -> Response<AdminAuth, CreateResponse> {
         Ok(CreateResponse::Ok(Json(
             jobs_companies::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -51,7 +51,8 @@ impl Companies {
             .await
             .map_err(InternalServerError)?
             .into(),
-        )))
+        ))
+        .into())
     }
 
     /// Update a company.
@@ -61,7 +62,7 @@ impl Companies {
         company_id: Path<Uuid>,
         data: Json<UpdateCompany>,
         _auth: AdminAuth,
-    ) -> Result<UpdateResponse> {
+    ) -> Response<AdminAuth, UpdateResponse> {
         Ok(match self.get_company(company_id.0).await? {
             Some(company) => UpdateResponse::Ok(Json(
                 jobs_companies::ActiveModel {
@@ -80,7 +81,8 @@ impl Companies {
                 .into(),
             )),
             None => UpdateResponse::NotFound,
-        })
+        }
+        .into())
     }
 
     /// Delete a company.
@@ -89,7 +91,7 @@ impl Companies {
         &self,
         company_id: Path<Uuid>,
         _auth: AdminAuth,
-    ) -> Result<DeleteResponse> {
+    ) -> Response<AdminAuth, DeleteResponse> {
         Ok(match self.get_company(company_id.0).await? {
             Some(company) => {
                 company
@@ -99,7 +101,8 @@ impl Companies {
                 DeleteResponse::Ok
             }
             None => DeleteResponse::NotFound,
-        })
+        }
+        .into())
     }
 }
 
@@ -131,7 +134,7 @@ enum DeleteResponse {
 }
 
 impl Companies {
-    async fn get_company(&self, company_id: Uuid) -> Result<Option<jobs_companies::Model>> {
+    async fn get_company(&self, company_id: Uuid) -> poem::Result<Option<jobs_companies::Model>> {
         jobs_companies::Entity::find_by_id(company_id)
             .one(&self.db)
             .await

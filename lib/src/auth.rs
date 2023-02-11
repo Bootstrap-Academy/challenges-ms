@@ -1,8 +1,11 @@
 use jwt::VerifyWithKey;
 use poem::{http::StatusCode, Request};
-use poem_openapi::auth::Bearer;
+use poem_openapi::{auth::Bearer, registry::MetaResponse};
 
-use crate::jwt::{JwtSecret, UserAccessToken};
+use crate::{
+    jwt::{JwtSecret, UserAccessToken},
+    types::MetaResponsesExt,
+};
 
 #[derive(Debug)]
 pub struct User {
@@ -51,6 +54,27 @@ async fn admin_auth_check(req: &Request, token: Option<Bearer>) -> Result<User, 
     match user.admin {
         true => Ok(user),
         false => Err(StatusCode::FORBIDDEN),
+    }
+}
+
+impl MetaResponsesExt for PublicAuth {
+    type Iter = Vec<MetaResponse>;
+    fn responses() -> Self::Iter {
+        vec![]
+    }
+}
+
+impl MetaResponsesExt for UserAuth {
+    type Iter = Vec<MetaResponse>;
+    fn responses() -> Self::Iter {
+        vec![]
+    }
+}
+
+impl MetaResponsesExt for AdminAuth {
+    type Iter = Vec<MetaResponse>;
+    fn responses() -> Self::Iter {
+        vec![]
     }
 }
 
