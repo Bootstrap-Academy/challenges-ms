@@ -25,6 +25,7 @@ impl<A, T> From<T> for InnerResponse<A, T> {
 pub trait MetaResponsesExt {
     type Iter: IntoIterator<Item = MetaResponse>;
     fn responses() -> Self::Iter;
+    fn register(registry: &mut Registry);
 }
 
 impl MetaResponsesExt for () {
@@ -32,6 +33,7 @@ impl MetaResponsesExt for () {
     fn responses() -> Self::Iter {
         vec![]
     }
+    fn register(_registry: &mut Registry) {}
 }
 
 impl<A, T> ApiResponse for InnerResponse<A, T>
@@ -46,7 +48,8 @@ where
     }
 
     fn register(registry: &mut Registry) {
-        T::register(registry)
+        T::register(registry);
+        A::register(registry);
     }
 }
 

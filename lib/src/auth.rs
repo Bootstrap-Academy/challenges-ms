@@ -1,6 +1,11 @@
 use jwt::VerifyWithKey;
-use poem::{http::StatusCode, Request};
-use poem_openapi::{auth::Bearer, registry::MetaResponse};
+use poem::Request;
+use poem_openapi::{
+    auth::Bearer,
+    payload::Json,
+    registry::{MetaResponse, Registry},
+    ApiResponse, Object,
+};
 
 use crate::{
     jwt::{JwtSecret, UserAccessToken},
@@ -21,39 +26,40 @@ pub struct PublicAuth(pub Option<User>);
 pub struct UserAuth(pub User);
 
 #[derive(Debug)]
+pub struct VerifiedUserAuth(pub User);
+
+#[derive(Debug)]
 pub struct AdminAuth(pub User);
 
-async fn public_auth_check(
-    req: &Request,
-    token: Option<Bearer>,
-) -> Result<Option<User>, StatusCode> {
-    Ok((|| {
-        let Bearer { token } = token?;
-        let jwt_secret = req
-            .data::<JwtSecret>()
-            .expect("request does not have JwtSecret data");
-        let user = VerifyWithKey::<UserAccessToken>::verify_with_key(token.as_str(), &jwt_secret.0)
-            .ok()?;
-        // TODO: check token blacklist (redis)
-        Some(User {
-            id: user.uid,
-            email_verified: user.data.email_verified,
-            admin: user.data.admin,
-        })
-    })())
+async fn user_auth_check(req: &Request, token: Option<Bearer>) -> Result<User, Response> {
+    let Bearer { token } =
+        token.ok_or_else(|| Response::unauthorized("No bearer token in Authorization header"))?;
+    let jwt_secret = req
+        .data::<JwtSecret>()
+        .expect("request does not have JwtSecret data");
+    let user = VerifyWithKey::<UserAccessToken>::verify_with_key(token.as_str(), &jwt_secret.0)
+        .map_err(|_| Response::unauthorized("Invalid bearer token"))?;
+    // TODO: check token blacklist (redis)
+    Ok(User {
+        id: user.uid,
+        email_verified: user.data.email_verified,
+        admin: user.data.admin,
+    })
 }
 
-async fn user_auth_check(req: &Request, token: Option<Bearer>) -> Result<User, StatusCode> {
-    public_auth_check(req, token)
-        .await?
-        .ok_or(StatusCode::UNAUTHORIZED)
+async fn verified_user_auth_check(req: &Request, token: Option<Bearer>) -> Result<User, Response> {
+    let user = user_auth_check(req, token).await?;
+    match user.email_verified {
+        true => Ok(user),
+        false => Err(Response::forbidden("Unverified user email")),
+    }
 }
 
-async fn admin_auth_check(req: &Request, token: Option<Bearer>) -> Result<User, StatusCode> {
+async fn admin_auth_check(req: &Request, token: Option<Bearer>) -> Result<User, Response> {
     let user = user_auth_check(req, token).await?;
     match user.admin {
         true => Ok(user),
-        false => Err(StatusCode::FORBIDDEN),
+        false => Err(Response::forbidden("User is not an administrator")),
     }
 }
 
@@ -62,24 +68,45 @@ impl MetaResponsesExt for PublicAuth {
     fn responses() -> Self::Iter {
         vec![]
     }
+    fn register(_registry: &mut Registry) {}
 }
 
 impl MetaResponsesExt for UserAuth {
     type Iter = Vec<MetaResponse>;
     fn responses() -> Self::Iter {
-        vec![]
+        Response::meta()
+            .responses
+            .into_iter()
+            .filter(|x| matches!(x.status, Some(401)))
+            .collect()
+    }
+    fn register(registry: &mut Registry) {
+        Response::register(registry);
+    }
+}
+
+impl MetaResponsesExt for VerifiedUserAuth {
+    type Iter = Vec<MetaResponse>;
+    fn responses() -> Self::Iter {
+        Response::meta().responses
+    }
+    fn register(registry: &mut Registry) {
+        Response::register(registry);
     }
 }
 
 impl MetaResponsesExt for AdminAuth {
     type Iter = Vec<MetaResponse>;
     fn responses() -> Self::Iter {
-        vec![]
+        Response::meta().responses
+    }
+    fn register(registry: &mut Registry) {
+        Response::register(registry);
     }
 }
 
 macro_rules! impl_api_extractor {
-    ($auth:ident, $checker:ident) => {
+    ($auth:ident, $checker:expr) => {
         #[poem::async_trait]
         impl<'a> poem_openapi::ApiExtractor<'a> for $auth {
             const TYPE: poem_openapi::ApiExtractorType =
@@ -95,7 +122,8 @@ macro_rules! impl_api_extractor {
             ) -> poem::Result<Self> {
                 let output =
                     <Bearer as poem_openapi::auth::BearerAuthorization>::from_request(request).ok();
-                let output = $checker(request, output).await?;
+                let checker = $checker;
+                let output = checker(request, output).await?;
                 Ok(Self(output))
             }
 
@@ -122,6 +150,44 @@ macro_rules! impl_api_extractor {
     };
 }
 
-impl_api_extractor!(PublicAuth, public_auth_check);
+impl_api_extractor!(PublicAuth, |req, token| async move {
+    match user_auth_check(req, token).await {
+        Ok(user) => Ok::<_, Response>(Some(user)),
+        Err(_) => Ok(None),
+    }
+});
 impl_api_extractor!(UserAuth, user_auth_check);
+impl_api_extractor!(VerifiedUserAuth, verified_user_auth_check);
 impl_api_extractor!(AdminAuth, admin_auth_check);
+
+#[derive(Object)]
+struct Error {
+    error: String,
+    reason: String,
+}
+
+#[derive(ApiResponse)]
+enum Response {
+    /// The user is unauthenticated.
+    #[oai(status = 401)]
+    Unauthorized(Json<Error>),
+    /// The authenticated user is not allowed to perform this action.
+    #[oai(status = 403)]
+    Forbidden(Json<Error>),
+}
+
+impl Response {
+    fn unauthorized(reason: impl Into<String>) -> Self {
+        Self::Unauthorized(Json(Error {
+            error: "unauthorized".into(),
+            reason: reason.into(),
+        }))
+    }
+
+    fn forbidden(reason: impl Into<String>) -> Self {
+        Self::Forbidden(Json(Error {
+            error: "forbidden".into(),
+            reason: reason.into(),
+        }))
+    }
+}
