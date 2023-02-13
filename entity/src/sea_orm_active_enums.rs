@@ -2,7 +2,7 @@
 
 use sea_orm::entity::prelude::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy, poem_openapi::Enum)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "jobs_job_type")]
 pub enum JobsJobType {
     #[sea_orm(string_value = "full_time")]
@@ -16,7 +16,7 @@ pub enum JobsJobType {
     #[sea_orm(string_value = "temporary")]
     Temporary,
 }
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy, poem_openapi::Enum)]
 #[sea_orm(
     rs_type = "String",
     db_type = "Enum",
@@ -32,7 +32,7 @@ pub enum JobsProfessionalLevel {
     #[sea_orm(string_value = "senior")]
     Senior,
 }
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy, poem_openapi::Enum)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "jobs_salary_per")]
 pub enum JobsSalaryPer {
     #[sea_orm(string_value = "day")]
@@ -48,7 +48,7 @@ pub enum JobsSalaryPer {
     #[sea_orm(string_value = "year")]
     Year,
 }
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy, poem_openapi::Enum)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "jobs_salary_unit")]
 pub enum JobsSalaryUnit {
     #[sea_orm(string_value = "euro")]

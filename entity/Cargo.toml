@@ -5,4 +5,5 @@ edition = "2021"
 publish = false
 
 [dependencies]
+poem-openapi = { workspace = true }
 sea-orm = { workspace = true }
