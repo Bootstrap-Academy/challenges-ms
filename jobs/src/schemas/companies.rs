@@ -3,7 +3,7 @@ use lib::patch_value::PatchValue;
 use poem_openapi::Object;
 use uuid::Uuid;
 
-#[derive(Object)]
+#[derive(Clone, Object)]
 pub struct Company {
     /// The unique identifier of the company
     pub id: Uuid,
