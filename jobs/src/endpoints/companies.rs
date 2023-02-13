@@ -118,7 +118,7 @@ enum UpdateResponse {
     /// Company has been updated successfully
     #[oai(status = 200)]
     Ok(Json<Company>),
-    /// Could not find company
+    /// Company does not exist
     #[oai(status = 404)]
     NotFound,
 }
@@ -128,7 +128,7 @@ enum DeleteResponse {
     /// Company has been deleted successfully
     #[oai(status = 200)]
     Ok,
-    /// Could not find company
+    /// Company does not exist
     #[oai(status = 404)]
     NotFound,
 }

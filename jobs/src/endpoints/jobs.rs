@@ -1,14 +1,18 @@
 use std::collections::HashMap;
 
+use chrono::Utc;
 use entity::{jobs_companies, jobs_jobs, jobs_skill_requirements};
-use lib::types::Response;
+use lib::{auth::AdminAuth, types::Response};
 use poem::error::InternalServerError;
-use poem_openapi::{payload::Json, OpenApi};
-use sea_orm::{DatabaseConnection, DbErr, EntityTrait};
+use poem_openapi::{payload::Json, ApiResponse, OpenApi};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Set};
 use uuid::Uuid;
 
 use super::Tags;
-use crate::schemas::{companies::Company, jobs::Job};
+use crate::schemas::{
+    companies::Company,
+    jobs::{CreateJob, Job},
+};
 
 pub struct Jobs {
     pub db: DatabaseConnection,
@@ -48,4 +52,69 @@ impl Jobs {
 
         Ok(Json(jobs).into())
     }
+
+    #[oai(path = "/jobs", method = "post")]
+    async fn create_job(
+        &self,
+        data: Json<CreateJob>,
+        _auth: AdminAuth,
+    ) -> Response<AdminAuth, CreateResponse> {
+        let Json(data) = data;
+        let company = match jobs_companies::Entity::find_by_id(data.company_id)
+            .one(&self.db)
+            .await
+            .map_err(InternalServerError)?
+        {
+            Some(company) => company,
+            None => {
+                return Ok(CreateResponse::CompanyNotFound.into());
+            }
+        };
+        let job = jobs_jobs::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            company_id: Set(company.id),
+            title: Set(data.title),
+            description: Set(data.description),
+            location: Set(data.location),
+            remote: Set(data.remote),
+            r#type: Set(data.r#type),
+            responsibilities: Set(data.responsibilities),
+            professional_level: Set(data.professional_level),
+            salary_min: Set(data.salary.min),
+            salary_max: Set(data.salary.max),
+            salary_unit: Set(data.salary.unit),
+            salary_per: Set(data.salary.per),
+            contact: Set(data.contact),
+            last_update: Set(Utc::now().naive_utc()),
+        }
+        .insert(&self.db)
+        .await
+        .map_err(InternalServerError)?;
+
+        jobs_skill_requirements::Entity::insert_many(data.skill_requirements.iter().map(|sr| {
+            jobs_skill_requirements::ActiveModel {
+                job_id: Set(job.id),
+                skill_id: Set(sr.skill_id.clone()),
+                level: Set(sr.level),
+            }
+        }))
+        .exec(&self.db)
+        .await
+        .map_err(InternalServerError)?;
+
+        Ok(CreateResponse::Ok(Json(
+            Job::from(job, company.into(), data.skill_requirements).into(),
+        ))
+        .into())
+    }
+}
+
+#[derive(ApiResponse)]
+enum CreateResponse {
+    /// Job has been created successfully
+    #[oai(status = 201)]
+    Ok(Json<Box<Job>>),
+    /// Company does not exist
+    #[oai(status = 404)]
+    CompanyNotFound,
 }

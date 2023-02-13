@@ -13,7 +13,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(SkillRequirement::Table)
                     .col(ColumnDef::new(SkillRequirement::JobId).uuid())
-                    .col(ColumnDef::new(SkillRequirement::SkillId).uuid())
+                    .col(ColumnDef::new(SkillRequirement::SkillId).text())
                     .col(ColumnDef::new(SkillRequirement::Level).integer().not_null())
                     .primary_key(
                         Index::create()

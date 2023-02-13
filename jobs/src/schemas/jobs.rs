@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use entity::{
     jobs_jobs, jobs_skill_requirements,
     sea_orm_active_enums::{JobsJobType, JobsProfessionalLevel, JobsSalaryPer, JobsSalaryUnit},
@@ -33,7 +34,7 @@ pub struct Job {
     /// The job's contact information
     pub contact: String,
     /// The job's last update timestamp
-    pub last_update: i64,
+    pub last_update: NaiveDateTime,
     /// The job's skill requirements. Each requirement is a tuple of
     pub skill_requirements: Vec<SkillRequirement>,
 }
@@ -61,7 +62,7 @@ impl Job {
                 per: model.salary_per,
             },
             contact: model.contact,
-            last_update: model.last_update.timestamp(),
+            last_update: model.last_update,
             skill_requirements,
         }
     }
@@ -69,8 +70,8 @@ impl Job {
 
 #[derive(Object)]
 pub struct SkillRequirement {
-    pub parent_skill_id: Uuid,
-    pub skill_id: Uuid,
+    pub parent_skill_id: String,
+    pub skill_id: String,
     pub level: i32,
 }
 
@@ -81,7 +82,7 @@ impl From<jobs_skill_requirements::Model> for SkillRequirement {
         }: jobs_skill_requirements::Model,
     ) -> Self {
         Self {
-            parent_skill_id: skill_id, // FIXME: lookup real parent id
+            parent_skill_id: skill_id.clone(), // FIXME: lookup real parent id
             skill_id,
             level,
         }
@@ -91,11 +92,37 @@ impl From<jobs_skill_requirements::Model> for SkillRequirement {
 #[derive(Object)]
 pub struct Salary {
     /// Minimum salary
-    min: i32,
+    pub min: i32,
     /// Maximum salary
-    max: i32,
+    pub max: i32,
     /// Currency unit
-    unit: JobsSalaryUnit,
+    pub unit: JobsSalaryUnit,
     /// Period of time
-    per: JobsSalaryPer,
+    pub per: JobsSalaryPer,
+}
+
+#[derive(Object)]
+pub struct CreateJob {
+    /// The company that posted the job
+    pub company_id: Uuid,
+    /// The job's title
+    pub title: String,
+    /// The job's description
+    pub description: String,
+    /// The job's location
+    pub location: String,
+    /// Whether the job is remote
+    pub remote: bool,
+    /// The job's type
+    pub r#type: JobsJobType,
+    /// The job's responsibilities
+    pub responsibilities: Vec<String>,
+    /// The job's professional level
+    pub professional_level: JobsProfessionalLevel,
+    /// The job's salary
+    pub salary: Salary,
+    /// The job's contact information
+    pub contact: String,
+    /// The job's skill requirements. Each requirement is a tuple of
+    pub skill_requirements: Vec<SkillRequirement>,
 }
