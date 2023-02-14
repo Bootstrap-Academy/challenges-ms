@@ -72,7 +72,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Job::Description).text().not_null())
                     .col(ColumnDef::new(Job::Location).text().not_null())
                     .col(ColumnDef::new(Job::Remote).boolean().not_null())
-                    .col(ColumnDef::new(Job::Type).custom(JobType::Type).not_null())
+                    .col(
+                        ColumnDef::new(Job::JobType)
+                            .custom(JobType::Type)
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(Job::Responsibilities)
                             .array(ColumnType::Text)
@@ -181,7 +185,7 @@ pub enum Job {
     Description,
     Location,
     Remote,
-    Type,
+    JobType,
     Responsibilities,
     ProfessionalLevel,
     SalaryMin,

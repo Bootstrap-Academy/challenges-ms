@@ -77,7 +77,7 @@ impl Jobs {
             description: Set(data.description),
             location: Set(data.location),
             remote: Set(data.remote),
-            r#type: Set(data.r#type),
+            job_type: Set(data.job_type),
             responsibilities: Set(data.responsibilities),
             professional_level: Set(data.professional_level),
             salary_min: Set(data.salary.min),

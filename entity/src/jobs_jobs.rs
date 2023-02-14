@@ -19,7 +19,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub location: String,
     pub remote: bool,
-    pub r#type: JobsJobType,
+    pub job_type: JobsJobType,
     pub responsibilities: Vec<String>,
     pub professional_level: JobsProfessionalLevel,
     pub salary_min: i32,

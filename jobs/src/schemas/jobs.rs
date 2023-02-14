@@ -24,7 +24,7 @@ pub struct Job {
     /// Whether the job is remote
     pub remote: bool,
     /// The job's type
-    pub r#type: JobsJobType,
+    pub job_type: JobsJobType,
     /// The job's responsibilities
     pub responsibilities: Vec<String>,
     /// The job's professional level
@@ -52,7 +52,7 @@ impl Job {
             description: model.description,
             location: model.location,
             remote: model.remote,
-            r#type: model.r#type,
+            job_type: model.job_type,
             responsibilities: model.responsibilities,
             professional_level: model.professional_level,
             salary: Salary {
@@ -114,7 +114,7 @@ pub struct CreateJob {
     /// Whether the job is remote
     pub remote: bool,
     /// The job's type
-    pub r#type: JobsJobType,
+    pub job_type: JobsJobType,
     /// The job's responsibilities
     pub responsibilities: Vec<String>,
     /// The job's professional level
