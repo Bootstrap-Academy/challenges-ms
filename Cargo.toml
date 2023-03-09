@@ -6,6 +6,11 @@ members = [
   "jobs",
 ]
 
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
 [workspace.dependencies]
 anyhow = { version = "1.0.69", default-features = false, features = ["std"] }
 chrono = { version = "0.4.23", default-features = false }
