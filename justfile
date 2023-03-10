@@ -21,6 +21,15 @@ test *args:
 psql *args:
     psql "$(tomlq -r .database_url < .config.toml)" {{args}}
 
+db:
+    docker run -it --rm --name academy-db \
+        -e POSTGRES_DB=academy \
+        -e POSTGRES_USER=academy \
+        -e POSTGRES_PASSWORD=academy \
+        -p 127.0.0.1:5432:5432 \
+        -v $(pwd)/.db:/var/lib/postgresql/data \
+        postgres:alpine
+
 migrate *args:
     sea migrate {{args}}
 
