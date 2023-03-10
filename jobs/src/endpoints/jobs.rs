@@ -21,7 +21,7 @@ pub struct Jobs {
 #[OpenApi(tag = "Tags::Jobs")]
 impl Jobs {
     #[oai(path = "/jobs", method = "get")]
-    async fn list_jobs(&self) -> Response<(), Json<Vec<Job>>> {
+    async fn list_jobs(&self) -> Response<Json<Vec<Job>>> {
         let companies = jobs_companies::Entity::find()
             .all(&self.db)
             .await
@@ -58,7 +58,7 @@ impl Jobs {
         &self,
         data: Json<CreateJob>,
         _auth: AdminAuth,
-    ) -> Response<AdminAuth, CreateResponse> {
+    ) -> Response<CreateResponse, AdminAuth> {
         let Json(data) = data;
         let company = match jobs_companies::Entity::find_by_id(data.company_id)
             .one(&self.db)

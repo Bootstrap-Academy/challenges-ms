@@ -16,7 +16,7 @@ pub struct Companies {
 impl Companies {
     /// List all companies.
     #[oai(path = "/companies", method = "get")]
-    async fn list_companies(&self, _auth: AdminAuth) -> Response<AdminAuth, Json<Vec<Company>>> {
+    async fn list_companies(&self, _auth: AdminAuth) -> Response<Json<Vec<Company>>, AdminAuth> {
         Ok(Json(
             jobs_companies::Entity::find()
                 .all(&self.db)
@@ -35,7 +35,7 @@ impl Companies {
         &self,
         data: Json<CreateCompany>,
         _auth: AdminAuth,
-    ) -> Response<AdminAuth, CreateResponse> {
+    ) -> Response<CreateResponse, AdminAuth> {
         Ok(CreateResponse::Ok(Json(
             jobs_companies::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -62,7 +62,7 @@ impl Companies {
         company_id: Path<Uuid>,
         data: Json<UpdateCompany>,
         _auth: AdminAuth,
-    ) -> Response<AdminAuth, UpdateResponse> {
+    ) -> Response<UpdateResponse, AdminAuth> {
         Ok(match self.get_company(company_id.0).await? {
             Some(company) => UpdateResponse::Ok(Json(
                 jobs_companies::ActiveModel {
@@ -91,7 +91,7 @@ impl Companies {
         &self,
         company_id: Path<Uuid>,
         _auth: AdminAuth,
-    ) -> Response<AdminAuth, DeleteResponse> {
+    ) -> Response<DeleteResponse, AdminAuth> {
         Ok(match self.get_company(company_id.0).await? {
             Some(company) => {
                 company

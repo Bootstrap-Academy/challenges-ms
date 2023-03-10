@@ -6,14 +6,14 @@ use poem_openapi::{
     ApiResponse,
 };
 
-pub type Response<A, T> = poem::Result<InnerResponse<A, T>>;
+pub type Response<T, A = ()> = poem::Result<InnerResponse<T, A>>;
 
-pub struct InnerResponse<A, T> {
+pub struct InnerResponse<T, A> {
     value: T,
     _auth: PhantomData<A>,
 }
 
-impl<A, T> From<T> for InnerResponse<A, T> {
+impl<T, A> From<T> for InnerResponse<T, A> {
     fn from(value: T) -> Self {
         Self {
             value,
@@ -36,7 +36,7 @@ impl MetaResponsesExt for () {
     fn register(_registry: &mut Registry) {}
 }
 
-impl<A, T> ApiResponse for InnerResponse<A, T>
+impl<T, A> ApiResponse for InnerResponse<T, A>
 where
     A: MetaResponsesExt,
     T: ApiResponse,
@@ -53,7 +53,7 @@ where
     }
 }
 
-impl<A, T> IntoResponse for InnerResponse<A, T>
+impl<T, A> IntoResponse for InnerResponse<T, A>
 where
     A: Send,
     T: IntoResponse,
