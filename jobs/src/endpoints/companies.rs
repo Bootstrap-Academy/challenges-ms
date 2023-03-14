@@ -1,10 +1,11 @@
-use crate::schemas::companies::{Company, CreateCompany, UpdateCompany};
+use crate::schemas::companies::{Company, CreateCompanyRequest, UpdateCompanyRequest};
 
 use super::Tags;
 use entity::jobs_companies;
-use lib::{auth::AdminAuth, types::Response};
+use lib::auth::AdminAuth;
 use poem::error::InternalServerError;
-use poem_openapi::{param::Path, payload::Json, ApiResponse, OpenApi};
+use poem_ext::response;
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, ModelTrait, Set, Unchanged};
 use uuid::Uuid;
 
@@ -16,8 +17,8 @@ pub struct Companies {
 impl Companies {
     /// List all companies.
     #[oai(path = "/companies", method = "get")]
-    async fn list_companies(&self, _auth: AdminAuth) -> Response<Json<Vec<Company>>, AdminAuth> {
-        Ok(Json(
+    async fn list_companies(&self, _auth: AdminAuth) -> ListCompaniesResponse<AdminAuth> {
+        ListCompanies::ok(
             jobs_companies::Entity::find()
                 .all(&self.db)
                 .await
@@ -26,17 +27,16 @@ impl Companies {
                 .map(Into::into)
                 .collect::<Vec<_>>(),
         )
-        .into())
     }
 
     /// Create a company.
     #[oai(path = "/companies", method = "post")]
     async fn create_company(
         &self,
-        data: Json<CreateCompany>,
+        data: Json<CreateCompanyRequest>,
         _auth: AdminAuth,
-    ) -> Response<CreateResponse, AdminAuth> {
-        Ok(CreateResponse::Ok(Json(
+    ) -> CreateCompanyResponse<AdminAuth> {
+        CreateCompany::ok(
             jobs_companies::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 name: Set(data.0.name),
@@ -51,8 +51,7 @@ impl Companies {
             .await
             .map_err(InternalServerError)?
             .into(),
-        ))
-        .into())
+        )
     }
 
     /// Update a company.
@@ -60,11 +59,11 @@ impl Companies {
     async fn update_company(
         &self,
         company_id: Path<Uuid>,
-        data: Json<UpdateCompany>,
+        data: Json<UpdateCompanyRequest>,
         _auth: AdminAuth,
-    ) -> Response<UpdateResponse, AdminAuth> {
-        Ok(match self.get_company(company_id.0).await? {
-            Some(company) => UpdateResponse::Ok(Json(
+    ) -> UpdateCompanyResponse<AdminAuth> {
+        match self.get_company(company_id.0).await? {
+            Some(company) => UpdateCompany::ok(
                 jobs_companies::ActiveModel {
                     id: Unchanged(company.id),
                     name: data.0.name.update(company.name),
@@ -79,10 +78,9 @@ impl Companies {
                 .await
                 .map_err(InternalServerError)?
                 .into(),
-            )),
-            None => UpdateResponse::NotFound,
+            ),
+            None => UpdateCompany::not_found(),
         }
-        .into())
     }
 
     /// Delete a company.
@@ -91,46 +89,18 @@ impl Companies {
         &self,
         company_id: Path<Uuid>,
         _auth: AdminAuth,
-    ) -> Response<DeleteResponse, AdminAuth> {
-        Ok(match self.get_company(company_id.0).await? {
+    ) -> DeleteCompanyResponse<AdminAuth> {
+        match self.get_company(company_id.0).await? {
             Some(company) => {
                 company
                     .delete(&self.db)
                     .await
                     .map_err(InternalServerError)?;
-                DeleteResponse::Ok
+                DeleteCompany::ok()
             }
-            None => DeleteResponse::NotFound,
+            None => DeleteCompany::not_found(),
         }
-        .into())
     }
-}
-
-#[derive(ApiResponse)]
-enum CreateResponse {
-    /// Company has been created successfully
-    #[oai(status = 201)]
-    Ok(Json<Company>),
-}
-
-#[derive(ApiResponse)]
-enum UpdateResponse {
-    /// Company has been updated successfully
-    #[oai(status = 200)]
-    Ok(Json<Company>),
-    /// Company does not exist
-    #[oai(status = 404)]
-    NotFound,
-}
-
-#[derive(ApiResponse)]
-enum DeleteResponse {
-    /// Company has been deleted successfully
-    #[oai(status = 200)]
-    Ok,
-    /// Company does not exist
-    #[oai(status = 404)]
-    NotFound,
 }
 
 impl Companies {
@@ -141,3 +111,26 @@ impl Companies {
             .map_err(InternalServerError)
     }
 }
+
+response!(ListCompanies = {
+    Ok(200) => Vec<Company>,
+});
+
+response!(CreateCompany = {
+    /// Company has been created successfully
+    Ok(201) => Company,
+});
+
+response!(UpdateCompany = {
+    /// Company has been updated successfully
+    Ok(200) => Company,
+    /// Company does not exist
+    NotFound(404, error),
+});
+
+response!(DeleteCompany = {
+    /// Company has been deleted successfully
+    Ok(200),
+    /// Company does not exist
+    NotFound(404, error),
+});

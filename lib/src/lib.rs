@@ -4,5 +4,3 @@
 pub mod auth;
 pub mod config;
 pub mod jwt;
-pub mod patch_value;
-pub mod types;

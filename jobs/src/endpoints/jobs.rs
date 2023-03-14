@@ -2,16 +2,17 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use entity::{jobs_companies, jobs_jobs, jobs_skill_requirements};
-use lib::{auth::AdminAuth, types::Response};
+use lib::auth::AdminAuth;
 use poem::error::InternalServerError;
-use poem_openapi::{payload::Json, ApiResponse, OpenApi};
+use poem_ext::response;
+use poem_openapi::{payload::Json, OpenApi};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Set};
 use uuid::Uuid;
 
 use super::Tags;
 use crate::schemas::{
     companies::Company,
-    jobs::{CreateJob, Job},
+    jobs::{CreateJobRequest, Job},
 };
 
 pub struct Jobs {
@@ -21,7 +22,7 @@ pub struct Jobs {
 #[OpenApi(tag = "Tags::Jobs")]
 impl Jobs {
     #[oai(path = "/jobs", method = "get")]
-    async fn list_jobs(&self) -> Response<Json<Vec<Job>>> {
+    async fn list_jobs(&self) -> ListJobsResponse {
         let companies = jobs_companies::Entity::find()
             .all(&self.db)
             .await
@@ -50,15 +51,15 @@ impl Jobs {
                 InternalServerError(DbErr::RecordNotFound("Job -> Company".to_owned()))
             })?;
 
-        Ok(Json(jobs).into())
+        ListJobs::ok(jobs)
     }
 
     #[oai(path = "/jobs", method = "post")]
     async fn create_job(
         &self,
-        data: Json<CreateJob>,
+        data: Json<CreateJobRequest>,
         _auth: AdminAuth,
-    ) -> Response<CreateResponse, AdminAuth> {
+    ) -> CreateJobResponse<AdminAuth> {
         let Json(data) = data;
         let company = match jobs_companies::Entity::find_by_id(data.company_id)
             .one(&self.db)
@@ -67,7 +68,7 @@ impl Jobs {
         {
             Some(company) => company,
             None => {
-                return Ok(CreateResponse::CompanyNotFound.into());
+                return CreateJob::company_not_found();
             }
         };
         let job = jobs_jobs::ActiveModel {
@@ -102,19 +103,17 @@ impl Jobs {
         .await
         .map_err(InternalServerError)?;
 
-        Ok(CreateResponse::Ok(Json(
-            Job::from(job, company.into(), data.skill_requirements).into(),
-        ))
-        .into())
+        CreateJob::ok(Job::from(job, company.into(), data.skill_requirements))
     }
 }
 
-#[derive(ApiResponse)]
-enum CreateResponse {
+response!(ListJobs = {
+    Ok(200) => Vec<Job>,
+});
+
+response!(CreateJob = {
     /// Job has been created successfully
-    #[oai(status = 201)]
-    Ok(Json<Box<Job>>),
+    Ok(201) => Job,
     /// Company does not exist
-    #[oai(status = 404)]
-    CompanyNotFound,
-}
+    CompanyNotFound(404, error),
+});

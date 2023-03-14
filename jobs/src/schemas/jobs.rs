@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::companies::Company;
 
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct Job {
     /// The job's unique identifier
     pub id: Uuid,
@@ -68,7 +68,7 @@ impl Job {
     }
 }
 
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct SkillRequirement {
     pub parent_skill_id: String,
     pub skill_id: String,
@@ -89,7 +89,7 @@ impl From<jobs_skill_requirements::Model> for SkillRequirement {
     }
 }
 
-#[derive(Object)]
+#[derive(Debug, Object)]
 pub struct Salary {
     /// Minimum salary
     pub min: i32,
@@ -101,8 +101,8 @@ pub struct Salary {
     pub per: JobsSalaryPer,
 }
 
-#[derive(Object)]
-pub struct CreateJob {
+#[derive(Debug, Object)]
+pub struct CreateJobRequest {
     /// The company that posted the job
     pub company_id: Uuid,
     /// The job's title

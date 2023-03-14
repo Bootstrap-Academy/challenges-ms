@@ -1,9 +1,9 @@
 use entity::jobs_companies;
-use lib::patch_value::PatchValue;
+use poem_ext::patch_value::PatchValue;
 use poem_openapi::Object;
 use uuid::Uuid;
 
-#[derive(Clone, Object)]
+#[derive(Debug, Clone, Object)]
 pub struct Company {
     /// The unique identifier of the company
     pub id: Uuid,
@@ -49,8 +49,8 @@ impl From<jobs_companies::Model> for Company {
     }
 }
 
-#[derive(Object)]
-pub struct CreateCompany {
+#[derive(Debug, Object)]
+pub struct CreateCompanyRequest {
     /// The name of the company
     #[oai(validator(max_length = 255))]
     pub name: String,
@@ -74,8 +74,8 @@ pub struct CreateCompany {
     pub logo_url: Option<String>,
 }
 
-#[derive(Object)]
-pub struct UpdateCompany {
+#[derive(Debug, Object)]
+pub struct UpdateCompanyRequest {
     /// The name of the company
     #[oai(validator(max_length = 255))]
     pub name: PatchValue<String>,
