@@ -7,13 +7,6 @@ use self::jobs::JobsConfig;
 
 mod jobs;
 
-#[derive(Debug, Deserialize)]
-pub struct Config {
-    pub database_url: String,
-    pub jwt_secret: String,
-    pub jobs: JobsConfig,
-}
-
 pub fn load() -> Result<Config, ConfigError> {
     config::Config::builder()
         .add_source(File::with_name(
@@ -21,4 +14,17 @@ pub fn load() -> Result<Config, ConfigError> {
         ))
         .build()?
         .try_deserialize()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Config {
+    pub database: Database,
+    pub jwt_secret: String,
+    pub jobs: JobsConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Database {
+    pub url: String,
+    pub connect_timeout: u64,
 }

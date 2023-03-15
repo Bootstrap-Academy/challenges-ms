@@ -9,7 +9,7 @@ use sea_orm_migration::prelude::*;
 async fn main() {
     if env::var("DATABASE_URL").is_err() {
         let config = lib::config::load().unwrap();
-        env::set_var("DATABASE_URL", config.database_url);
+        env::set_var("DATABASE_URL", config.database.url);
     }
     cli::run_cli(migration::Migrator).await;
 }

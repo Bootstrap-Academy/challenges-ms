@@ -1,12 +1,14 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::dbg_macro, clippy::use_debug)]
 
+use std::time::Duration;
+
 use anyhow::Context;
 use lib::{config, jwt::JwtSecret};
 use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
 use poem_ext::panic_handler::PanicHandler;
 use poem_openapi::OpenApiService;
-use sea_orm::Database;
+use sea_orm::{ConnectOptions, Database};
 use tracing::info;
 
 use crate::endpoints::get_api;
@@ -20,7 +22,9 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::load().context("loading config")?;
 
-    let db = Database::connect(&config.database_url).await?;
+    let mut db_options = ConnectOptions::new(config.database.url);
+    db_options.connect_timeout(Duration::from_secs(config.database.connect_timeout));
+    let db = Database::connect(db_options).await?;
 
     let api_service = OpenApiService::new(
         get_api(db),

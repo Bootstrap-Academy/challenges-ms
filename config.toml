@@ -1,5 +1,8 @@
-database_url = "postgres://academy:academy@localhost/academy"
 jwt_secret = "changeme"
+
+[database]
+url = "postgres://academy:academy@localhost/academy"
+connect_timeout = 5
 
 [jobs]
 host = "127.0.0.1"
