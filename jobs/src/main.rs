@@ -3,11 +3,8 @@
 
 use anyhow::Context;
 use lib::{config, jwt::JwtSecret};
-use poem::{
-    listener::TcpListener,
-    middleware::{CatchPanic, Tracing},
-    EndpointExt, Route, Server,
-};
+use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
+use poem_ext::panic_handler::PanicHandler;
 use poem_openapi::OpenApiService;
 use sea_orm::Database;
 use tracing::info;
@@ -37,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/redoc", api_service.redoc())
         .nest("/", api_service)
         .with(Tracing)
-        .with(CatchPanic::new())
+        .with(PanicHandler::middleware())
         .data(JwtSecret::try_from(config.jwt_secret.as_str())?);
 
     info!("Listening on {}:{}", config.jobs.host, config.jobs.port);

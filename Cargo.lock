@@ -1358,14 +1358,15 @@ dependencies = [
 
 [[package]]
 name = "poem-ext"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a4be7869bfe76e11ffb1aa33bef2d3322cd9d94cd6c6a7d09f5f855556d61e0"
+checksum = "738cb3dda7ab209f8fe5cd7b394c1e17aa5a644b5627a98694058a0b3fc7be88"
 dependencies = [
  "paste",
  "poem",
  "poem-openapi",
  "sea-orm",
+ "tracing",
 ]
 
 [[package]]
@@ -2270,9 +2271,9 @@ checksum = "3ab8ed2edee10b50132aed5f331333428b011c99402b5a534154ed15746f9622"
 
 [[package]]
 name = "toml_edit"
-version = "0.19.6"
+version = "0.19.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08de71aa0d6e348f070457f85af8bd566e2bc452156a423ddf22861b3a953fae"
+checksum = "dc18466501acd8ac6a3f615dd29a3438f8ca6bb3b19537138b3106e575621274"
 dependencies = [
  "indexmap",
  "toml_datetime",
@@ -2666,9 +2667,9 @@ checksum = "9aec5da331524158c6d1a4ac0ab1541149c0b9505fde06423b02f5ef0106b9f0"
 
 [[package]]
 name = "winnow"
-version = "0.3.5"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee7b2c67f962bf5042bfd8b6a916178df33a26eec343ae064cb8e069f638fa6f"
+checksum = "23d020b441f92996c80d94ae9166e8501e59c7bb56121189dc9eab3bd8216966"
 dependencies = [
  "memchr",
 ]

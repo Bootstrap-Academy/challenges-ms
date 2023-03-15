@@ -3,8 +3,7 @@ use crate::schemas::companies::{Company, CreateCompanyRequest, UpdateCompanyRequ
 use super::Tags;
 use entity::jobs_companies;
 use lib::auth::AdminAuth;
-use poem::error::InternalServerError;
-use poem_ext::response;
+use poem_ext::{response, responses::internal_server_error};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, ModelTrait, Set, Unchanged};
 use uuid::Uuid;
@@ -17,12 +16,12 @@ pub struct Companies {
 impl Companies {
     /// List all companies.
     #[oai(path = "/companies", method = "get")]
-    async fn list_companies(&self, _auth: AdminAuth) -> ListCompaniesResponse<AdminAuth> {
+    async fn list_companies(&self, _auth: AdminAuth) -> ListCompanies::Response<AdminAuth> {
         ListCompanies::ok(
             jobs_companies::Entity::find()
                 .all(&self.db)
                 .await
-                .map_err(InternalServerError)?
+                .map_err(internal_server_error)?
                 .into_iter()
                 .map(Into::into)
                 .collect::<Vec<_>>(),
@@ -35,7 +34,7 @@ impl Companies {
         &self,
         data: Json<CreateCompanyRequest>,
         _auth: AdminAuth,
-    ) -> CreateCompanyResponse<AdminAuth> {
+    ) -> CreateCompany::Response<AdminAuth> {
         CreateCompany::ok(
             jobs_companies::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -49,7 +48,7 @@ impl Companies {
             }
             .insert(&self.db)
             .await
-            .map_err(InternalServerError)?
+            .map_err(internal_server_error)?
             .into(),
         )
     }
@@ -61,7 +60,7 @@ impl Companies {
         company_id: Path<Uuid>,
         data: Json<UpdateCompanyRequest>,
         _auth: AdminAuth,
-    ) -> UpdateCompanyResponse<AdminAuth> {
+    ) -> UpdateCompany::Response<AdminAuth> {
         match self.get_company(company_id.0).await? {
             Some(company) => UpdateCompany::ok(
                 jobs_companies::ActiveModel {
@@ -76,7 +75,7 @@ impl Companies {
                 }
                 .update(&self.db)
                 .await
-                .map_err(InternalServerError)?
+                .map_err(internal_server_error)?
                 .into(),
             ),
             None => UpdateCompany::not_found(),
@@ -89,13 +88,13 @@ impl Companies {
         &self,
         company_id: Path<Uuid>,
         _auth: AdminAuth,
-    ) -> DeleteCompanyResponse<AdminAuth> {
+    ) -> DeleteCompany::Response<AdminAuth> {
         match self.get_company(company_id.0).await? {
             Some(company) => {
                 company
                     .delete(&self.db)
                     .await
-                    .map_err(InternalServerError)?;
+                    .map_err(internal_server_error)?;
                 DeleteCompany::ok()
             }
             None => DeleteCompany::not_found(),
@@ -105,10 +104,10 @@ impl Companies {
 
 impl Companies {
     async fn get_company(&self, company_id: Uuid) -> poem::Result<Option<jobs_companies::Model>> {
-        jobs_companies::Entity::find_by_id(company_id)
+        Ok(jobs_companies::Entity::find_by_id(company_id)
             .one(&self.db)
             .await
-            .map_err(InternalServerError)
+            .map_err(internal_server_error)?)
     }
 }
 

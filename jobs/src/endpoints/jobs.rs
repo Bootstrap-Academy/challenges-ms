@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use chrono::Utc;
 use entity::{jobs_companies, jobs_jobs, jobs_skill_requirements};
 use lib::auth::AdminAuth;
-use poem::error::InternalServerError;
-use poem_ext::response;
+use poem_ext::{response, responses::internal_server_error};
 use poem_openapi::{payload::Json, OpenApi};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Set};
 use uuid::Uuid;
@@ -22,11 +21,11 @@ pub struct Jobs {
 #[OpenApi(tag = "Tags::Jobs")]
 impl Jobs {
     #[oai(path = "/jobs", method = "get")]
-    async fn list_jobs(&self) -> ListJobsResponse {
+    async fn list_jobs(&self) -> ListJobs::Response {
         let companies = jobs_companies::Entity::find()
             .all(&self.db)
             .await
-            .map_err(InternalServerError)?
+            .map_err(internal_server_error)?
             .into_iter()
             .map(|company| (company.id, company.into()))
             .collect::<HashMap<Uuid, Company>>();
@@ -35,7 +34,7 @@ impl Jobs {
             .find_with_related(jobs_skill_requirements::Entity)
             .all(&self.db)
             .await
-            .map_err(InternalServerError)?
+            .map_err(internal_server_error)?
             .into_iter()
             .map(|(job, skill_requirements)| {
                 companies.get(&job.company_id).map(|company| {
@@ -48,7 +47,7 @@ impl Jobs {
             })
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| {
-                InternalServerError(DbErr::RecordNotFound("Job -> Company".to_owned()))
+                internal_server_error(DbErr::RecordNotFound("Job -> Company".to_owned()))
             })?;
 
         ListJobs::ok(jobs)
@@ -59,12 +58,12 @@ impl Jobs {
         &self,
         data: Json<CreateJobRequest>,
         _auth: AdminAuth,
-    ) -> CreateJobResponse<AdminAuth> {
+    ) -> CreateJob::Response<AdminAuth> {
         let Json(data) = data;
         let company = match jobs_companies::Entity::find_by_id(data.company_id)
             .one(&self.db)
             .await
-            .map_err(InternalServerError)?
+            .map_err(internal_server_error)?
         {
             Some(company) => company,
             None => {
@@ -90,7 +89,7 @@ impl Jobs {
         }
         .insert(&self.db)
         .await
-        .map_err(InternalServerError)?;
+        .map_err(internal_server_error)?;
 
         jobs_skill_requirements::Entity::insert_many(data.skill_requirements.iter().map(|sr| {
             jobs_skill_requirements::ActiveModel {
@@ -101,7 +100,7 @@ impl Jobs {
         }))
         .exec(&self.db)
         .await
-        .map_err(InternalServerError)?;
+        .map_err(internal_server_error)?;
 
         CreateJob::ok(Job::from(job, company.into(), data.skill_requirements))
     }
