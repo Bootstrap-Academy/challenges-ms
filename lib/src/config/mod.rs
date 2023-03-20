@@ -2,6 +2,7 @@ use std::env;
 
 use config::{ConfigError, File};
 use serde::Deserialize;
+use url::Url;
 
 use self::jobs::JobsConfig;
 
@@ -19,19 +20,33 @@ pub fn load() -> Result<Config, ConfigError> {
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub jwt_secret: String,
+    pub internal_jwt_ttl: u64,
     pub database: Database,
     pub redis: Redis,
+    pub services: Services,
     pub jobs: JobsConfig,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Database {
-    pub url: String,
+    pub url: Url,
     pub connect_timeout: u64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Redis {
-    pub auth: String,
-    pub jobs: String,
+    pub auth: Url,
+    pub skills: Url,
+    pub shop: Url,
+    pub jobs: Url,
+    pub events: Url,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Services {
+    pub auth: Url,
+    pub skills: Url,
+    pub shop: Url,
+    pub jobs: Url,
+    pub events: Url,
 }

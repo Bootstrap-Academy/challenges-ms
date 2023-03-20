@@ -8,6 +8,7 @@ publish = false
 anyhow = { workspace = true }
 chrono = { workspace = true }
 entity = { workspace = true }
+itertools = { workspace = true }
 lib = { workspace = true }
 poem = { workspace = true }
 poem-ext = { workspace = true }

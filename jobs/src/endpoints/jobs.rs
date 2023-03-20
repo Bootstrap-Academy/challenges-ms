@@ -1,21 +1,23 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::Utc;
 use entity::{jobs_companies, jobs_jobs, jobs_skill_requirements};
-use lib::auth::AdminAuth;
+use itertools::Itertools;
+use lib::{auth::AdminAuth, SharedState};
 use poem_ext::{response, responses::internal_server_error};
 use poem_openapi::{payload::Json, OpenApi};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, Set};
+use tracing::warn;
 use uuid::Uuid;
 
 use super::Tags;
 use crate::schemas::{
     companies::Company,
-    jobs::{CreateJobRequest, Job},
+    jobs::{CreateJobRequest, Job, SkillRequirement},
 };
 
 pub struct Jobs {
-    pub db: DatabaseConnection,
+    pub state: Arc<SharedState>,
 }
 
 #[OpenApi(tag = "Tags::Jobs")]
@@ -23,16 +25,24 @@ impl Jobs {
     #[oai(path = "/jobs", method = "get")]
     async fn list_jobs(&self) -> ListJobs::Response {
         let companies = jobs_companies::Entity::find()
-            .all(&self.db)
+            .all(&self.state.db)
             .await
             .map_err(internal_server_error)?
             .into_iter()
             .map(|company| (company.id, company.into()))
             .collect::<HashMap<Uuid, Company>>();
 
+        let skills = self
+            .state
+            .services
+            .skills
+            .get_skills()
+            .await
+            .map_err(internal_server_error)?;
+
         let jobs = jobs_jobs::Entity::find()
             .find_with_related(jobs_skill_requirements::Entity)
-            .all(&self.db)
+            .all(&self.state.db)
             .await
             .map_err(internal_server_error)?
             .into_iter()
@@ -41,7 +51,23 @@ impl Jobs {
                     Job::from(
                         job,
                         company.clone(),
-                        skill_requirements.into_iter().map(Into::into).collect(),
+                        skill_requirements
+                            .into_iter()
+                            .map(|req| {
+                                let parent_skill_id = match skills.get(&req.skill_id) {
+                                    Some(skill) => Some(skill.parent_id.clone()),
+                                    None => {
+                                        warn!("Could not find parent_id of skill {}", req.skill_id);
+                                        None
+                                    }
+                                };
+                                SkillRequirement {
+                                    parent_skill_id,
+                                    skill_id: req.skill_id,
+                                    level: req.level,
+                                }
+                            })
+                            .collect(),
                     )
                 })
             })
@@ -61,7 +87,7 @@ impl Jobs {
     ) -> CreateJob::Response<AdminAuth> {
         let Json(data) = data;
         let company = match jobs_companies::Entity::find_by_id(data.company_id)
-            .one(&self.db)
+            .one(&self.state.db)
             .await
             .map_err(internal_server_error)?
         {
@@ -70,6 +96,28 @@ impl Jobs {
                 return CreateJob::company_not_found();
             }
         };
+
+        let skills = self
+            .state
+            .services
+            .skills
+            .get_skills()
+            .await
+            .map_err(internal_server_error)?;
+        let (skill_requirements, not_found): (Vec<_>, Vec<_>) = data
+            .skill_requirements
+            .into_iter()
+            .partition_map(|x| match skills.get(&x.skill_id) {
+                Some(skill) => itertools::Either::Left(SkillRequirement {
+                    parent_skill_id: Some(skill.parent_id.clone()),
+                    ..x
+                }),
+                None => itertools::Either::Right(x.skill_id.clone()),
+            });
+        if !not_found.is_empty() {
+            return CreateJob::skill_not_found(not_found);
+        }
+
         let job = jobs_jobs::ActiveModel {
             id: Set(Uuid::new_v4()),
             company_id: Set(company.id),
@@ -87,22 +135,22 @@ impl Jobs {
             contact: Set(data.contact),
             last_update: Set(Utc::now().naive_utc()),
         }
-        .insert(&self.db)
+        .insert(&self.state.db)
         .await
         .map_err(internal_server_error)?;
 
-        jobs_skill_requirements::Entity::insert_many(data.skill_requirements.iter().map(|sr| {
+        jobs_skill_requirements::Entity::insert_many(skill_requirements.iter().map(|sr| {
             jobs_skill_requirements::ActiveModel {
                 job_id: Set(job.id),
                 skill_id: Set(sr.skill_id.clone()),
                 level: Set(sr.level),
             }
         }))
-        .exec(&self.db)
+        .exec(&self.state.db)
         .await
         .map_err(internal_server_error)?;
 
-        CreateJob::ok(Job::from(job, company.into(), data.skill_requirements))
+        CreateJob::ok(Job::from(job, company.into(), skill_requirements))
     }
 }
 
@@ -115,4 +163,6 @@ response!(CreateJob = {
     Ok(201) => Job,
     /// Company does not exist
     CompanyNotFound(404, error),
+    /// Skill does not exist
+    SkillNotFound(404, error) => Vec<String>,
 });

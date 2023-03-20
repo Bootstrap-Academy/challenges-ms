@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
+use lib::SharedState;
 use poem_openapi::OpenApi;
-use sea_orm::DatabaseConnection;
 
 use self::{companies::Companies, jobs::Jobs};
 
@@ -14,6 +16,11 @@ pub enum Tags {
     Jobs,
 }
 
-pub fn get_api(db: DatabaseConnection) -> impl OpenApi {
-    (Companies { db: db.clone() }, Jobs { db })
+pub fn get_api(state: Arc<SharedState>) -> impl OpenApi {
+    (
+        Companies {
+            state: state.clone(),
+        },
+        Jobs { state },
+    )
 }

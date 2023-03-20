@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 use entity::{
-    jobs_jobs, jobs_skill_requirements,
+    jobs_jobs,
     sea_orm_active_enums::{JobsJobType, JobsProfessionalLevel, JobsSalaryPer, JobsSalaryUnit},
 };
 
@@ -70,23 +70,9 @@ impl Job {
 
 #[derive(Debug, Object)]
 pub struct SkillRequirement {
-    pub parent_skill_id: String,
+    pub parent_skill_id: Option<String>,
     pub skill_id: String,
     pub level: i32,
-}
-
-impl From<jobs_skill_requirements::Model> for SkillRequirement {
-    fn from(
-        jobs_skill_requirements::Model {
-            skill_id, level, ..
-        }: jobs_skill_requirements::Model,
-    ) -> Self {
-        Self {
-            parent_skill_id: skill_id.clone(), // FIXME: lookup real parent id
-            skill_id,
-            level,
-        }
-    }
 }
 
 #[derive(Debug, Object)]

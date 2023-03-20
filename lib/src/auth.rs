@@ -1,9 +1,14 @@
-use jwt::VerifyWithKey;
+use std::sync::Arc;
+
 use poem::Request;
 use poem_ext::{add_response_schemas, custom_auth, response};
 use poem_openapi::auth::Bearer;
+use tracing::debug;
 
-use crate::{jwt::UserAccessToken, SharedState};
+use crate::{
+    jwt::{verify_jwt, UserAccessToken},
+    SharedState,
+};
 
 #[derive(Debug)]
 pub struct User {
@@ -30,11 +35,12 @@ async fn user_auth_check(
 ) -> Result<User, UserAuthError::raw::Response> {
     let Bearer { token } = token.ok_or_else(UserAuthError::raw::unauthorized)?;
     let data = req
-        .data::<SharedState>()
+        .data::<Arc<SharedState>>()
         .expect("request does not have a SharedState");
-    let user =
-        VerifyWithKey::<UserAccessToken>::verify_with_key(token.as_str(), &data.jwt_secret.0)
-            .map_err(|_| UserAuthError::raw::unauthorized())?;
+    let user: UserAccessToken = verify_jwt(&token, &data.jwt_secret).map_err(|err| {
+        debug!("jwt token verification failed: {err}");
+        UserAuthError::raw::unauthorized()
+    })?;
     if user
         .is_revoked(&data.auth_redis)
         .await
