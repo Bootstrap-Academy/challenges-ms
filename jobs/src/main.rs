@@ -3,8 +3,7 @@
 
 use std::time::Duration;
 
-use anyhow::Context;
-use lib::{config, jwt::JwtSecret};
+use lib::{config, jwt::JwtSecret, SharedState};
 use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
 use poem_ext::panic_handler::PanicHandler;
 use poem_openapi::OpenApiService;
@@ -20,11 +19,17 @@ mod schemas;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let config = config::load().context("loading config")?;
+    info!("Loading config");
+    let config = config::load()?;
 
+    info!("Connecting to database");
     let mut db_options = ConnectOptions::new(config.database.url);
     db_options.connect_timeout(Duration::from_secs(config.database.connect_timeout));
     let db = Database::connect(db_options).await?;
+
+    info!("Connecting to redis");
+    let _redis = redis::Client::open(config.redis.jobs)?;
+    let auth_redis = redis::Client::open(config.redis.auth)?;
 
     let api_service = OpenApiService::new(
         get_api(db),
@@ -39,7 +44,10 @@ async fn main() -> anyhow::Result<()> {
         .nest("/", api_service)
         .with(Tracing)
         .with(PanicHandler::middleware())
-        .data(JwtSecret::try_from(config.jwt_secret.as_str())?);
+        .data(SharedState {
+            jwt_secret: JwtSecret::try_from(config.jwt_secret.as_str())?,
+            auth_redis,
+        });
 
     info!("Listening on {}:{}", config.jobs.host, config.jobs.port);
     Server::new(TcpListener::bind((config.jobs.host, config.jobs.port)))

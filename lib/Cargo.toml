@@ -11,6 +11,8 @@ jwt = { workspace = true }
 poem = { workspace = true }
 poem-ext= { workspace = true }
 poem-openapi = { workspace = true }
+redis = { workspace = true }
 sea-orm = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }
+tracing = { workspace = true }

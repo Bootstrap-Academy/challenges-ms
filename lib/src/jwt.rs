@@ -1,8 +1,9 @@
 use hmac::{digest::InvalidLength, Hmac, Mac};
+use redis::{AsyncCommands, RedisResult};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct JwtSecret(pub Hmac<Sha256>);
 
 impl TryFrom<&str> for JwtSecret {
@@ -18,6 +19,13 @@ pub struct UserAccessToken {
     pub uid: String,
     pub rt: String,
     pub data: UserAccessTokenData,
+}
+
+impl UserAccessToken {
+    pub async fn is_revoked(&self, redis: &redis::Client) -> RedisResult<bool> {
+        let mut conn = redis.get_async_connection().await?;
+        conn.exists(format!("session_logout:{}", self.rt)).await
+    }
 }
 
 #[derive(Serialize, Deserialize)]

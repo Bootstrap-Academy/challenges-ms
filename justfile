@@ -19,7 +19,10 @@ test *args:
     cargo test --locked {{args}}
 
 psql *args:
-    psql "$(tomlq -r .database_url < .config.toml)" {{args}}
+    psql "$(tomlq -r .database.url < .config.toml)" {{args}}
+
+redis ms *args:
+    redis-cli -u "$(tomlq -r .redis.{{ms}} < .config.toml)" {{args}}
 
 db:
     docker run -it --rm --name academy-db \
@@ -33,7 +36,7 @@ migrate *args:
     sea migrate {{args}}
 
 entity:
-    DATABASE_URL="$(tomlq -r .database_url < .config.toml)" sea generate entity -l -o entity/src --with-copy-enums
+    DATABASE_URL="$(tomlq -r .database.url < .config.toml)" sea generate entity -l -o entity/src --with-copy-enums
     sed -i -E 's/^(#\[derive\(.*DeriveActiveEnum.*)\)\]$/\1, poem_openapi::Enum)]/' entity/src/sea_orm_active_enums.rs
 
 bacon *args:

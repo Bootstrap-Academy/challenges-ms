@@ -3,7 +3,7 @@ use poem::Request;
 use poem_ext::{add_response_schemas, custom_auth, response};
 use poem_openapi::auth::Bearer;
 
-use crate::jwt::{JwtSecret, UserAccessToken};
+use crate::{jwt::UserAccessToken, SharedState};
 
 #[derive(Debug)]
 pub struct User {
@@ -29,12 +29,19 @@ async fn user_auth_check(
     token: Option<Bearer>,
 ) -> Result<User, UserAuthError::raw::Response> {
     let Bearer { token } = token.ok_or_else(UserAuthError::raw::unauthorized)?;
-    let jwt_secret = req
-        .data::<JwtSecret>()
-        .expect("request does not have JwtSecret data");
-    let user = VerifyWithKey::<UserAccessToken>::verify_with_key(token.as_str(), &jwt_secret.0)
-        .map_err(|_| UserAuthError::raw::unauthorized())?;
-    // TODO: check token blacklist (redis)
+    let data = req
+        .data::<SharedState>()
+        .expect("request does not have a SharedState");
+    let user =
+        VerifyWithKey::<UserAccessToken>::verify_with_key(token.as_str(), &data.jwt_secret.0)
+            .map_err(|_| UserAuthError::raw::unauthorized())?;
+    if user
+        .is_revoked(&data.auth_redis)
+        .await
+        .expect("token verification via auth redis failed")
+    {
+        return Err(UserAuthError::raw::unauthorized());
+    }
     Ok(User {
         id: user.uid,
         email_verified: user.data.email_verified,

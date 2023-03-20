@@ -4,6 +4,10 @@ jwt_secret = "changeme"
 url = "postgres://academy:academy@localhost/academy"
 connect_timeout = 5
 
+[redis]
+auth = "redis://localhost:6379/0"
+jobs = "redis://localhost:6379/3"
+
 [jobs]
 host = "127.0.0.1"
 port = 8003

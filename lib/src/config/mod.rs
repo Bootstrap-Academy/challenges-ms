@@ -18,8 +18,9 @@ pub fn load() -> Result<Config, ConfigError> {
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    pub database: Database,
     pub jwt_secret: String,
+    pub database: Database,
+    pub redis: Redis,
     pub jobs: JobsConfig,
 }
 
@@ -27,4 +28,10 @@ pub struct Config {
 pub struct Database {
     pub url: String,
     pub connect_timeout: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Redis {
+    pub auth: String,
+    pub jobs: String,
 }
