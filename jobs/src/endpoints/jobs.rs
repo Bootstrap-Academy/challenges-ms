@@ -57,7 +57,10 @@ impl Jobs {
                                 let parent_skill_id = match skills.get(&req.skill_id) {
                                     Some(skill) => Some(skill.parent_id.clone()),
                                     None => {
-                                        warn!("Could not find parent_id of skill {}", req.skill_id);
+                                        warn!(
+                                            "Could not find parent_id of skill {} in job {}",
+                                            req.skill_id, req.job_id
+                                        );
                                         None
                                     }
                                 };
