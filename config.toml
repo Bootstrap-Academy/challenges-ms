@@ -1,5 +1,6 @@
 jwt_secret = "changeme"
 internal_jwt_ttl = 10
+cache_ttl = 600
 
 [database]
 url = "postgres://academy:academy@localhost/academy"

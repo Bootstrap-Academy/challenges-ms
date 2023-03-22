@@ -13,18 +13,29 @@ impl SkillsService {
     }
 
     pub async fn get_skills(&self) -> ServiceResult<HashMap<String, Skill>> {
-        let skills: Vec<Skill> = self
+        Ok(self
             .0
-            .get("/skills")
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        Ok(skills
-            .into_iter()
-            .map(|skill| (skill.id.clone(), skill))
-            .collect())
+            .cache
+            .cached_result::<_, reqwest::Error, _, _>(
+                (module_path!(), "get_skills"),
+                &["skills"],
+                None,
+                async {
+                    let skills: Vec<Skill> = self
+                        .0
+                        .get("/skills")
+                        .send()
+                        .await?
+                        .error_for_status()?
+                        .json()
+                        .await?;
+                    Ok(skills
+                        .into_iter()
+                        .map(|skill| (skill.id.clone(), skill))
+                        .collect())
+                },
+            )
+            .await??)
     }
 }
 

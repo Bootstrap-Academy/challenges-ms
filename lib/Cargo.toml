@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 config = { workspace = true }
+fnct = { workspace = true }
 hmac = { workspace = true }
 jwt = { workspace = true }
 paste = { version = "1.0.12", default-features = false }

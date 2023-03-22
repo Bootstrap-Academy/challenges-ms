@@ -42,7 +42,7 @@ async fn user_auth_check(
         UserAuthError::raw::unauthorized()
     })?;
     if user
-        .is_revoked(&data.auth_redis)
+        .is_revoked(&mut data.auth_redis.clone())
         .await
         .expect("token verification via auth redis failed")
     {

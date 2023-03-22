@@ -3,7 +3,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use lib::{config, jwt::JwtSecret, services::Services, SharedState};
+use fnct::async_redis::AsyncRedisCache;
+use lib::{config, jwt::JwtSecret, redis::RedisConnection, services::Services, SharedState};
 use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
 use poem_ext::panic_handler::PanicHandler;
 use poem_openapi::OpenApiService;
@@ -28,14 +29,19 @@ async fn main() -> anyhow::Result<()> {
     let db = Database::connect(db_options).await?;
 
     info!("Connecting to redis");
-    let _redis = redis::Client::open(config.redis.jobs)?;
-    let auth_redis = redis::Client::open(config.redis.auth)?;
+    let cache = AsyncRedisCache::new(
+        RedisConnection::new(config.redis.jobs.as_str()).await?,
+        "jobs".into(),
+        Duration::from_secs(config.cache_ttl),
+    );
+    let auth_redis = RedisConnection::new(config.redis.auth.as_str()).await?;
 
     let jwt_secret = JwtSecret::try_from(config.jwt_secret.as_str())?;
     let services = Services::from_config(
         jwt_secret.clone(),
         Duration::from_secs(config.internal_jwt_ttl),
         config.services,
+        cache,
     );
     let shared_state = Arc::new(SharedState {
         db,

@@ -21,6 +21,7 @@ pub fn load() -> Result<Config, ConfigError> {
 pub struct Config {
     pub jwt_secret: String,
     pub internal_jwt_ttl: u64,
+    pub cache_ttl: u64,
     pub database: Database,
     pub redis: Redis,
     pub services: Services,

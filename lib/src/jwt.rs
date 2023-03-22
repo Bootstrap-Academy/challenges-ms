@@ -11,6 +11,8 @@ use serde_json::{json, Map, Value};
 use sha2::Sha256;
 use thiserror::Error;
 
+use crate::redis::RedisConnection;
+
 #[derive(Debug, Clone)]
 pub struct JwtSecret(pub Hmac<Sha256>);
 
@@ -30,9 +32,8 @@ pub struct UserAccessToken {
 }
 
 impl UserAccessToken {
-    pub async fn is_revoked(&self, redis: &redis::Client) -> RedisResult<bool> {
-        let mut conn = redis.get_async_connection().await?;
-        conn.exists(format!("session_logout:{}", self.rt)).await
+    pub async fn is_revoked(&self, redis: &mut RedisConnection) -> RedisResult<bool> {
+        redis.exists(format!("session_logout:{}", self.rt)).await
     }
 }
 

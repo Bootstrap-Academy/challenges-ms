@@ -1,9 +1,14 @@
 use std::time::Duration;
 
+use fnct::async_redis::AsyncRedisCache;
 use reqwest::{Client, Method, RequestBuilder};
+use thiserror::Error;
 use url::Url;
 
-use crate::jwt::{sign_jwt, InternalAuthToken, JwtSecret};
+use crate::{
+    jwt::{sign_jwt, InternalAuthToken, JwtSecret},
+    redis::RedisConnection,
+};
 
 use self::skills::SkillsService;
 
@@ -19,13 +24,14 @@ impl Services {
         jwt_secret: JwtSecret,
         jwt_ttl: Duration,
         conf: crate::config::Services,
+        cache: AsyncRedisCache<RedisConnection>,
     ) -> Self {
         let jwt_config = JwtConfig {
             secret: jwt_secret,
             ttl: jwt_ttl,
         };
         Self {
-            skills: SkillsService::new(Service::new("skills", conf.skills, jwt_config)),
+            skills: SkillsService::new(Service::new("skills", conf.skills, jwt_config, cache)),
         }
     }
 }
@@ -41,14 +47,21 @@ struct Service {
     name: &'static str,
     base_url: Url,
     jwt_config: JwtConfig,
+    cache: AsyncRedisCache<RedisConnection>,
 }
 
 impl Service {
-    fn new(name: &'static str, base_url: Url, jwt_config: JwtConfig) -> Self {
+    fn new(
+        name: &'static str,
+        base_url: Url,
+        jwt_config: JwtConfig,
+        cache: AsyncRedisCache<RedisConnection>,
+    ) -> Self {
         Self {
             name,
             base_url,
             jwt_config,
+            cache,
         }
     }
 
@@ -89,4 +102,12 @@ impl Service {
     methods!(get, post, put, patch, delete, head);
 }
 
-pub type ServiceResult<T> = Result<T, reqwest::Error>;
+#[derive(Debug, Error)]
+pub enum ServiceError {
+    #[error("reqwest error: {0}")]
+    ReqwestError(#[from] reqwest::Error),
+    #[error("cache error: {0}")]
+    CacheError(#[from] fnct::async_redis::AsyncRedisCacheError),
+}
+
+pub type ServiceResult<T> = Result<T, ServiceError>;
