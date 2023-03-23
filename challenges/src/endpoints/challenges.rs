@@ -6,8 +6,15 @@ use lib::{
     SharedState,
 };
 use poem_ext::{response, responses::internal_server_error};
-use poem_openapi::{param::Path, payload::Json, OpenApi};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, ModelTrait, Set, Unchanged};
+use poem_openapi::{
+    param::{Path, Query},
+    payload::Json,
+    OpenApi,
+};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter,
+    QueryOrder, Set, Unchanged,
+};
 use uuid::Uuid;
 
 use crate::schemas::challenges::{Category, CreateCategoryRequest, UpdateCategoryRequest};
@@ -24,10 +31,17 @@ impl Challenges {
     #[oai(path = "/categories", method = "get")]
     async fn list_categories(
         &self,
+        /// Filter by category title
+        title: Query<Option<String>>,
         _auth: VerifiedUserAuth,
     ) -> ListCategories::Response<VerifiedUserAuth> {
+        let mut query = challenges_challenge_categories::Entity::find()
+            .order_by_asc(challenges_challenge_categories::Column::Title);
+        if let Some(title) = title.0 {
+            query = query.filter(challenges_challenge_categories::Column::Title.contains(&title));
+        }
         ListCategories::ok(
-            challenges_challenge_categories::Entity::find()
+            query
                 .all(&self.state.db)
                 .await
                 .map_err(internal_server_error)?
