@@ -17,20 +17,20 @@ pub struct Category {
 #[derive(Debug, Clone, Object)]
 pub struct CreateCategoryRequest {
     /// The title of the category
-    #[oai(validator(max_length = 255))]
+    #[oai(validator(max_length = 256))]
     pub title: String,
     /// The description of the category
-    #[oai(validator(max_length = 255))]
+    #[oai(validator(max_length = 4096))]
     pub description: String,
 }
 
 #[derive(Debug, Clone, Object)]
 pub struct UpdateCategoryRequest {
     /// The title of the category
-    #[oai(validator(max_length = 255))]
+    #[oai(validator(max_length = 256))]
     pub title: PatchValue<String>,
     /// The description of the category
-    #[oai(validator(max_length = 255))]
+    #[oai(validator(max_length = 4096))]
     pub description: PatchValue<String>,
 }
 

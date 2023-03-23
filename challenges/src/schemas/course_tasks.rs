@@ -31,8 +31,10 @@ pub struct CreateCourseTaskRequest {
     /// The lecture this task is associated with
     pub lecture_id: String,
     /// The title of the task
+    #[oai(validator(max_length = 256))]
     pub title: String,
     /// The description of the task
+    #[oai(validator(max_length = 4096))]
     pub description: String,
 }
 
@@ -45,8 +47,10 @@ pub struct UpdateCourseTaskRequest {
     /// The lecture this task is associated with
     pub lecture_id: PatchValue<String>,
     /// The title of the task
+    #[oai(validator(max_length = 256))]
     pub title: PatchValue<String>,
     /// The description of the task
+    #[oai(validator(max_length = 4096))]
     pub description: PatchValue<String>,
 }
 
