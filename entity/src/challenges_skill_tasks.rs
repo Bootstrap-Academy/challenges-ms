@@ -7,7 +7,8 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub task_id: Uuid,
-    pub skill_id: Uuid,
+    #[sea_orm(column_type = "Text")]
+    pub skill_id: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

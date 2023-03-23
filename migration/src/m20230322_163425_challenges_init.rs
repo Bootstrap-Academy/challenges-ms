@@ -65,7 +65,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(SkillTask::Table)
                     .col(ColumnDef::new(SkillTask::TaskId).uuid().primary_key())
-                    .col(ColumnDef::new(SkillTask::SkillId).uuid().not_null())
+                    .col(ColumnDef::new(SkillTask::SkillId).text().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             .from(SkillTask::Table, SkillTask::TaskId)
