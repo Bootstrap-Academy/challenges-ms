@@ -15,13 +15,13 @@ mod multiple_choice;
 
 #[derive(poem_openapi::Tags)]
 pub enum Tags {
-    /// Endpoints for global challenges
+    /// Endpoints for global challenges (tasks)
     Challenges,
-    /// Endpoints for tasks that exist within a course
+    /// Endpoints for tasks that exist within a course (tasks)
     CourseTasks,
-    /// Endpoints for multiple choice subtasks
+    /// Endpoints for multiple choice subtasks (subtasks)
     MultipleChoice,
-    /// Endpoints for coding challenges
+    /// Endpoints for coding challenges (subtasks)
     CodingChallenges,
 }
 
