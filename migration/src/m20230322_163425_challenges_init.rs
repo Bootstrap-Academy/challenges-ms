@@ -31,7 +31,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Task::Creator).uuid().not_null())
                     .col(
                         ColumnDef::new(Task::CreationTimestamp)
-                            .date_time()
+                            .timestamp()
                             .not_null(),
                     )
                     .to_owned(),
@@ -85,7 +85,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Subtask::Creator).uuid().not_null())
                     .col(
                         ColumnDef::new(Subtask::CreationTimestamp)
-                            .date_time()
+                            .timestamp()
                             .not_null(),
                     )
                     .col(ColumnDef::new(Subtask::Xp).big_integer().not_null())
