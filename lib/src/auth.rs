@@ -60,7 +60,7 @@ async fn verified_user_auth_check(
     token: Option<Bearer>,
 ) -> Result<User, VerifiedUserAuthError::raw::Response> {
     let user = user_auth_check(req, token).await?;
-    match user.email_verified {
+    match user.email_verified | user.admin {
         true => Ok(user),
         false => Err(VerifiedUserAuthError::raw::unverified()),
     }
