@@ -37,10 +37,48 @@ impl SkillsService {
             )
             .await??)
     }
+
+    pub async fn get_courses(&self) -> ServiceResult<HashMap<String, Course>> {
+        Ok(self
+            .0
+            .cache
+            .cached_result::<_, reqwest::Error, _, _>(
+                (module_path!(), "get_courses"),
+                &["courses"],
+                None,
+                async {
+                    self.0
+                        .get("/courses")
+                        .send()
+                        .await?
+                        .error_for_status()?
+                        .json()
+                        .await
+                },
+            )
+            .await??)
+    }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Skill {
     pub id: String,
     pub parent_id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Course {
+    pub id: String,
+    pub sections: Vec<Section>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Section {
+    pub id: String,
+    pub lectures: Vec<Lecture>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Lecture {
+    pub id: String,
 }

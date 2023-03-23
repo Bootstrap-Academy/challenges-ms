@@ -1,2 +1,2 @@
 pub mod challenges;
-pub mod skill_tasks;
+pub mod course_tasks;

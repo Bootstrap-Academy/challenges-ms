@@ -3,12 +3,16 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "challenges_skill_tasks")]
+#[sea_orm(table_name = "challenges_course_tasks")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub task_id: Uuid,
     #[sea_orm(column_type = "Text")]
-    pub skill_id: String,
+    pub course_id: String,
+    #[sea_orm(column_type = "Text")]
+    pub section_id: String,
+    #[sea_orm(column_type = "Text")]
+    pub lecture_id: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

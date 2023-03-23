@@ -63,12 +63,14 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(SkillTask::Table)
-                    .col(ColumnDef::new(SkillTask::TaskId).uuid().primary_key())
-                    .col(ColumnDef::new(SkillTask::SkillId).text().not_null())
+                    .table(CourseTask::Table)
+                    .col(ColumnDef::new(CourseTask::TaskId).uuid().primary_key())
+                    .col(ColumnDef::new(CourseTask::CourseId).text().not_null())
+                    .col(ColumnDef::new(CourseTask::SectionId).text().not_null())
+                    .col(ColumnDef::new(CourseTask::LectureId).text().not_null())
                     .foreign_key(
                         ForeignKey::create()
-                            .from(SkillTask::Table, SkillTask::TaskId)
+                            .from(CourseTask::Table, CourseTask::TaskId)
                             .to(Task::Table, Task::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -219,7 +221,7 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(Subtask::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(SkillTask::Table).to_owned())
+            .drop_table(Table::drop().table(CourseTask::Table).to_owned())
             .await?;
         manager
             .drop_table(Table::drop().table(Challenge::Table).to_owned())
@@ -253,10 +255,12 @@ enum Challenge {
 }
 
 #[derive(Iden)]
-enum SkillTask {
-    #[iden = "challenges_skill_tasks"]
+enum CourseTask {
+    #[iden = "challenges_course_tasks"]
     Table,
-    SkillId,
+    CourseId,
+    SectionId,
+    LectureId,
     TaskId,
 }
 
