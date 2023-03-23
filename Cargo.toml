@@ -4,6 +4,7 @@ members = [
   "entity",
   "lib",
   "jobs",
+  "challenges",
 ]
 
 [profile.release]

@@ -12,6 +12,7 @@ skills = "redis://localhost:6379/1"
 shop = "redis://localhost:6379/2"
 jobs = "redis://localhost:6379/3"
 events = "redis://localhost:6379/4"
+challenges = "redis://localhost:6379/5"
 
 [services]
 auth = "http://localhost:8000"
@@ -19,6 +20,7 @@ skills = "http://localhost:8001"
 shop = "http://localhost:8002"
 jobs = "http://localhost:8003"
 events = "http://localhost:8004"
+challenges = "http://localhost:8005"
 
 [auth]
 host = "127.0.0.1"
@@ -39,3 +41,7 @@ port = 8003
 [events]
 host = "127.0.0.1"
 port = 8004
+
+[challenges]
+host = "127.0.0.1"
+port = 8005

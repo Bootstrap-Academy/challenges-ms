@@ -4,8 +4,9 @@ use config::{ConfigError, File};
 use serde::Deserialize;
 use url::Url;
 
-use self::jobs::JobsConfig;
+use self::{challenges::ChallengesConfig, jobs::JobsConfig};
 
+mod challenges;
 mod jobs;
 
 pub fn load() -> Result<Config, ConfigError> {
@@ -26,6 +27,7 @@ pub struct Config {
     pub redis: Redis,
     pub services: Services,
     pub jobs: JobsConfig,
+    pub challenges: ChallengesConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,6 +43,7 @@ pub struct Redis {
     pub shop: Url,
     pub jobs: Url,
     pub events: Url,
+    pub challenges: Url,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,4 +53,5 @@ pub struct Services {
     pub shop: Url,
     pub jobs: Url,
     pub events: Url,
+    pub challenges: Url,
 }
