@@ -226,6 +226,15 @@ impl Challenges {
     ) -> UpdateChallenge::Response<AdminAuth> {
         match get_challenge(&self.state.db, category_id.0, challenge_id.0).await? {
             Some((challenge, task)) => {
+                if get_category(
+                    &self.state.db,
+                    *data.0.category.get_new(&challenge.category_id),
+                )
+                .await?
+                .is_none()
+                {
+                    return UpdateChallenge::category_not_found();
+                }
                 let challenge = challenges_challenges::ActiveModel {
                     task_id: Unchanged(challenge.task_id),
                     category_id: data.0.category.update(challenge.category_id),
