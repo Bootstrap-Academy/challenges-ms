@@ -10,6 +10,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::Sha256;
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::redis::RedisConnection;
 
@@ -26,7 +27,7 @@ impl TryFrom<&str> for JwtSecret {
 
 #[derive(Serialize, Deserialize)]
 pub struct UserAccessToken {
-    pub uid: String,
+    pub uid: Uuid,
     pub rt: String,
     pub data: UserAccessTokenData,
 }

@@ -103,7 +103,7 @@ impl CourseTasks {
             id: Set(Uuid::new_v4()),
             title: Set(data.0.title),
             description: Set(data.0.description),
-            creator: Set(auth.0.id.parse().map_err(internal_server_error)?),
+            creator: Set(auth.0.id),
             creation_timestamp: Set(Utc::now().naive_utc()),
         }
         .insert(&self.state.db)

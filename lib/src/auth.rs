@@ -4,6 +4,7 @@ use poem::Request;
 use poem_ext::{add_response_schemas, custom_auth, response};
 use poem_openapi::auth::Bearer;
 use tracing::debug;
+use uuid::Uuid;
 
 use crate::{
     jwt::{verify_jwt, UserAccessToken},
@@ -12,7 +13,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct User {
-    pub id: String,
+    pub id: Uuid,
     pub email_verified: bool,
     pub admin: bool,
 }
