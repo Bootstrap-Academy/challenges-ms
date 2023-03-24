@@ -60,25 +60,26 @@ impl SkillsService {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Skill {
     pub id: String,
     pub parent_id: String,
+    pub courses: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Course {
     pub id: String,
     pub sections: Vec<Section>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Section {
     pub id: String,
     pub lectures: Vec<Lecture>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Lecture {
     pub id: String,
 }

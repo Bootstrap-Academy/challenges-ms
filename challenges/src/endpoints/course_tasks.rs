@@ -14,8 +14,8 @@ use poem_openapi::{
     OpenApi,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter,
-    QueryOrder, Set, Unchanged,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, ModelTrait,
+    QueryFilter, QueryOrder, Set, Unchanged,
 };
 use uuid::Uuid;
 
@@ -29,6 +29,50 @@ pub struct CourseTasks {
 
 #[OpenApi(tag = "Tags::CourseTasks")]
 impl CourseTasks {
+    /// List all tasks in a skill.
+    #[oai(path = "/skills/:skill_id/tasks", method = "get")]
+    async fn list_tasks_in_skill(
+        &self,
+        skill_id: Path<String>,
+        /// Filter by task title
+        title: Query<Option<String>>,
+        _auth: VerifiedUserAuth,
+    ) -> ListTasksInSkill::Response<VerifiedUserAuth> {
+        let skill = match self
+            .state
+            .services
+            .skills
+            .get_skills()
+            .await
+            .map_err(internal_server_error)?
+            .remove(&skill_id.0)
+        {
+            Some(skill) => skill,
+            None => return ListTasksInSkill::not_found(),
+        };
+
+        let condition = skill.courses.into_iter().fold(Condition::any(), |acc, e| {
+            acc.add(challenges_course_tasks::Column::CourseId.eq(e))
+        });
+
+        let mut query = challenges_course_tasks::Entity::find()
+            .find_also_related(challenges_tasks::Entity)
+            .filter(condition)
+            .order_by_asc(challenges_tasks::Column::Title);
+        if let Some(title) = title.0 {
+            query = query.filter(challenges_tasks::Column::Title.contains(&title));
+        }
+        ListTasksInSkill::ok(
+            query
+                .all(&self.state.db)
+                .await
+                .map_err(internal_server_error)?
+                .into_iter()
+                .filter_map(|(challenge, task)| Some(CourseTask::from(challenge, task?)))
+                .collect(),
+        )
+    }
+
     /// List all tasks in a course.
     #[oai(path = "/courses/:course_id/tasks", method = "get")]
     async fn list_course_tasks(
@@ -185,6 +229,12 @@ impl CourseTasks {
         }
     }
 }
+
+response!(ListTasksInSkill = {
+    Ok(200) => Vec<CourseTask>,
+    /// Skill does not exist.
+    NotFound(404, error),
+});
 
 response!(ListCourseTasks = {
     Ok(200) => Vec<CourseTask>,
