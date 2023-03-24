@@ -7,7 +7,7 @@ use lib::{
     services::Services,
     SharedState,
 };
-use poem_ext::{patch_value::PatchValue, response, responses::internal_server_error};
+use poem_ext::{response, responses::internal_server_error};
 use poem_openapi::{
     param::{Path, Query},
     payload::Json,
@@ -134,15 +134,9 @@ impl CourseTasks {
     ) -> UpdateCourseTask::Response<AdminAuth> {
         match get_course_task(&self.state.db, course_id.0, task_id.0).await? {
             Some((course_task, task)) => {
-                fn get_new<'a, T>(pv: &'a PatchValue<T>, o: &'a T) -> &'a T {
-                    match pv {
-                        PatchValue::Set(value) => value,
-                        PatchValue::Unchanged => o,
-                    }
-                }
-                let course_id = get_new(&data.0.course_id, &course_task.course_id);
-                let section_id = get_new(&data.0.section_id, &course_task.section_id);
-                let lecture_id = get_new(&data.0.lecture_id, &course_task.lecture_id);
+                let course_id = data.0.course_id.get_new(&course_task.course_id);
+                let section_id = &data.0.section_id.get_new(&course_task.section_id);
+                let lecture_id = &data.0.lecture_id.get_new(&course_task.lecture_id);
                 if !check_course(&self.state.services, course_id, section_id, lecture_id).await? {
                     return UpdateCourseTask::course_not_found();
                 }
