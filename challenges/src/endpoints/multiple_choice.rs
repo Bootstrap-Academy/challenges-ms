@@ -6,10 +6,11 @@ use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
     SharedState,
 };
-use poem_ext::{patch_value::PatchValue, response, responses::internal_server_error};
+use poem::web::Data;
+use poem_ext::{db::DbTxn, patch_value::PatchValue, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
     QueryOrder, Set, Unchanged,
 };
 use uuid::Uuid;
@@ -32,6 +33,7 @@ impl MultipleChoice {
     async fn list_questions(
         &self,
         task_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> ListQuestions::Response<VerifiedUserAuth> {
         ListQuestions::ok(
@@ -39,9 +41,8 @@ impl MultipleChoice {
                 .find_also_related(challenges_subtasks::Entity)
                 .filter(challenges_subtasks::Column::TaskId.eq(task_id.0))
                 .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
-                .all(&self.state.db)
-                .await
-                .map_err(internal_server_error)?
+                .all(&***db)
+                .await?
                 .into_iter()
                 .filter_map(|(mcq, subtask)| {
                     Some(MultipleChoiceQuestion::<String>::from(mcq, subtask?))
@@ -56,9 +57,10 @@ impl MultipleChoice {
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> GetQuestion::Response<VerifiedUserAuth> {
-        match get_question(&self.state.db, task_id.0, subtask_id.0).await? {
+        match get_question(&db, task_id.0, subtask_id.0).await? {
             Some((mcq, subtask)) => {
                 GetQuestion::ok(MultipleChoiceQuestion::<String>::from(mcq, subtask))
             }
@@ -75,9 +77,10 @@ impl MultipleChoice {
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> GetQuestionWithSolution::Response<AdminAuth> {
-        match get_question(&self.state.db, task_id.0, subtask_id.0).await? {
+        match get_question(&db, task_id.0, subtask_id.0).await? {
             Some((mcq, subtask)) => {
                 GetQuestionWithSolution::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask))
             }
@@ -91,9 +94,10 @@ impl MultipleChoice {
         &self,
         task_id: Path<Uuid>,
         data: Json<CreateMultipleChoiceQuestionRequest>,
+        db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> CreateQuestion::Response<AdminAuth> {
-        let task = match get_task(&self.state.db, task_id.0).await? {
+        let task = match get_task(&db, task_id.0).await? {
             Some(task) => task,
             None => return CreateQuestion::task_not_found(),
         };
@@ -105,9 +109,8 @@ impl MultipleChoice {
             xp: Set(data.0.xp),
             coins: Set(data.0.coins),
         }
-        .insert(&self.state.db)
-        .await
-        .map_err(internal_server_error)?;
+        .insert(&***db)
+        .await?;
         let (answers, correct) = split_answers(data.0.answers);
         let mcq = challenges_multiple_choice_quizes::ActiveModel {
             subtask_id: Set(subtask.id),
@@ -115,9 +118,8 @@ impl MultipleChoice {
             answers: Set(answers),
             correct_answers: Set(correct),
         }
-        .insert(&self.state.db)
-        .await
-        .map_err(internal_server_error)?;
+        .insert(&***db)
+        .await?;
         CreateQuestion::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask))
     }
 
@@ -128,11 +130,12 @@ impl MultipleChoice {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         data: Json<UpdateMultipleChoiceQuestionRequest>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> UpdateQuestion::Response<AdminAuth> {
-        match get_question(&self.state.db, task_id.0, subtask_id.0).await? {
+        match get_question(&db, task_id.0, subtask_id.0).await? {
             Some((mcq, subtask)) => {
-                if get_task(&self.state.db, *data.0.task_id.get_new(&subtask.task_id))
+                if get_task(&db, *data.0.task_id.get_new(&subtask.task_id))
                     .await?
                     .is_none()
                 {
@@ -150,9 +153,8 @@ impl MultipleChoice {
                     answers,
                     correct_answers: correct,
                 }
-                .update(&self.state.db)
-                .await
-                .map_err(internal_server_error)?;
+                .update(&***db)
+                .await?;
                 let subtask = challenges_subtasks::ActiveModel {
                     id: Unchanged(subtask.id),
                     task_id: data.0.task_id.update(subtask.task_id),
@@ -161,9 +163,8 @@ impl MultipleChoice {
                     xp: data.0.xp.update(subtask.xp),
                     coins: data.0.coins.update(subtask.coins),
                 }
-                .update(&self.state.db)
-                .await
-                .map_err(internal_server_error)?;
+                .update(&***db)
+                .await?;
                 UpdateQuestion::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask))
             }
             None => UpdateQuestion::subtask_not_found(),
@@ -179,14 +180,12 @@ impl MultipleChoice {
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteQuestion::Response<AdminAuth> {
-        match get_question(&self.state.db, task_id.0, subtask_id.0).await? {
+        match get_question(&db, task_id.0, subtask_id.0).await? {
             Some((_, subtask)) => {
-                subtask
-                    .delete(&self.state.db)
-                    .await
-                    .map_err(internal_server_error)?;
+                subtask.delete(&***db).await?;
                 DeleteQuestion::ok()
             }
             None => DeleteQuestion::subtask_not_found(),
@@ -231,22 +230,22 @@ response!(DeleteQuestion = {
 });
 
 async fn get_question(
-    db: &DatabaseConnection,
+    db: &DatabaseTransaction,
     task_id: Uuid,
     subtask_id: Uuid,
-) -> poem::Result<
+) -> Result<
     Option<(
         challenges_multiple_choice_quizes::Model,
         challenges_subtasks::Model,
     )>,
+    ErrorResponse,
 > {
     Ok(
         match challenges_multiple_choice_quizes::Entity::find_by_id(subtask_id)
             .find_also_related(challenges_subtasks::Entity)
             .filter(challenges_subtasks::Column::TaskId.eq(task_id))
             .one(db)
-            .await
-            .map_err(internal_server_error)?
+            .await?
         {
             Some((mcq, Some(subtask))) => Some((mcq, subtask)),
             _ => None,
@@ -255,11 +254,10 @@ async fn get_question(
 }
 
 async fn get_task(
-    db: &DatabaseConnection,
+    db: &DatabaseTransaction,
     task_id: Uuid,
-) -> poem::Result<Option<challenges_tasks::Model>> {
+) -> Result<Option<challenges_tasks::Model>, ErrorResponse> {
     Ok(challenges_tasks::Entity::find_by_id(task_id)
         .one(db)
-        .await
-        .map_err(internal_server_error)?)
+        .await?)
 }

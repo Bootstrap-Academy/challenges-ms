@@ -7,14 +7,15 @@ use lib::{
     services::Services,
     SharedState,
 };
-use poem_ext::{response, responses::internal_server_error};
+use poem::web::Data;
+use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{
     param::{Path, Query},
     payload::Json,
     OpenApi,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, ModelTrait,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, EntityTrait, ModelTrait,
     QueryFilter, QueryOrder, Set, Unchanged,
 };
 use uuid::Uuid;
@@ -36,6 +37,7 @@ impl CourseTasks {
         skill_id: Path<String>,
         /// Filter by task title
         title: Query<Option<String>>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> ListTasksInSkill::Response<VerifiedUserAuth> {
         let skill = match self
@@ -43,8 +45,7 @@ impl CourseTasks {
             .services
             .skills
             .get_skills()
-            .await
-            .map_err(internal_server_error)?
+            .await?
             .remove(&skill_id.0)
         {
             Some(skill) => skill,
@@ -64,9 +65,8 @@ impl CourseTasks {
         }
         ListTasksInSkill::ok(
             query
-                .all(&self.state.db)
-                .await
-                .map_err(internal_server_error)?
+                .all(&***db)
+                .await?
                 .into_iter()
                 .filter_map(|(challenge, task)| Some(CourseTask::from(challenge, task?)))
                 .collect(),
@@ -84,6 +84,7 @@ impl CourseTasks {
         section_id: Query<Option<String>>,
         /// Filter by lecture id
         lecture_id: Query<Option<String>>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> ListCourseTasks::Response<VerifiedUserAuth> {
         let mut query = challenges_course_tasks::Entity::find()
@@ -101,9 +102,8 @@ impl CourseTasks {
         }
         ListCourseTasks::ok(
             query
-                .all(&self.state.db)
-                .await
-                .map_err(internal_server_error)?
+                .all(&***db)
+                .await?
                 .into_iter()
                 .filter_map(|(challenge, task)| Some(CourseTask::from(challenge, task?)))
                 .collect(),
@@ -116,9 +116,10 @@ impl CourseTasks {
         &self,
         course_id: Path<String>,
         task_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> GetCourseTask::Response<VerifiedUserAuth> {
-        match get_course_task(&self.state.db, course_id.0, task_id.0).await? {
+        match get_course_task(&db, course_id.0, task_id.0).await? {
             Some((course, task)) => GetCourseTask::ok(CourseTask::from(course, task)),
             None => GetCourseTask::course_task_not_found(),
         }
@@ -130,6 +131,7 @@ impl CourseTasks {
         &self,
         course_id: Path<String>,
         data: Json<CreateCourseTaskRequest>,
+        db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> CreateCourseTask::Response<AdminAuth> {
         if !check_course(
@@ -150,9 +152,8 @@ impl CourseTasks {
             creator: Set(auth.0.id),
             creation_timestamp: Set(Utc::now().naive_utc()),
         }
-        .insert(&self.state.db)
-        .await
-        .map_err(internal_server_error)?;
+        .insert(&***db)
+        .await?;
 
         let course_task = challenges_course_tasks::ActiveModel {
             task_id: Set(task.id),
@@ -160,9 +161,8 @@ impl CourseTasks {
             section_id: Set(data.0.section_id),
             lecture_id: Set(data.0.lecture_id),
         }
-        .insert(&self.state.db)
-        .await
-        .map_err(internal_server_error)?;
+        .insert(&***db)
+        .await?;
 
         CreateCourseTask::ok(CourseTask::from(course_task, task))
     }
@@ -174,9 +174,10 @@ impl CourseTasks {
         course_id: Path<String>,
         task_id: Path<Uuid>,
         data: Json<UpdateCourseTaskRequest>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> UpdateCourseTask::Response<AdminAuth> {
-        match get_course_task(&self.state.db, course_id.0, task_id.0).await? {
+        match get_course_task(&db, course_id.0, task_id.0).await? {
             Some((course_task, task)) => {
                 let course_id = data.0.course_id.get_new(&course_task.course_id);
                 let section_id = &data.0.section_id.get_new(&course_task.section_id);
@@ -191,9 +192,8 @@ impl CourseTasks {
                     section_id: data.0.section_id.update(course_task.section_id),
                     lecture_id: data.0.lecture_id.update(course_task.lecture_id),
                 }
-                .update(&self.state.db)
-                .await
-                .map_err(internal_server_error)?;
+                .update(&***db)
+                .await?;
                 let task = challenges_tasks::ActiveModel {
                     id: Unchanged(task.id),
                     title: data.0.title.update(task.title),
@@ -201,9 +201,8 @@ impl CourseTasks {
                     creator: Unchanged(task.creator),
                     creation_timestamp: Unchanged(task.creation_timestamp),
                 }
-                .update(&self.state.db)
-                .await
-                .map_err(internal_server_error)?;
+                .update(&***db)
+                .await?;
                 UpdateCourseTask::ok(CourseTask::from(course_task, task))
             }
             None => UpdateCourseTask::course_task_not_found(),
@@ -216,13 +215,12 @@ impl CourseTasks {
         &self,
         course_id: Path<String>,
         task_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteCourseTask::Response<AdminAuth> {
-        match get_course_task(&self.state.db, course_id.0, task_id.0).await? {
+        match get_course_task(&db, course_id.0, task_id.0).await? {
             Some((_, task)) => {
-                task.delete(&self.state.db)
-                    .await
-                    .map_err(internal_server_error)?;
+                task.delete(&***db).await?;
                 DeleteCourseTask::ok()
             }
             None => DeleteCourseTask::course_task_not_found(),
@@ -267,17 +265,16 @@ response!(DeleteCourseTask = {
 });
 
 async fn get_course_task(
-    db: &DatabaseConnection,
+    db: &DatabaseTransaction,
     course_id: String,
     task_id: Uuid,
-) -> poem::Result<Option<(challenges_course_tasks::Model, challenges_tasks::Model)>> {
+) -> Result<Option<(challenges_course_tasks::Model, challenges_tasks::Model)>, ErrorResponse> {
     Ok(
         match challenges_course_tasks::Entity::find_by_id(task_id)
             .find_also_related(challenges_tasks::Entity)
             .filter(challenges_course_tasks::Column::CourseId.eq(course_id))
             .one(db)
-            .await
-            .map_err(internal_server_error)?
+            .await?
         {
             Some((course_task, Some(task))) => Some((course_task, task)),
             _ => None,
@@ -290,12 +287,8 @@ async fn check_course(
     course_id: &str,
     section_id: &str,
     lecture_id: &str,
-) -> poem::Result<bool> {
-    let courses = services
-        .skills
-        .get_courses()
-        .await
-        .map_err(internal_server_error)?;
+) -> Result<bool, ErrorResponse> {
+    let courses = services.skills.get_courses().await?;
     Ok((|| {
         courses
             .get(course_id)?

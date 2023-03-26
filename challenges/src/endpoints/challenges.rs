@@ -6,14 +6,15 @@ use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
     SharedState,
 };
-use poem_ext::{response, responses::internal_server_error};
+use poem::web::Data;
+use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{
     param::{Path, Query},
     payload::Json,
     OpenApi,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
     QueryOrder, Set, Unchanged,
 };
 use uuid::Uuid;
@@ -37,6 +38,7 @@ impl Challenges {
         &self,
         /// Filter by category title
         title: Query<Option<String>>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> ListCategories::Response<VerifiedUserAuth> {
         let mut query = challenges_challenge_categories::Entity::find()
@@ -46,9 +48,8 @@ impl Challenges {
         }
         ListCategories::ok(
             query
-                .all(&self.state.db)
-                .await
-                .map_err(internal_server_error)?
+                .all(&***db)
+                .await?
                 .into_iter()
                 .map(Into::into)
                 .collect(),
@@ -60,9 +61,10 @@ impl Challenges {
     async fn get_category(
         &self,
         category_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> GetCategory::Response<VerifiedUserAuth> {
-        match get_category(&self.state.db, category_id.0).await? {
+        match get_category(&db, category_id.0).await? {
             Some(category) => GetCategory::ok(category.into()),
             None => GetCategory::not_found(),
         }
@@ -73,6 +75,7 @@ impl Challenges {
     async fn create_category(
         &self,
         data: Json<CreateCategoryRequest>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> CreateCategory::Response<AdminAuth> {
         CreateCategory::ok(
@@ -81,9 +84,8 @@ impl Challenges {
                 title: Set(data.0.title),
                 description: Set(data.0.description),
             }
-            .insert(&self.state.db)
-            .await
-            .map_err(internal_server_error)?
+            .insert(&***db)
+            .await?
             .into(),
         )
     }
@@ -94,18 +96,18 @@ impl Challenges {
         &self,
         category_id: Path<Uuid>,
         data: Json<UpdateCategoryRequest>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> UpdateCategory::Response<AdminAuth> {
-        match get_category(&self.state.db, category_id.0).await? {
+        match get_category(&db, category_id.0).await? {
             Some(category) => UpdateCategory::ok(
                 challenges_challenge_categories::ActiveModel {
                     id: Unchanged(category.id),
                     title: data.0.title.update(category.title),
                     description: data.0.description.update(category.description),
                 }
-                .update(&self.state.db)
-                .await
-                .map_err(internal_server_error)?
+                .update(&***db)
+                .await?
                 .into(),
             ),
             None => UpdateCategory::not_found(),
@@ -119,14 +121,12 @@ impl Challenges {
     async fn delete_category(
         &self,
         category_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteCategory::Response<AdminAuth> {
-        match get_category(&self.state.db, category_id.0).await? {
+        match get_category(&db, category_id.0).await? {
             Some(category) => {
-                category
-                    .delete(&self.state.db)
-                    .await
-                    .map_err(internal_server_error)?;
+                category.delete(&***db).await?;
                 DeleteCategory::ok()
             }
             None => DeleteCategory::not_found(),
@@ -140,6 +140,7 @@ impl Challenges {
         category_id: Path<Uuid>,
         /// Filter by challenge title
         title: Query<Option<String>>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> ListChallenges::Response<VerifiedUserAuth> {
         let mut query = challenges_challenges::Entity::find()
@@ -151,9 +152,8 @@ impl Challenges {
         }
         ListChallenges::ok(
             query
-                .all(&self.state.db)
-                .await
-                .map_err(internal_server_error)?
+                .all(&***db)
+                .await?
                 .into_iter()
                 .filter_map(|(challenge, task)| Some(Challenge::from(challenge, task?)))
                 .collect(),
@@ -169,9 +169,10 @@ impl Challenges {
         &self,
         category_id: Path<Uuid>,
         challenge_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> GetChallenge::Response<VerifiedUserAuth> {
-        match get_challenge(&self.state.db, category_id.0, challenge_id.0).await? {
+        match get_challenge(&db, category_id.0, challenge_id.0).await? {
             Some((challenge, task)) => GetChallenge::ok(Challenge::from(challenge, task)),
             None => GetChallenge::challenge_not_found(),
         }
@@ -183,9 +184,10 @@ impl Challenges {
         &self,
         category_id: Path<Uuid>,
         data: Json<CreateChallengeRequest>,
+        db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> CreateChallenge::Response<AdminAuth> {
-        let category = match get_category(&self.state.db, category_id.0).await? {
+        let category = match get_category(&db, category_id.0).await? {
             Some(category) => category,
             None => return CreateChallenge::category_not_found(),
         };
@@ -197,17 +199,15 @@ impl Challenges {
             creator: Set(auth.0.id),
             creation_timestamp: Set(Utc::now().naive_utc()),
         }
-        .insert(&self.state.db)
-        .await
-        .map_err(internal_server_error)?;
+        .insert(&***db)
+        .await?;
 
         let challenge = challenges_challenges::ActiveModel {
             task_id: Set(task.id),
             category_id: Set(category.id),
         }
-        .insert(&self.state.db)
-        .await
-        .map_err(internal_server_error)?;
+        .insert(&***db)
+        .await?;
 
         CreateChallenge::ok(Challenge::from(challenge, task))
     }
@@ -222,16 +222,14 @@ impl Challenges {
         category_id: Path<Uuid>,
         challenge_id: Path<Uuid>,
         data: Json<UpdateChallengeRequest>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> UpdateChallenge::Response<AdminAuth> {
-        match get_challenge(&self.state.db, category_id.0, challenge_id.0).await? {
+        match get_challenge(&db, category_id.0, challenge_id.0).await? {
             Some((challenge, task)) => {
-                if get_category(
-                    &self.state.db,
-                    *data.0.category.get_new(&challenge.category_id),
-                )
-                .await?
-                .is_none()
+                if get_category(&db, *data.0.category.get_new(&challenge.category_id))
+                    .await?
+                    .is_none()
                 {
                     return UpdateChallenge::category_not_found();
                 }
@@ -239,9 +237,8 @@ impl Challenges {
                     task_id: Unchanged(challenge.task_id),
                     category_id: data.0.category.update(challenge.category_id),
                 }
-                .update(&self.state.db)
-                .await
-                .map_err(internal_server_error)?;
+                .update(&***db)
+                .await?;
                 let task = challenges_tasks::ActiveModel {
                     id: Unchanged(task.id),
                     title: data.0.title.update(task.title),
@@ -249,9 +246,8 @@ impl Challenges {
                     creator: Unchanged(task.creator),
                     creation_timestamp: Unchanged(task.creation_timestamp),
                 }
-                .update(&self.state.db)
-                .await
-                .map_err(internal_server_error)?;
+                .update(&***db)
+                .await?;
                 UpdateChallenge::ok(Challenge::from(challenge, task))
             }
             None => UpdateChallenge::challenge_not_found(),
@@ -267,13 +263,12 @@ impl Challenges {
         &self,
         category_id: Path<Uuid>,
         challenge_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteChallenge::Response<AdminAuth> {
-        match get_challenge(&self.state.db, category_id.0, challenge_id.0).await? {
+        match get_challenge(&db, category_id.0, challenge_id.0).await? {
             Some((_, task)) => {
-                task.delete(&self.state.db)
-                    .await
-                    .map_err(internal_server_error)?;
+                task.delete(&***db).await?;
                 DeleteChallenge::ok()
             }
             None => DeleteChallenge::challenge_not_found(),
@@ -338,29 +333,27 @@ response!(DeleteChallenge = {
 });
 
 async fn get_category(
-    db: &DatabaseConnection,
+    db: &DatabaseTransaction,
     category_id: Uuid,
-) -> poem::Result<Option<challenges_challenge_categories::Model>> {
+) -> Result<Option<challenges_challenge_categories::Model>, ErrorResponse> {
     Ok(
         challenges_challenge_categories::Entity::find_by_id(category_id)
             .one(db)
-            .await
-            .map_err(internal_server_error)?,
+            .await?,
     )
 }
 
 async fn get_challenge(
-    db: &DatabaseConnection,
+    db: &DatabaseTransaction,
     category_id: Uuid,
     challenge_id: Uuid,
-) -> poem::Result<Option<(challenges_challenges::Model, challenges_tasks::Model)>> {
+) -> Result<Option<(challenges_challenges::Model, challenges_tasks::Model)>, ErrorResponse> {
     Ok(
         match challenges_challenges::Entity::find_by_id(challenge_id)
             .find_also_related(challenges_tasks::Entity)
             .filter(challenges_challenges::Column::CategoryId.eq(category_id))
             .one(db)
-            .await
-            .map_err(internal_server_error)?
+            .await?
         {
             Some((challenge, Some(task))) => Some((challenge, task)),
             _ => None,

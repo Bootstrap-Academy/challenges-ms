@@ -4,7 +4,8 @@ use chrono::Utc;
 use entity::{jobs_companies, jobs_jobs, jobs_skill_requirements};
 use itertools::Itertools;
 use lib::{auth::AdminAuth, SharedState};
-use poem_ext::{response, responses::internal_server_error};
+use poem::web::Data;
+use poem_ext::{db::DbTxn, response, responses::internal_server_error};
 use poem_openapi::{payload::Json, OpenApi};
 use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, Set};
 use tracing::warn;
@@ -23,28 +24,20 @@ pub struct Jobs {
 #[OpenApi(tag = "Tags::Jobs")]
 impl Jobs {
     #[oai(path = "/jobs", method = "get")]
-    async fn list_jobs(&self) -> ListJobs::Response {
+    async fn list_jobs(&self, db: Data<&DbTxn>) -> ListJobs::Response {
         let companies = jobs_companies::Entity::find()
-            .all(&self.state.db)
-            .await
-            .map_err(internal_server_error)?
+            .all(&***db)
+            .await?
             .into_iter()
             .map(|company| (company.id, company.into()))
             .collect::<HashMap<Uuid, Company>>();
 
-        let skills = self
-            .state
-            .services
-            .skills
-            .get_skills()
-            .await
-            .map_err(internal_server_error)?;
+        let skills = self.state.services.skills.get_skills().await?;
 
         let jobs = jobs_jobs::Entity::find()
             .find_with_related(jobs_skill_requirements::Entity)
-            .all(&self.state.db)
-            .await
-            .map_err(internal_server_error)?
+            .all(&***db)
+            .await?
             .into_iter()
             .map(|(job, skill_requirements)| {
                 companies.get(&job.company_id).map(|company| {
@@ -86,13 +79,13 @@ impl Jobs {
     async fn create_job(
         &self,
         data: Json<CreateJobRequest>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> CreateJob::Response<AdminAuth> {
         let Json(data) = data;
         let company = match jobs_companies::Entity::find_by_id(data.company_id)
-            .one(&self.state.db)
-            .await
-            .map_err(internal_server_error)?
+            .one(&***db)
+            .await?
         {
             Some(company) => company,
             None => {
@@ -100,13 +93,7 @@ impl Jobs {
             }
         };
 
-        let skills = self
-            .state
-            .services
-            .skills
-            .get_skills()
-            .await
-            .map_err(internal_server_error)?;
+        let skills = self.state.services.skills.get_skills().await?;
         let (skill_requirements, not_found): (Vec<_>, Vec<_>) = data
             .skill_requirements
             .into_iter()
@@ -138,9 +125,8 @@ impl Jobs {
             contact: Set(data.contact),
             last_update: Set(Utc::now().naive_utc()),
         }
-        .insert(&self.state.db)
-        .await
-        .map_err(internal_server_error)?;
+        .insert(&***db)
+        .await?;
 
         jobs_skill_requirements::Entity::insert_many(skill_requirements.iter().map(|sr| {
             jobs_skill_requirements::ActiveModel {
@@ -149,9 +135,8 @@ impl Jobs {
                 level: Set(sr.level),
             }
         }))
-        .exec(&self.state.db)
-        .await
-        .map_err(internal_server_error)?;
+        .exec(&***db)
+        .await?;
 
         CreateJob::ok(Job::from(job, company.into(), skill_requirements))
     }

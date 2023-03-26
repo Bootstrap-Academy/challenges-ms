@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Duration};
 use fnct::async_redis::AsyncRedisCache;
 use lib::{config, jwt::JwtSecret, redis::RedisConnection, services::Services, SharedState};
 use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
-use poem_ext::panic_handler::PanicHandler;
+use poem_ext::{db::DbTransactionMiddleware, panic_handler::PanicHandler};
 use poem_openapi::OpenApiService;
 use sea_orm::{ConnectOptions, Database};
 use tracing::info;
@@ -44,7 +44,6 @@ async fn main() -> anyhow::Result<()> {
         cache,
     );
     let shared_state = Arc::new(SharedState {
-        db,
         jwt_secret,
         auth_redis,
         services,
@@ -63,6 +62,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/", api_service)
         .with(Tracing)
         .with(PanicHandler::middleware())
+        .with(DbTransactionMiddleware::new(db))
         .data(shared_state);
 
     info!("Listening on {}:{}", config.jobs.host, config.jobs.port);

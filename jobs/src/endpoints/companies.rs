@@ -5,9 +5,10 @@ use crate::schemas::companies::{Company, CreateCompanyRequest, UpdateCompanyRequ
 use super::Tags;
 use entity::jobs_companies;
 use lib::{auth::AdminAuth, SharedState};
-use poem_ext::{response, responses::internal_server_error};
+use poem::web::Data;
+use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
-use sea_orm::{ActiveModelTrait, EntityTrait, ModelTrait, Set, Unchanged};
+use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, ModelTrait, Set, Unchanged};
 use uuid::Uuid;
 
 pub struct Companies {
@@ -18,12 +19,15 @@ pub struct Companies {
 impl Companies {
     /// List all companies.
     #[oai(path = "/companies", method = "get")]
-    async fn list_companies(&self, _auth: AdminAuth) -> ListCompanies::Response<AdminAuth> {
+    async fn list_companies(
+        &self,
+        db: Data<&DbTxn>,
+        _auth: AdminAuth,
+    ) -> ListCompanies::Response<AdminAuth> {
         ListCompanies::ok(
             jobs_companies::Entity::find()
-                .all(&self.state.db)
-                .await
-                .map_err(internal_server_error)?
+                .all(&***db)
+                .await?
                 .into_iter()
                 .map(Into::into)
                 .collect::<Vec<_>>(),
@@ -35,6 +39,7 @@ impl Companies {
     async fn create_company(
         &self,
         data: Json<CreateCompanyRequest>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> CreateCompany::Response<AdminAuth> {
         CreateCompany::ok(
@@ -48,9 +53,8 @@ impl Companies {
                 instagram_handle: Set(data.0.instagram_handle),
                 logo_url: Set(data.0.logo_url),
             }
-            .insert(&self.state.db)
-            .await
-            .map_err(internal_server_error)?
+            .insert(&***db)
+            .await?
             .into(),
         )
     }
@@ -61,9 +65,10 @@ impl Companies {
         &self,
         company_id: Path<Uuid>,
         data: Json<UpdateCompanyRequest>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> UpdateCompany::Response<AdminAuth> {
-        match self.get_company(company_id.0).await? {
+        match get_company(&db, company_id.0).await? {
             Some(company) => UpdateCompany::ok(
                 jobs_companies::ActiveModel {
                     id: Unchanged(company.id),
@@ -75,9 +80,8 @@ impl Companies {
                     instagram_handle: data.0.instagram_handle.update(company.instagram_handle),
                     logo_url: data.0.logo_url.update(company.logo_url),
                 }
-                .update(&self.state.db)
-                .await
-                .map_err(internal_server_error)?
+                .update(&***db)
+                .await?
                 .into(),
             ),
             None => UpdateCompany::not_found(),
@@ -89,14 +93,12 @@ impl Companies {
     async fn delete_company(
         &self,
         company_id: Path<Uuid>,
+        db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteCompany::Response<AdminAuth> {
-        match self.get_company(company_id.0).await? {
+        match get_company(&db, company_id.0).await? {
             Some(company) => {
-                company
-                    .delete(&self.state.db)
-                    .await
-                    .map_err(internal_server_error)?;
+                company.delete(&***db).await?;
                 DeleteCompany::ok()
             }
             None => DeleteCompany::not_found(),
@@ -104,13 +106,13 @@ impl Companies {
     }
 }
 
-impl Companies {
-    async fn get_company(&self, company_id: Uuid) -> poem::Result<Option<jobs_companies::Model>> {
-        Ok(jobs_companies::Entity::find_by_id(company_id)
-            .one(&self.state.db)
-            .await
-            .map_err(internal_server_error)?)
-    }
+async fn get_company(
+    db: &DatabaseTransaction,
+    company_id: Uuid,
+) -> Result<Option<jobs_companies::Model>, ErrorResponse> {
+    Ok(jobs_companies::Entity::find_by_id(company_id)
+        .one(db)
+        .await?)
 }
 
 response!(ListCompanies = {
