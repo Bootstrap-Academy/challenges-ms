@@ -1,21 +1,38 @@
+FROM rust:alpine as deps
+
+WORKDIR /deps
+
+COPY . .
+
+RUN find . -type f ! -name Cargo.toml ! -name Cargo.lock -delete \
+    && find . -type d -empty -delete \
+    && find . -type d | while read d; do mkdir "$d/src" && touch "$d/src/lib.rs"; done
+
+
 FROM rust:alpine AS builder
 
 WORKDIR /build
 
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache musl-dev clang mold
+
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+ENV CARGO_TARGET_DIR=/target
+ENV RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=/usr/bin/mold"
+
+COPY --from=deps /deps .
+
+RUN cargo build --locked --release && rm -rf /build
 
 COPY . .
 
-RUN --mount=type=cache,target=/build/target \
-    --mount=type=cache,target=/cargo \
-    CARGO_HOME=/cargo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse cargo build --locked --release \
+RUN find . -exec touch {} \; \
+    && cargo build --locked --release \
     && mkdir dist \
-    && cp $(find target/release/ -maxdepth 1 -executable -type f) dist/ \
+    && cp $(find /target/release/ -maxdepth 1 -executable -type f) dist/ \
     && strip dist/*
 
-FROM scratch
 
-LABEL org.opencontainers.image.source="https://github.com/Bootstrap-Academy/backend"
+FROM scratch
 
 ENV RUST_LOG=info
 
