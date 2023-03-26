@@ -9,6 +9,3 @@ pub use super::challenges_multiple_choice_attempts::Entity as ChallengesMultiple
 pub use super::challenges_multiple_choice_quizes::Entity as ChallengesMultipleChoiceQuizes;
 pub use super::challenges_subtasks::Entity as ChallengesSubtasks;
 pub use super::challenges_tasks::Entity as ChallengesTasks;
-pub use super::jobs_companies::Entity as JobsCompanies;
-pub use super::jobs_jobs::Entity as JobsJobs;
-pub use super::jobs_skill_requirements::Entity as JobsSkillRequirements;

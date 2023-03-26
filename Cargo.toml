@@ -3,7 +3,7 @@ members = [
   "migration",
   "entity",
   "lib",
-  "jobs",
+  # "jobs",
   "challenges",
 ]
 

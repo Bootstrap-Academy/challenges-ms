@@ -11,7 +11,3 @@ pub mod challenges_multiple_choice_attempts;
 pub mod challenges_multiple_choice_quizes;
 pub mod challenges_subtasks;
 pub mod challenges_tasks;
-pub mod jobs_companies;
-pub mod jobs_jobs;
-pub mod jobs_skill_requirements;
-pub mod sea_orm_active_enums;
