@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use lib::SharedState;
+use lib::{config::Config, SharedState};
 use poem_openapi::OpenApi;
 
 use self::{
@@ -25,7 +25,7 @@ pub enum Tags {
     CodingChallenges,
 }
 
-pub fn get_api(state: Arc<SharedState>) -> impl OpenApi {
+pub fn get_api(state: Arc<SharedState>, config: Arc<Config>) -> impl OpenApi {
     (
         Challenges {
             state: state.clone(),
@@ -35,6 +35,7 @@ pub fn get_api(state: Arc<SharedState>) -> impl OpenApi {
         },
         MultipleChoice {
             state: state.clone(),
+            config,
         },
         CodingChallenges { state },
     )

@@ -23,7 +23,7 @@ impl Services {
     pub fn from_config(
         jwt_secret: JwtSecret,
         jwt_ttl: Duration,
-        conf: crate::config::Services,
+        conf: &crate::config::Services,
         cache: AsyncRedisCache<RedisConnection>,
     ) -> Self {
         let jwt_config = JwtConfig {
@@ -31,7 +31,12 @@ impl Services {
             ttl: jwt_ttl,
         };
         Self {
-            skills: SkillsService::new(Service::new("skills", conf.skills, jwt_config, cache)),
+            skills: SkillsService::new(Service::new(
+                "skills",
+                conf.skills.clone(),
+                jwt_config,
+                cache,
+            )),
         }
     }
 }

@@ -21,10 +21,10 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     info!("Loading config");
-    let config = config::load()?;
+    let config = Arc::new(config::load()?);
 
     info!("Connecting to database");
-    let mut db_options = ConnectOptions::new(config.database.url.into());
+    let mut db_options = ConnectOptions::new(config.database.url.to_string());
     db_options.connect_timeout(Duration::from_secs(config.database.connect_timeout));
     let db = Database::connect(db_options).await?;
 
@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     let services = Services::from_config(
         jwt_secret.clone(),
         Duration::from_secs(config.internal_jwt_ttl),
-        config.services,
+        &config.services,
         cache,
     );
     let shared_state = Arc::new(SharedState {
@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let api_service = OpenApiService::new(
-        get_api(shared_state.clone()),
+        get_api(shared_state.clone(), Arc::clone(&config)),
         "Bootstrap Academy Backend: Challenges Microservice",
         env!("CARGO_PKG_VERSION"),
     )
@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
         config.challenges.host, config.challenges.port
     );
     Server::new(TcpListener::bind((
-        config.challenges.host,
+        config.challenges.host.as_str(),
         config.challenges.port,
     )))
     .run(app)

@@ -288,7 +288,7 @@ enum Subtask {
 }
 
 #[derive(Iden)]
-enum MultipleChoice {
+pub enum MultipleChoice {
     #[iden = "challenges_multiple_choice_quizes"]
     Table,
     SubtaskId,

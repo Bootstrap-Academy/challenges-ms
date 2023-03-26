@@ -1,10 +1,10 @@
 jwt_secret = "changeme"
-internal_jwt_ttl = 10
-cache_ttl = 600
+internal_jwt_ttl = 10  # seconds
+cache_ttl = 600  # seconds
 
 [database]
 url = "postgres://academy:academy@localhost/academy"
-connect_timeout = 5
+connect_timeout = 5  # seconds
 
 [redis]
 auth = "redis://localhost:6379/0"
@@ -45,3 +45,6 @@ port = 8004
 [challenges]
 host = "127.0.0.1"
 port = 8005
+
+[challenges.multiple_choice_questions]
+timeout_incr = 10  # seconds

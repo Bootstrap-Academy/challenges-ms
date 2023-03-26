@@ -69,6 +69,21 @@ pub struct Answer {
     pub correct: bool,
 }
 
+#[derive(Debug, Clone, Object)]
+pub struct SolveQuestionRequest {
+    /// For each possible answer exactly one boolean (`true` for "answer is correct" or `false` for
+    /// "answer is incorrect").
+    pub answers: Vec<bool>,
+}
+
+#[derive(Debug, Clone, Object)]
+pub struct SolveQuestionFeedback {
+    /// Whether the user has successfully solved the question.
+    pub solved: bool,
+    /// The number of answers that were marked correctly.
+    pub correct: usize,
+}
+
 impl MultipleChoiceQuestion<Answer> {
     pub fn from(
         mcq: challenges_multiple_choice_quizes::Model,
@@ -125,6 +140,14 @@ pub fn split_answers(answers: Vec<Answer>) -> (Vec<String>, i64) {
     (out, correct)
 }
 
+pub fn check_answers(answers: &[bool], correct: i64) -> usize {
+    answers
+        .iter()
+        .enumerate()
+        .filter(|(i, &answer)| (correct & (1 << i) != 0) == answer)
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +184,14 @@ mod tests {
         let (answers, correct) = split_answers(answers);
         assert_eq!(answers, ["foo", "bar", "baz"]);
         assert_eq!(correct, 0b011);
+    }
+
+    #[test]
+    fn test_check_answers() {
+        assert_eq!(check_answers(&[true, true, false, true], 0b1001), 3);
+        assert_eq!(check_answers(&[true, true, true, true], 0b1001), 2);
+        assert_eq!(check_answers(&[true, false, false, true], 0b1001), 4);
+        assert_eq!(check_answers(&[true, true, true, false], 0b1001), 1);
+        assert_eq!(check_answers(&[false, true, true, false], 0b1001), 0);
     }
 }

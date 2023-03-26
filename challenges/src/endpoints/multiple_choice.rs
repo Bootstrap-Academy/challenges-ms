@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use entity::{challenges_multiple_choice_quizes, challenges_subtasks, challenges_tasks};
+use entity::{
+    challenges_multiple_choice_attempts, challenges_multiple_choice_quizes, challenges_subtasks,
+    challenges_tasks,
+};
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
+    config::Config,
     SharedState,
 };
 use poem::web::Data;
@@ -16,7 +20,8 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::schemas::multiple_choice::{
-    split_answers, Answer, CreateMultipleChoiceQuestionRequest, MultipleChoiceQuestion,
+    check_answers, split_answers, Answer, CreateMultipleChoiceQuestionRequest,
+    MultipleChoiceQuestion, SolveQuestionFeedback, SolveQuestionRequest,
     UpdateMultipleChoiceQuestionRequest,
 };
 
@@ -24,6 +29,7 @@ use super::Tags;
 
 pub struct MultipleChoice {
     pub state: Arc<SharedState>,
+    pub config: Arc<Config>,
 }
 
 #[OpenApi(tag = "Tags::MultipleChoice")]
@@ -191,6 +197,69 @@ impl MultipleChoice {
             None => DeleteQuestion::subtask_not_found(),
         }
     }
+
+    /// Attempt to solve a multiple choice question.
+    #[oai(
+        path = "/tasks/:task_id/multiple_choice/:subtask_id/attempts",
+        method = "post"
+    )]
+    async fn solve_question(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        data: Json<SolveQuestionRequest>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> SolveQuestion::Response<VerifiedUserAuth> {
+        let Some((mcq, _)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+            return SolveQuestion::subtask_not_found();
+        };
+        if data.0.answers.len() != mcq.answers.len() {
+            return SolveQuestion::wrong_length();
+        }
+
+        let previous_attempts = mcq
+            .find_related(challenges_multiple_choice_attempts::Entity)
+            .filter(challenges_multiple_choice_attempts::Column::UserId.eq(auth.0.id))
+            .order_by_desc(challenges_multiple_choice_attempts::Column::Timestamp)
+            .all(&***db)
+            .await?;
+        let solved_previously = previous_attempts.iter().any(|a| a.solved);
+        if let Some(last_attempt) = previous_attempts.first() {
+            let time_left = self
+                .config
+                .challenges
+                .multiple_choice_questions
+                .timeout_incr as i64
+                * previous_attempts.len() as i64
+                - (Utc::now().naive_utc() - last_attempt.timestamp).num_seconds();
+            if !solved_previously && time_left > 0 {
+                return SolveQuestion::too_many_requests(time_left as u64);
+            }
+        }
+
+        let correct = check_answers(&data.0.answers, mcq.correct_answers);
+        let solved = correct == mcq.answers.len();
+
+        if !solved_previously {
+            if solved {
+                // TODO send coins and xp to user
+                tracing::debug!("sending coins and xp to {}", auth.0.id);
+            }
+
+            challenges_multiple_choice_attempts::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                question_id: Set(mcq.subtask_id),
+                user_id: Set(auth.0.id),
+                timestamp: Set(Utc::now().naive_utc()),
+                solved: Set(solved),
+            }
+            .insert(&***db)
+            .await?;
+        }
+
+        SolveQuestion::ok(SolveQuestionFeedback { solved, correct })
+    }
 }
 
 response!(ListQuestions = {
@@ -225,6 +294,16 @@ response!(UpdateQuestion = {
 
 response!(DeleteQuestion = {
     Ok(200),
+    /// Subtask does not exist.
+    SubtaskNotFound(404, error),
+});
+
+response!(SolveQuestion = {
+    Ok(201) => SolveQuestionFeedback,
+    /// Wrong number of answers.
+    WrongLength(422, error),
+    /// Try again later. `details` contains the number of seconds to wait.
+    TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
 });

@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     let services = Services::from_config(
         jwt_secret.clone(),
         Duration::from_secs(config.internal_jwt_ttl),
-        config.services,
+        &config.services,
         cache,
     );
     let shared_state = Arc::new(SharedState {
