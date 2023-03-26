@@ -18,8 +18,14 @@ services:
     restart: 'no'
     entrypoint: /migration
 
-  jobs:
+  # jobs:
+  #   << : *service-base
+  #   entrypoint: /jobs
+  #   ports:
+  #     - 127.0.0.1:8003:8003
+
+  challenges:
     << : *service-base
-    entrypoint: /jobs
+    entrypoint: /challenges
     ports:
-      - 127.0.0.1:8003:8003
+      - 127.0.0.1:8005:8005
