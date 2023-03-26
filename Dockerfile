@@ -15,8 +15,6 @@ RUN --mount=type=cache,target=/build/target \
 
 FROM scratch
 
-LABEL org.opencontainers.image.source="https://github.com/Bootstrap-Academy/backend"
-
 ENV RUST_LOG=info
 
 COPY --from=builder /build/dist /
