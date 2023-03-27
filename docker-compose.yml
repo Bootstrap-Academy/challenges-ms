@@ -1,15 +1,18 @@
 version: '3.10'
 
 x-service-base: &service-base
-  image: ghcr.io/bootstrap-academy/backend
+  image: ghcr.io/defelo/academy-rust:develop
   build: .
   restart: always
   init: true
+  depends_on:
+    - database
+    - redis
   environment:
     RUST_LOG: info
     CONFIG_PATH: /config.toml
   volumes:
-    - ./.config.toml:/config.toml:ro
+    - ./config.toml:/config.toml:ro
 
 services:
 
@@ -28,4 +31,18 @@ services:
     << : *service-base
     entrypoint: /challenges
     ports:
-      - 127.0.0.1:8005:8005
+      - 127.0.0.1:8005:8000
+
+  database:
+    image: postgres:alpine
+    restart: always
+    environment:
+      POSTGRES_USER: academy
+      POSTGRES_PASSWORD: academy
+      POSTGRES_DB: academy
+    # volumes:
+    #   - ./.db:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    restart: always

@@ -3,48 +3,48 @@ internal_jwt_ttl = 10  # seconds
 cache_ttl = 600  # seconds
 
 [database]
-url = "postgres://academy:academy@localhost/academy"
+url = "postgres://academy:academy@database:5432/academy"
 connect_timeout = 5  # seconds
 
 [redis]
-auth = "redis://localhost:6379/0"
-skills = "redis://localhost:6379/1"
-shop = "redis://localhost:6379/2"
-jobs = "redis://localhost:6379/3"
-events = "redis://localhost:6379/4"
-challenges = "redis://localhost:6379/5"
+auth = "redis://redis:6379/0"
+skills = "redis://redis:6379/1"
+shop = "redis://redis:6379/2"
+jobs = "redis://redis:6379/3"
+events = "redis://redis:6379/4"
+challenges = "redis://redis:6379/5"
 
 [services]
-auth = "http://localhost:8000"
-skills = "http://localhost:8001"
-shop = "http://localhost:8002"
-jobs = "http://localhost:8003"
-events = "http://localhost:8004"
-challenges = "http://localhost:8005"
+auth = "http://auth:8000"
+skills = "http://skills:8000"
+shop = "http://shop:8000"
+jobs = "http://jobs:8000"
+events = "http://events:8000"
+challenges = "http://challenges:8000"
 
 [auth]
-host = "127.0.0.1"
+host = "0.0.0.0"
 port = 8000
 
 [skills]
-host = "127.0.0.1"
-port = 8001
+host = "0.0.0.0"
+port = 8000
 
 [shop]
-host = "127.0.0.1"
-port = 8002
+host = "0.0.0.0"
+port = 8000
 
 [jobs]
-host = "127.0.0.1"
-port = 8003
+host = "0.0.0.0"
+port = 8000
 
 [events]
-host = "127.0.0.1"
-port = 8004
+host = "0.0.0.0"
+port = 8000
 
 [challenges]
-host = "127.0.0.1"
-port = 8005
+host = "0.0.0.0"
+port = 8000
 
 [challenges.multiple_choice_questions]
 timeout_incr = 10  # seconds
