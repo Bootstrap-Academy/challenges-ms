@@ -1,7 +1,7 @@
 version: '3.10'
 
 x-service-base: &service-base
-  image: ghcr.io/defelo/academy-rust:develop
+  image: ghcr.io/defelo/academy-rust
   build: .
   restart: always
   init: true
