@@ -4,4 +4,5 @@ use serde::Deserialize;
 pub struct JobsConfig {
     pub host: String,
     pub port: u16,
+    pub server: String,
 }

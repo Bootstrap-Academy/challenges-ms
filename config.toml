@@ -25,26 +25,32 @@ challenges = "http://challenges:8000"
 [auth]
 host = "0.0.0.0"
 port = 8000
+server = "/"
 
 [skills]
 host = "0.0.0.0"
 port = 8000
+server = "/"
 
 [shop]
 host = "0.0.0.0"
 port = 8000
+server = "/"
 
 [jobs]
 host = "0.0.0.0"
 port = 8000
+server = "/"
 
 [events]
 host = "0.0.0.0"
 port = 8000
+server = "/"
 
 [challenges]
 host = "0.0.0.0"
 port = 8000
+server = "/"
 
 [challenges.multiple_choice_questions]
 timeout_incr = 10  # seconds

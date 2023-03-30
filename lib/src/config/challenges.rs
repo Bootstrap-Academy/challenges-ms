@@ -4,6 +4,7 @@ use serde::Deserialize;
 pub struct ChallengesConfig {
     pub host: String,
     pub port: u16,
+    pub server: String,
     pub multiple_choice_questions: MultipleChoiceQuestions,
 }
 

@@ -54,7 +54,8 @@ async fn main() -> anyhow::Result<()> {
         "Bootstrap Academy Backend: Challenges Microservice",
         env!("CARGO_PKG_VERSION"),
     )
-    .external_document("/openapi.json");
+    .external_document("/openapi.json")
+    .server(config.challenges.server.to_string());
     let app = Route::new()
         .nest("/openapi.json", api_service.spec_endpoint())
         .nest("/docs", api_service.swagger_ui())
