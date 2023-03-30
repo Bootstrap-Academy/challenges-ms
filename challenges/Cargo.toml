@@ -16,6 +16,7 @@ poem-ext = { workspace = true }
 poem-openapi = { workspace = true }
 redis = { workspace = true }
 sea-orm = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

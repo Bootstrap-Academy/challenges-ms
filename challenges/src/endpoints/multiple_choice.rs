@@ -19,10 +19,13 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::schemas::multiple_choice::{
-    check_answers, split_answers, Answer, CreateMultipleChoiceQuestionRequest,
-    MultipleChoiceQuestion, SolveQuestionFeedback, SolveQuestionRequest,
-    UpdateMultipleChoiceQuestionRequest,
+use crate::{
+    schemas::multiple_choice::{
+        check_answers, split_answers, Answer, CreateMultipleChoiceQuestionRequest,
+        MultipleChoiceQuestion, SolveQuestionFeedback, SolveQuestionRequest,
+        UpdateMultipleChoiceQuestionRequest,
+    },
+    services::subtasks::send_task_rewards,
 };
 
 use super::Tags;
@@ -211,7 +214,7 @@ impl MultipleChoice {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> SolveQuestion::Response<VerifiedUserAuth> {
-        let Some((mcq, _)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+        let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
             return SolveQuestion::subtask_not_found();
         };
         if data.0.answers.len() != mcq.answers.len() {
@@ -243,8 +246,7 @@ impl MultipleChoice {
 
         if !solved_previously {
             if solved {
-                // TODO send coins and xp to user
-                tracing::debug!("sending coins and xp to {}", auth.0.id);
+                send_task_rewards(&self.state.services, &db, auth.0.id, &subtask).await?;
             }
 
             challenges_multiple_choice_attempts::ActiveModel {

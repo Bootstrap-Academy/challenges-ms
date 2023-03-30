@@ -15,6 +15,7 @@ use crate::endpoints::get_api;
 
 mod endpoints;
 mod schemas;
+mod services;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
