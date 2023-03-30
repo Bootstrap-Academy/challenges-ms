@@ -4,10 +4,11 @@ use chrono::Utc;
 use entity::{challenges_challenge_categories, challenges_challenges, challenges_tasks};
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
+    services::Services,
     SharedState,
 };
 use poem::web::Data;
-use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
+use poem_ext::{db::DbTxn, patch_value::PatchValue, response, responses::ErrorResponse};
 use poem_openapi::{
     param::{Path, Query},
     payload::Json,
@@ -192,6 +193,11 @@ impl Challenges {
             None => return CreateChallenge::category_not_found(),
         };
 
+        let not_found = check_skills(&self.state.services, &data.0.skills).await?;
+        if !not_found.is_empty() {
+            return CreateChallenge::skills_not_found(not_found.into_iter().cloned().collect());
+        }
+
         let task = challenges_tasks::ActiveModel {
             id: Set(Uuid::new_v4()),
             title: Set(data.0.title),
@@ -205,6 +211,7 @@ impl Challenges {
         let challenge = challenges_challenges::ActiveModel {
             task_id: Set(task.id),
             category_id: Set(category.id),
+            skill_ids: Set(data.0.skills),
         }
         .insert(&***db)
         .await?;
@@ -233,9 +240,18 @@ impl Challenges {
                 {
                     return UpdateChallenge::category_not_found();
                 }
+                if let PatchValue::Set(skills) = &data.0.skills {
+                    let not_found = check_skills(&self.state.services, skills).await?;
+                    if !not_found.is_empty() {
+                        return UpdateChallenge::skills_not_found(
+                            not_found.into_iter().cloned().collect(),
+                        );
+                    }
+                }
                 let challenge = challenges_challenges::ActiveModel {
                     task_id: Unchanged(challenge.task_id),
                     category_id: data.0.category.update(challenge.category_id),
+                    skill_ids: data.0.skills.update(challenge.skill_ids),
                 }
                 .update(&***db)
                 .await?;
@@ -316,6 +332,8 @@ response!(CreateChallenge = {
     Ok(201) => Challenge,
     /// Category does not exist.
     CategoryNotFound(404, error),
+    /// One or more skills do not exist.
+    SkillsNotFound(404, error) => Vec<String>,
 });
 
 response!(UpdateChallenge = {
@@ -324,6 +342,8 @@ response!(UpdateChallenge = {
     ChallengeNotFound(404, error),
     /// Category does not exist.
     CategoryNotFound(404, error),
+    /// One or more skills do not exist.
+    SkillsNotFound(404, error) => Vec<String>,
 });
 
 response!(DeleteChallenge = {
@@ -359,4 +379,15 @@ async fn get_challenge(
             _ => None,
         },
     )
+}
+
+async fn check_skills<'a>(
+    services: &'_ Services,
+    skill_ids: &'a [String],
+) -> Result<Vec<&'a String>, ErrorResponse> {
+    let skills = services.skills.get_skills().await?;
+    Ok(skill_ids
+        .iter()
+        .filter(|&x| !skills.contains_key(x))
+        .collect())
 }

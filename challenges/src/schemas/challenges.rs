@@ -48,14 +48,21 @@ pub struct Challenge {
     pub creator: Uuid,
     /// The creation timestamp of the challenge
     pub creation_timestamp: DateTime<Utc>,
+    /// The skills of the challenge
+    pub skills: Vec<String>,
 }
 
 #[derive(Debug, Clone, Object)]
 pub struct CreateChallengeRequest {
     /// The title of the challenge
+    #[oai(validator(max_length = 256))]
     pub title: String,
     /// The description of the challenge
+    #[oai(validator(max_length = 4096))]
     pub description: String,
+    /// The skills of the challenge
+    #[oai(validator(max_items = 8, unique_items = true))]
+    pub skills: Vec<String>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -63,9 +70,14 @@ pub struct UpdateChallengeRequest {
     /// The category of the challenge
     pub category: PatchValue<Uuid>,
     /// The title of the challenge
+    #[oai(validator(max_length = 256))]
     pub title: PatchValue<String>,
     /// The description of the challenge
+    #[oai(validator(max_length = 4096))]
     pub description: PatchValue<String>,
+    /// The skills of the challenge
+    #[oai(validator(max_items = 8, unique_items = true))]
+    pub skills: PatchValue<Vec<String>>,
 }
 
 impl From<challenges_challenge_categories::Model> for Category {
@@ -87,6 +99,7 @@ impl Challenge {
             description: task.description,
             creator: task.creator,
             creation_timestamp: task.creation_timestamp.and_local_timezone(Utc).unwrap(),
+            skills: challenge.skill_ids,
         }
     }
 }

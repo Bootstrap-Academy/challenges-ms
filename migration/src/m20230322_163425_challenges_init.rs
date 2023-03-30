@@ -247,11 +247,12 @@ enum ChallengeCategory {
 }
 
 #[derive(Iden)]
-enum Challenge {
+pub enum Challenge {
     #[iden = "challenges_challenges"]
     Table,
     CategoryId,
     TaskId,
+    SkillIds,
 }
 
 #[derive(Iden)]
