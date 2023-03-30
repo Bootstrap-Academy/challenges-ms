@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use fnct::async_redis::AsyncRedisCache;
 use reqwest::{Client, Method, RequestBuilder, StatusCode};
@@ -10,13 +10,15 @@ use crate::{
     redis::RedisConnection,
 };
 
-use self::skills::SkillsService;
+use self::{shop::ShopService, skills::SkillsService};
 
+pub mod shop;
 pub mod skills;
 
 #[derive(Debug, Clone)]
 pub struct Services {
     pub skills: SkillsService,
+    pub shop: ShopService,
 }
 
 impl Services {
@@ -26,17 +28,18 @@ impl Services {
         conf: &crate::config::Services,
         cache: AsyncRedisCache<RedisConnection>,
     ) -> Self {
-        let jwt_config = JwtConfig {
+        let jwt_config = Arc::new(JwtConfig {
             secret: jwt_secret,
             ttl: jwt_ttl,
-        };
+        });
         Self {
             skills: SkillsService::new(Service::new(
                 "skills",
                 conf.skills.clone(),
-                jwt_config,
-                cache,
+                Arc::clone(&jwt_config),
+                cache.clone(),
             )),
+            shop: ShopService::new(Service::new("shop", conf.shop.clone(), jwt_config, cache)),
         }
     }
 }
@@ -51,7 +54,7 @@ struct JwtConfig {
 struct Service {
     name: &'static str,
     base_url: Url,
-    jwt_config: JwtConfig,
+    jwt_config: Arc<JwtConfig>,
     cache: AsyncRedisCache<RedisConnection>,
 }
 
@@ -59,7 +62,7 @@ impl Service {
     fn new(
         name: &'static str,
         base_url: Url,
-        jwt_config: JwtConfig,
+        jwt_config: Arc<JwtConfig>,
         cache: AsyncRedisCache<RedisConnection>,
     ) -> Self {
         Self {
