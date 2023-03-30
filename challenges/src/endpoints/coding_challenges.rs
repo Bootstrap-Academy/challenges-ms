@@ -12,7 +12,7 @@ pub struct CodingChallenges {
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
 impl CodingChallenges {
-    #[oai(path = "/test2", method = "get")]
+    #[oai(path = "/test2", method = "get", hidden)]
     async fn test(&self) -> Test2::Response {
         Test2::ok()
     }
