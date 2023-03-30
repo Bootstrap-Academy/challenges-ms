@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-#![warn(clippy::dbg_macro, clippy::use_debug)]
+#![warn(clippy::dbg_macro, clippy::use_debug, clippy::todo)]
 
 pub use sea_orm_migration::prelude::*;
 
