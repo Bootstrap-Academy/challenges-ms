@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+use uuid::Uuid;
 
 use super::{Service, ServiceResult};
 
@@ -58,6 +61,25 @@ impl SkillsService {
             )
             .await??)
     }
+
+    pub async fn add_skill_progress(
+        &self,
+        user_id: Uuid,
+        skill_id: &str,
+        xp: i64,
+    ) -> ServiceResult<Result<(), AddSkillProgressError>> {
+        let response = self
+            .0
+            .post(&format!("/skills/{user_id}/{skill_id}"))
+            .json(&AddSkillProgressRequest { xp })
+            .send()
+            .await?;
+        Ok(match response.status() {
+            StatusCode::OK => Ok(()),
+            StatusCode::NOT_FOUND => Err(AddSkillProgressError::SkillNotFound),
+            code => return Err(super::ServiceError::UnexpectedStatusCode(code)),
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,4 +104,15 @@ pub struct Section {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Lecture {
     pub id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AddSkillProgressRequest {
+    xp: i64,
+}
+
+#[derive(Debug, Error)]
+pub enum AddSkillProgressError {
+    #[error("Skill not found")]
+    SkillNotFound,
 }

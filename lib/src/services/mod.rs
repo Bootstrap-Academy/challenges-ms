@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use fnct::async_redis::AsyncRedisCache;
-use reqwest::{Client, Method, RequestBuilder};
+use reqwest::{Client, Method, RequestBuilder, StatusCode};
 use thiserror::Error;
 use url::Url;
 
@@ -113,6 +113,8 @@ pub enum ServiceError {
     ReqwestError(#[from] reqwest::Error),
     #[error("cache error: {0}")]
     CacheError(#[from] fnct::async_redis::AsyncRedisCacheError),
+    #[error("unexpected response status code: {0}")]
+    UnexpectedStatusCode(StatusCode),
 }
 
 pub type ServiceResult<T> = Result<T, ServiceError>;
