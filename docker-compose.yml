@@ -10,7 +10,6 @@ x-service-base: &service-base
     - redis
   environment:
     RUST_LOG: info
-    CONFIG_PATH: /config.toml
   volumes:
     - ./config.toml:/config.toml:ro
 
