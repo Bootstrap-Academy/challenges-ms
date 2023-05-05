@@ -3,7 +3,6 @@ use std::sync::Arc;
 use chrono::Utc;
 use entity::{
     challenges_multiple_choice_attempts, challenges_multiple_choice_quizes, challenges_subtasks,
-    challenges_tasks,
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -25,7 +24,7 @@ use crate::{
         MultipleChoiceQuestion, SolveQuestionFeedback, SolveQuestionRequest,
         UpdateMultipleChoiceQuestionRequest,
     },
-    services::subtasks::send_task_rewards,
+    services::{subtasks::send_task_rewards, tasks::get_task},
 };
 
 use super::Tags;
@@ -332,13 +331,4 @@ async fn get_question(
             _ => None,
         },
     )
-}
-
-async fn get_task(
-    db: &DatabaseTransaction,
-    task_id: Uuid,
-) -> Result<Option<challenges_tasks::Model>, ErrorResponse> {
-    Ok(challenges_tasks::Entity::find_by_id(task_id)
-        .one(db)
-        .await?)
 }
