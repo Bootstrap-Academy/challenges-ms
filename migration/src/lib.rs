@@ -11,6 +11,7 @@ pub struct Migrator;
 mod m20230322_163425_challenges_init;
 mod m20230326_074819_multiple_choice_attempts;
 mod m20230330_174101_challenges_skills;
+mod m20230505_153021_coding_challenges;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -22,6 +23,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230322_163425_challenges_init::Migration),
             Box::new(m20230326_074819_multiple_choice_attempts::Migration),
             Box::new(m20230330_174101_challenges_skills::Migration),
+            Box::new(m20230505_153021_coding_challenges::Migration),
         ]
     }
 }

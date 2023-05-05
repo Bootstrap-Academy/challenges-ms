@@ -299,13 +299,14 @@ pub enum MultipleChoice {
 }
 
 #[derive(Iden)]
-enum CodingChallenge {
+pub enum CodingChallenge {
     #[iden = "challenges_coding_challenges"]
     Table,
     SubtaskId,
     TimeLimit,
     MemoryLimit,
     Evaluator,
+    Description,
 }
 
 #[derive(Iden)]
