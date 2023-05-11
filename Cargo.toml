@@ -28,7 +28,7 @@ poem-openapi = { version = "2.0.26", default-features = false, features = ["swag
 redis = { version = "0.23.0", default-features = false, features = ["tokio-comp", "connection-manager"] }
 reqwest = { version = "0.11.17", default-features = false, features = ["rustls-tls", "json"] }
 sea-orm = { version = "0.11.3", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "postgres-array"] }
-serde = { version = "1.0.162", default-features = false, features = ["derive"] }
+serde = { version = "1.0.163", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.96", default-features = false }
 sha2 = { version = "0.10.6", default-features = false }
 thiserror = { version = "1.0.40", default-features = false }
