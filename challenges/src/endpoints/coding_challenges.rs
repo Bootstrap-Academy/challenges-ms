@@ -253,15 +253,7 @@ impl CodingChallenges {
         db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> UpdateExample::Response<AdminAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
-            return UpdateExample::example_not_found();
-        };
-
-        let Some(example) = challenges_coding_challenge_example::Entity::find_by_id(example_id.0)
-            .filter(challenges_coding_challenge_example::Column::ChallengeId.eq(cc.subtask_id))
-            .one(&***db)
-            .await?
-        else {
+        let Some((example, _, _)) = get_example(&db, task_id.0, subtask_id.0, example_id.0).await? else {
             return UpdateExample::example_not_found();
         };
 
@@ -313,16 +305,8 @@ impl CodingChallenges {
         db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteExample::Response<AdminAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
-            return DeleteExample::example_not_found();
-        };
-
-        match challenges_coding_challenge_example::Entity::find_by_id(example_id.0)
-            .filter(challenges_coding_challenge_example::Column::ChallengeId.eq(cc.subtask_id))
-            .one(&***db)
-            .await?
-        {
-            Some(example) => {
+        match get_example(&db, task_id.0, subtask_id.0, example_id.0).await? {
+            Some((example, _, _)) => {
                 example.delete(&***db).await?;
                 DeleteExample::ok()
             }
@@ -413,4 +397,32 @@ async fn get_challenge(
             _ => None,
         },
     )
+}
+
+async fn get_example(
+    db: &DatabaseTransaction,
+    task_id: Uuid,
+    subtask_id: Uuid,
+    example_id: Uuid,
+) -> Result<
+    Option<(
+        challenges_coding_challenge_example::Model,
+        challenges_coding_challenges::Model,
+        challenges_subtasks::Model,
+    )>,
+    ErrorResponse,
+> {
+    let Some((cc, subtask)) = get_challenge(db, task_id, subtask_id).await? else {
+        return Ok(None);
+    };
+
+    let Some(example) = challenges_coding_challenge_example::Entity::find_by_id(example_id)
+        .filter(challenges_coding_challenge_example::Column::ChallengeId.eq(cc.subtask_id))
+        .one(db)
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some((example, cc, subtask)))
 }
