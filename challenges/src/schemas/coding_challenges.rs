@@ -3,7 +3,8 @@ use entity::{
     challenges_coding_challenge_example, challenges_coding_challenges, challenges_subtasks,
 };
 use poem_ext::patch_value::PatchValue;
-use poem_openapi::Object;
+use poem_openapi::{Enum, Object};
+use sandkasten_client::schemas::programs::{Limits, ResourceUsage};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Object)]
@@ -110,6 +111,63 @@ pub struct UpdateExampleRequest {
     /// An optional explanation for the example.
     #[oai(validator(max_length = 4096))]
     pub explanation: PatchValue<Option<String>>,
+}
+
+#[derive(Debug, Clone, Object)]
+pub struct Submission {
+    /// The environment to run the solution in.
+    pub environment: String,
+    /// The solution code.
+    #[oai(validator(max_length = 65536))]
+    pub solution: String,
+}
+
+#[derive(Debug, Clone, Object)]
+pub struct SubmissionResult {
+    /// The final verdict of the submission.
+    pub verdict: Verdict,
+    /// An optional reason for the verdict.
+    pub reason: Option<String>,
+    /// The stderr output of the compile step.
+    pub build_stderr: Option<String>,
+    /// The number of milliseconds the build step ran.
+    pub build_time: Option<u64>,
+    /// The amount of memory the build step used (in KB)
+    pub build_memory: Option<u64>,
+    /// The stderr output of the run step.
+    pub run_stderr: Option<String>,
+    /// The number of milliseconds the run step ran.
+    pub run_time: Option<u64>,
+    /// The amount of memory the run step used (in KB)
+    pub run_memory: Option<u64>,
+}
+
+#[derive(Debug, Clone, Object)]
+pub struct EvaluatorError {
+    /// The exit code of the evaluator.
+    pub code: i32,
+    /// stderr output of the evaluator.
+    pub stderr: String,
+}
+
+#[derive(Debug, Object)]
+pub struct RunSummary {
+    pub status: i32,
+    pub stderr: String,
+    pub resource_usage: ResourceUsage,
+    pub limits: Limits,
+}
+
+#[derive(Debug, Clone, Enum)]
+#[oai(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Verdict {
+    Ok,
+    WrongAnswer,
+    TimeLimitExceeded,
+    MemoryLimitExceeded,
+    NoOutput,
+    CompilationError,
+    RuntimeError,
 }
 
 impl CodingChallenge {

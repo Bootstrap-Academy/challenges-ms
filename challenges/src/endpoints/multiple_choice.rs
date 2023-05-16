@@ -302,7 +302,7 @@ response!(DeleteQuestion = {
 response!(SolveQuestion = {
     Ok(201) => SolveQuestionFeedback,
     /// Wrong number of answers.
-    WrongLength(422, error),
+    WrongLength(400, error),
     /// Try again later. `details` contains the number of seconds to wait.
     TooManyRequests(429, error) => u64,
     /// Subtask does not exist.

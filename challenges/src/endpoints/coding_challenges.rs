@@ -11,6 +11,10 @@ use lib::{
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
+use sandkasten_client::{
+    schemas::programs::{BuildRequest, BuildRunError, BuildRunRequest, MainFile, RunRequest},
+    Error as SandkastenError, SandkastenClient,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
     QueryOrder, Set, Unchanged,
@@ -19,16 +23,21 @@ use uuid::Uuid;
 
 use crate::{
     schemas::coding_challenges::{
-        CodingChallenge, CreateCodingChallengeRequest, CreateExampleRequest, Example,
-        UpdateCodingChallengeRequest, UpdateExampleRequest,
+        CodingChallenge, CreateCodingChallengeRequest, CreateExampleRequest, EvaluatorError,
+        Example, Submission, SubmissionResult, UpdateCodingChallengeRequest, UpdateExampleRequest,
+        Verdict,
     },
-    services::tasks::get_task,
+    services::{
+        judge::{self, Judge, Output},
+        tasks::get_task,
+    },
 };
 
 use super::Tags;
 
 pub struct CodingChallenges {
     pub state: Arc<SharedState>,
+    pub sandkasten: SandkastenClient,
 }
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
@@ -313,6 +322,137 @@ impl CodingChallenges {
             None => DeleteExample::example_not_found(),
         }
     }
+
+    /// Test a solution against an example.
+    #[oai(
+        path = "/tasks/:task_id/coding_challenges/:subtask_id/examples/:example_id/test",
+        method = "post"
+    )]
+    async fn test_example(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        example_id: Path<usize>,
+        data: Json<Submission>,
+        db: Data<&DbTxn>,
+        _auth: VerifiedUserAuth,
+    ) -> TestExample::Response<VerifiedUserAuth> {
+        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+            return TestExample::example_not_found();
+        };
+
+        let judge = Judge {
+            sandkasten: &self.sandkasten,
+            evaluator: &cc.evaluator,
+        };
+
+        let examples = match judge.examples().await {
+            Err(judge::Error::ExecutionFailed(err)) => return TestExample::evaluator_failed(err),
+            x => x?,
+        };
+        let seed = &examples[example_id.0];
+        let inp = match judge.generate(seed).await {
+            Err(judge::Error::ExecutionFailed(err)) => return TestExample::evaluator_failed(err),
+            x => x?,
+        };
+
+        let out = match self
+            .sandkasten
+            .build_and_run(&BuildRunRequest {
+                build: BuildRequest {
+                    environment: data.0.environment,
+                    main_file: MainFile {
+                        content: data.0.solution,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                run: RunRequest {
+                    stdin: Some(inp.input),
+                    ..Default::default()
+                },
+            })
+            .await
+        {
+            Err(SandkastenError::ErrorResponse(err)) => {
+                let sandkasten_client::schemas::ErrorResponse::Inner(err) = *err else {
+                    return Err(SandkastenError::ErrorResponse(err).into());
+                };
+                match err {
+                    BuildRunError::EnvironmentNotFound => {
+                        return TestExample::environment_not_found()
+                    }
+                    BuildRunError::CompileError(result) => {
+                        return TestExample::ok(SubmissionResult {
+                            verdict: Verdict::CompilationError,
+                            reason: None,
+                            build_stderr: Some(result.stderr),
+                            build_time: Some(result.resource_usage.time),
+                            build_memory: Some(result.resource_usage.memory),
+                            run_stderr: None,
+                            run_time: None,
+                            run_memory: None,
+                        })
+                    }
+                    _ => {
+                        return Err(SandkastenError::ErrorResponse(
+                            sandkasten_client::schemas::ErrorResponse::Inner(err).into(),
+                        )
+                        .into())
+                    }
+                }
+            }
+            x => x?,
+        };
+
+        let (verdict, reason) = if out.run.status != 0 {
+            (Verdict::RuntimeError, None)
+        } else if out.run.stdout.is_empty() {
+            (Verdict::NoOutput, None)
+        } else {
+            let result = match judge
+                .check(
+                    seed,
+                    &Output {
+                        output: &out.run.stdout,
+                        data: &inp.data,
+                    },
+                )
+                .await
+            {
+                Err(judge::Error::ExecutionFailed(err)) => {
+                    return TestExample::evaluator_failed(err)
+                }
+                x => x?,
+            };
+            let verdict = if result.ok {
+                Verdict::Ok
+            } else {
+                Verdict::WrongAnswer
+            };
+            (verdict, Some(result.reason))
+        };
+
+        let (build_stderr, build_time, build_memory) =
+            out.build.map_or_else(Default::default, |x| {
+                (
+                    Some(x.stderr),
+                    Some(x.resource_usage.time),
+                    Some(x.resource_usage.memory),
+                )
+            });
+
+        TestExample::ok(SubmissionResult {
+            verdict,
+            reason,
+            build_stderr,
+            build_time,
+            build_memory,
+            run_stderr: Some(out.run.stderr),
+            run_time: Some(out.run.resource_usage.time),
+            run_memory: Some(out.run.resource_usage.memory),
+        })
+    }
 }
 
 response!(ListCodingChallenges = {
@@ -373,6 +513,16 @@ response!(DeleteExample = {
     Ok(200),
     /// Example does not exist.
     ExampleNotFound(404, error),
+});
+
+response!(TestExample = {
+    Ok(200) => SubmissionResult,
+    /// Example does not exist.
+    ExampleNotFound(404, error),
+    /// Environment does not exist.
+    EnvironmentNotFound(404, error),
+    /// The evaluator failed to execute.
+    EvaluatorFailed(400, error) => EvaluatorError,
 });
 
 async fn get_challenge(

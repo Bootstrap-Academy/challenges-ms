@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use lib::{config::Config, SharedState};
 use poem_openapi::OpenApi;
+use sandkasten_client::SandkastenClient;
 
 use self::{
     challenges::Challenges, coding_challenges::CodingChallenges, course_tasks::CourseTasks,
@@ -35,8 +36,13 @@ pub fn get_api(state: Arc<SharedState>, config: Arc<Config>) -> impl OpenApi {
         },
         MultipleChoice {
             state: state.clone(),
-            config,
+            config: Arc::clone(&config),
         },
-        CodingChallenges { state },
+        CodingChallenges {
+            state,
+            sandkasten: SandkastenClient::new(
+                config.challenges.coding_challenges.sandkasten_url.clone(),
+            ),
+        },
     )
 }
