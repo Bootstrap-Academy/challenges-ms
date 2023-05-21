@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use fnct::format::JsonFormatter;
 use lib::{config::Config, SharedState};
 use poem_openapi::OpenApi;
 use sandkasten_client::SandkastenClient;
@@ -39,6 +40,7 @@ pub fn get_api(state: Arc<SharedState>, config: Arc<Config>) -> impl OpenApi {
             config: Arc::clone(&config),
         },
         CodingChallenges {
+            judge_cache: state.cache.with_formatter(JsonFormatter),
             state,
             sandkasten: SandkastenClient::new(
                 config.challenges.coding_challenges.sandkasten_url.clone(),

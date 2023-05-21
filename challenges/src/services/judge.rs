@@ -1,3 +1,5 @@
+use fnct::{format::JsonFormatter, key};
+use lib::{Cache, CacheError};
 use sandkasten_client::{
     schemas::programs::{BuildRequest, BuildRunError, BuildRunRequest, MainFile, RunRequest},
     SandkastenClient,
@@ -11,6 +13,7 @@ use crate::schemas::coding_challenges::EvaluatorError;
 pub struct Judge<'a> {
     pub sandkasten: &'a SandkastenClient,
     pub evaluator: &'a str,
+    pub cache: &'a Cache<JsonFormatter>,
 }
 
 impl Judge<'_> {
@@ -47,12 +50,20 @@ impl Judge<'_> {
     }
 
     pub async fn examples(&self) -> Result<Vec<String>, Error> {
-        self.exec(vec!["examples".into()], None::<()>).await
+        self.cache
+            .cached_result(key!(self.evaluator), &[], None, async {
+                self.exec(vec!["examples".into()], None::<()>).await
+            })
+            .await?
     }
 
     pub async fn generate(&self, seed: &str) -> Result<Input, Error> {
-        self.exec(vec!["generate".into(), seed.into()], None::<()>)
-            .await
+        self.cache
+            .cached_result(key!(self.evaluator, seed), &[], None, async {
+                self.exec(vec!["generate".into(), seed.into()], None::<()>)
+                    .await
+            })
+            .await?
     }
 
     pub async fn check(&self, seed: &str, output: &Output<'_>) -> Result<Verdict, Error> {
@@ -63,6 +74,8 @@ impl Judge<'_> {
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("cache error: {0}")]
+    Cache(#[from] CacheError<JsonFormatter>),
     #[error("sandkasten error: {0}")]
     Sandkasten(#[from] sandkasten_client::Error<BuildRunError>),
     #[error("serde_json error: {0}")]
@@ -71,7 +84,7 @@ pub enum Error {
     ExecutionFailed(EvaluatorError),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Input {
     pub input: String,
     pub data: Value,

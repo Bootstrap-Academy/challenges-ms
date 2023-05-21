@@ -1,13 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
-use fnct::async_redis::AsyncRedisCache;
 use reqwest::{Client, Method, RequestBuilder, StatusCode};
 use thiserror::Error;
 use url::Url;
 
 use crate::{
     jwt::{sign_jwt, InternalAuthToken, JwtSecret},
-    redis::RedisConnection,
+    Cache, CacheError,
 };
 
 use self::{shop::ShopService, skills::SkillsService};
@@ -26,7 +25,7 @@ impl Services {
         jwt_secret: JwtSecret,
         jwt_ttl: Duration,
         conf: &crate::config::Services,
-        cache: AsyncRedisCache<RedisConnection>,
+        cache: Cache,
     ) -> Self {
         let jwt_config = Arc::new(JwtConfig {
             secret: jwt_secret,
@@ -55,16 +54,11 @@ struct Service {
     name: &'static str,
     base_url: Url,
     jwt_config: Arc<JwtConfig>,
-    cache: AsyncRedisCache<RedisConnection>,
+    cache: Cache,
 }
 
 impl Service {
-    fn new(
-        name: &'static str,
-        base_url: Url,
-        jwt_config: Arc<JwtConfig>,
-        cache: AsyncRedisCache<RedisConnection>,
-    ) -> Self {
+    fn new(name: &'static str, base_url: Url, jwt_config: Arc<JwtConfig>, cache: Cache) -> Self {
         Self {
             name,
             base_url,
@@ -115,7 +109,7 @@ pub enum ServiceError {
     #[error("reqwest error: {0}")]
     ReqwestError(#[from] reqwest::Error),
     #[error("cache error: {0}")]
-    CacheError(#[from] fnct::async_redis::AsyncRedisCacheError),
+    CacheError(#[from] CacheError),
     #[error("unexpected response status code: {0}")]
     UnexpectedStatusCode(StatusCode),
 }

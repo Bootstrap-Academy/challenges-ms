@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use fnct::key;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -19,25 +20,20 @@ impl SkillsService {
         Ok(self
             .0
             .cache
-            .cached_result::<_, reqwest::Error, _, _>(
-                (module_path!(), "get_skills"),
-                &["skills"],
-                None,
-                async {
-                    let skills: Vec<Skill> = self
-                        .0
-                        .get("/skills")
-                        .send()
-                        .await?
-                        .error_for_status()?
-                        .json()
-                        .await?;
-                    Ok(skills
-                        .into_iter()
-                        .map(|skill| (skill.id.clone(), skill))
-                        .collect())
-                },
-            )
+            .cached_result::<_, reqwest::Error, _, _>(key!(), &["skills"], None, async {
+                let skills: Vec<Skill> = self
+                    .0
+                    .get("/skills")
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json()
+                    .await?;
+                Ok(skills
+                    .into_iter()
+                    .map(|skill| (skill.id.clone(), skill))
+                    .collect())
+            })
             .await??)
     }
 
@@ -45,20 +41,15 @@ impl SkillsService {
         Ok(self
             .0
             .cache
-            .cached_result::<_, reqwest::Error, _, _>(
-                (module_path!(), "get_courses"),
-                &["courses"],
-                None,
-                async {
-                    self.0
-                        .get("/courses")
-                        .send()
-                        .await?
-                        .error_for_status()?
-                        .json()
-                        .await
-                },
-            )
+            .cached_result::<_, reqwest::Error, _, _>(key!(), &["courses"], None, async {
+                self.0
+                    .get("/courses")
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json()
+                    .await
+            })
             .await??)
     }
 

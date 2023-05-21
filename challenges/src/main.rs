@@ -3,8 +3,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use fnct::async_redis::AsyncRedisCache;
-use lib::{config, jwt::JwtSecret, redis::RedisConnection, services::Services, SharedState};
+use fnct::{backend::AsyncRedisBackend, format::PostcardFormatter};
+use lib::{config, jwt::JwtSecret, redis::RedisConnection, services::Services, Cache, SharedState};
 use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
 use poem_ext::{db::DbTransactionMiddleware, panic_handler::PanicHandler};
 use poem_openapi::OpenApiService;
@@ -30,9 +30,12 @@ async fn main() -> anyhow::Result<()> {
     let db = Database::connect(db_options).await?;
 
     info!("Connecting to redis");
-    let cache = AsyncRedisCache::new(
-        RedisConnection::new(config.redis.challenges.as_str()).await?,
-        "challenges".into(),
+    let cache = Cache::new(
+        AsyncRedisBackend::new(
+            RedisConnection::new(config.redis.challenges.as_str()).await?,
+            "challenges".into(),
+        ),
+        PostcardFormatter,
         Duration::from_secs(config.cache_ttl),
     );
     let auth_redis = RedisConnection::new(config.redis.auth.as_str()).await?;
@@ -42,12 +45,13 @@ async fn main() -> anyhow::Result<()> {
         jwt_secret.clone(),
         Duration::from_secs(config.internal_jwt_ttl),
         &config.services,
-        cache,
+        cache.clone(),
     );
     let shared_state = Arc::new(SharedState {
         jwt_secret,
         auth_redis,
         services,
+        cache,
     });
 
     let api_service = OpenApiService::new(

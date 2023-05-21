@@ -4,9 +4,10 @@ use chrono::Utc;
 use entity::{
     challenges_coding_challenge_example, challenges_coding_challenges, challenges_subtasks,
 };
+use fnct::format::JsonFormatter;
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
-    SharedState,
+    Cache, SharedState,
 };
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
@@ -38,6 +39,7 @@ use super::Tags;
 pub struct CodingChallenges {
     pub state: Arc<SharedState>,
     pub sandkasten: SandkastenClient,
+    pub judge_cache: Cache<JsonFormatter>,
 }
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
@@ -344,6 +346,7 @@ impl CodingChallenges {
         let judge = Judge {
             sandkasten: &self.sandkasten,
             evaluator: &cc.evaluator,
+            cache: &self.judge_cache,
         };
 
         let examples = match judge.examples().await {
