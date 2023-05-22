@@ -12,6 +12,8 @@ mod m20230322_163425_challenges_init;
 mod m20230326_074819_multiple_choice_attempts;
 mod m20230330_174101_challenges_skills;
 mod m20230505_153021_coding_challenges;
+mod m20230522_183823_remove_examples;
+mod m20230522_192000_add_cc_solution;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -24,6 +26,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20230326_074819_multiple_choice_attempts::Migration),
             Box::new(m20230330_174101_challenges_skills::Migration),
             Box::new(m20230505_153021_coding_challenges::Migration),
+            Box::new(m20230522_183823_remove_examples::Migration),
+            Box::new(m20230522_192000_add_cc_solution::Migration),
         ]
     }
 }

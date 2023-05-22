@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use entity::{
-    challenges_coding_challenge_example, challenges_coding_challenges, challenges_subtasks,
-};
+use entity::{challenges_coding_challenges, challenges_subtasks};
 use fnct::format::JsonFormatter;
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -24,9 +22,8 @@ use uuid::Uuid;
 
 use crate::{
     schemas::coding_challenges::{
-        CodingChallenge, CreateCodingChallengeRequest, CreateExampleRequest, EvaluatorError,
-        Example, Submission, SubmissionResult, UpdateCodingChallengeRequest, UpdateExampleRequest,
-        Verdict,
+        CodingChallenge, CreateCodingChallengeRequest, EvaluatorError, Example, Submission,
+        SubmissionResult, UpdateCodingChallengeRequest, Verdict,
     },
     services::{
         judge::{self, Judge, Output},
@@ -95,15 +92,30 @@ impl CodingChallenges {
         let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetExamples::subtask_not_found();
         };
+        let judge = self.get_judge(&cc);
 
-        GetExamples::ok(
-            cc.find_related(challenges_coding_challenge_example::Entity)
-                .all(&***db)
-                .await?
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-        )
+        let examples = match judge.examples().await {
+            Err(judge::Error::ExecutionFailed(err)) => return GetExamples::evaluator_failed(err),
+            x => x?,
+        };
+        let mut out = Vec::with_capacity(examples.len());
+        for seed in &examples {
+            let example = judge
+                .get_example_checked(seed, &cc.solution_environment, &cc.solution_code)
+                .await;
+            let example = match example {
+                Err(judge::Error::ExecutionFailed(err)) => {
+                    return GetExamples::evaluator_failed(err);
+                }
+                Err(judge::Error::SolutionFailed(_) | judge::Error::WrongAnswer(_)) => {
+                    return GetExamples::example_generation_failed();
+                }
+                x => x?,
+            };
+            out.push(example);
+        }
+
+        GetExamples::ok(out)
     }
 
     /// Get the evaluator of a coding challenge by id.
@@ -123,6 +135,28 @@ impl CodingChallenges {
         };
 
         GetEvaluator::ok(cc.evaluator)
+    }
+
+    /// Get the solution of a coding challenge by id.
+    #[oai(
+        path = "/tasks/:task_id/coding_challenges/:subtask_id/solution",
+        method = "get"
+    )]
+    async fn get_solution(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        _auth: AdminAuth,
+    ) -> GetSolution::Response<AdminAuth> {
+        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+            return GetSolution::subtask_not_found();
+        };
+
+        GetSolution::ok(Submission {
+            environment: cc.solution_environment,
+            code: cc.solution_code,
+        })
     }
 
     /// Create a new coding challenge.
@@ -152,54 +186,16 @@ impl CodingChallenges {
             subtask_id: Set(subtask.id),
             time_limit: Set(data.0.time_limit as _),
             memory_limit: Set(data.0.memory_limit as _),
+            // TODO check evaluator
             evaluator: Set(data.0.evaluator),
             description: Set(data.0.description),
+            // TODO check solution
+            solution_environment: Set(data.0.solution_environment),
+            solution_code: Set(data.0.solution_code),
         }
         .insert(&***db)
         .await?;
-        challenges_coding_challenge_example::Entity::insert_many(data.0.examples.into_iter().map(
-            |e| challenges_coding_challenge_example::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                challenge_id: Set(cc.subtask_id),
-                input: Set(e.input),
-                output: Set(e.output),
-                explanation: Set(e.explanation),
-            },
-        ))
-        .exec(&***db)
-        .await?;
         CreateCodingChallenge::ok(CodingChallenge::from(cc, subtask))
-    }
-
-    /// Create a new example for a coding challenge.
-    #[oai(
-        path = "/tasks/:task_id/coding_challenges/:subtask_id/examples",
-        method = "post"
-    )]
-    async fn create_example(
-        &self,
-        task_id: Path<Uuid>,
-        subtask_id: Path<Uuid>,
-        data: Json<CreateExampleRequest>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> CreateExample::Response<AdminAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
-            return CreateExample::subtask_not_found();
-        };
-
-        CreateExample::ok(
-            challenges_coding_challenge_example::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                challenge_id: Set(cc.subtask_id),
-                input: Set(data.0.input),
-                output: Set(data.0.output),
-                explanation: Set(data.0.explanation),
-            }
-            .insert(&***db)
-            .await?
-            .into(),
-        )
     }
 
     /// Update a coding challenge.
@@ -230,8 +226,12 @@ impl CodingChallenges {
             subtask_id: Unchanged(cc.subtask_id),
             time_limit: data.0.time_limit.map(|x| x as _).update(cc.time_limit),
             memory_limit: data.0.memory_limit.map(|x| x as _).update(cc.memory_limit),
+            // TODO check evaluator
             evaluator: data.0.evaluator.update(cc.evaluator),
             description: data.0.description.update(cc.description),
+            // TODO check solution
+            solution_environment: data.0.solution_environment.update(cc.solution_environment),
+            solution_code: data.0.solution_code.update(cc.solution_code),
         }
         .update(&***db)
         .await?;
@@ -248,38 +248,6 @@ impl CodingChallenges {
         .await?;
 
         UpdateCodingChallenge::ok(CodingChallenge::from(cc, subtask))
-    }
-
-    /// Update an example of a coding challenge.
-    #[oai(
-        path = "/tasks/:task_id/coding_challenges/:subtask_id/examples/:example_id",
-        method = "patch"
-    )]
-    async fn update_example(
-        &self,
-        task_id: Path<Uuid>,
-        subtask_id: Path<Uuid>,
-        example_id: Path<Uuid>,
-        data: Json<UpdateExampleRequest>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> UpdateExample::Response<AdminAuth> {
-        let Some((example, _, _)) = get_example(&db, task_id.0, subtask_id.0, example_id.0).await? else {
-            return UpdateExample::example_not_found();
-        };
-
-        UpdateExample::ok(
-            challenges_coding_challenge_example::ActiveModel {
-                id: Unchanged(example.id),
-                challenge_id: Unchanged(example.challenge_id),
-                input: data.0.input.update(example.input),
-                output: data.0.output.update(example.output),
-                explanation: data.0.explanation.update(example.explanation),
-            }
-            .update(&***db)
-            .await?
-            .into(),
-        )
     }
 
     /// Delete a coding challenge.
@@ -303,28 +271,6 @@ impl CodingChallenges {
         }
     }
 
-    /// Delete an example of a coding challenge.
-    #[oai(
-        path = "/tasks/:task_id/coding_challenges/:subtask_id/examples/:example_id",
-        method = "delete"
-    )]
-    async fn delete_example(
-        &self,
-        task_id: Path<Uuid>,
-        subtask_id: Path<Uuid>,
-        example_id: Path<Uuid>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> DeleteExample::Response<AdminAuth> {
-        match get_example(&db, task_id.0, subtask_id.0, example_id.0).await? {
-            Some((example, _, _)) => {
-                example.delete(&***db).await?;
-                DeleteExample::ok()
-            }
-            None => DeleteExample::example_not_found(),
-        }
-    }
-
     /// Test a solution against an example.
     #[oai(
         path = "/tasks/:task_id/coding_challenges/:subtask_id/examples/:example_id/test",
@@ -342,12 +288,7 @@ impl CodingChallenges {
         let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return TestExample::example_not_found();
         };
-
-        let judge = Judge {
-            sandkasten: &self.sandkasten,
-            evaluator: &cc.evaluator,
-            cache: &self.judge_cache,
-        };
+        let judge = self.get_judge(&cc);
 
         let examples = match judge.examples().await {
             Err(judge::Error::ExecutionFailed(err)) => return TestExample::evaluator_failed(err),
@@ -365,7 +306,7 @@ impl CodingChallenges {
                 build: BuildRequest {
                     environment: data.0.environment,
                     main_file: MainFile {
-                        content: data.0.solution,
+                        content: data.0.code,
                         ..Default::default()
                     },
                     ..Default::default()
@@ -472,10 +413,20 @@ response!(GetExamples = {
     Ok(200) => Vec<Example>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
+    /// The evaluator failed to execute.
+    EvaluatorFailed(400, error) => EvaluatorError,
+    /// Failed to generate an example.
+    ExampleGenerationFailed(400, error),
 });
 
 response!(GetEvaluator = {
     Ok(200) => String,
+    /// Subtask does not exist.
+    SubtaskNotFound(404, error),
+});
+
+response!(GetSolution = {
+    Ok(200) => Submission,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
 });
@@ -528,6 +479,16 @@ response!(TestExample = {
     EvaluatorFailed(400, error) => EvaluatorError,
 });
 
+impl CodingChallenges {
+    fn get_judge<'a>(&'a self, cc: &'a challenges_coding_challenges::Model) -> Judge<'a> {
+        Judge {
+            sandkasten: &self.sandkasten,
+            evaluator: &cc.evaluator,
+            cache: &self.judge_cache,
+        }
+    }
+}
+
 async fn get_challenge(
     db: &DatabaseTransaction,
     task_id: Uuid,
@@ -550,32 +511,4 @@ async fn get_challenge(
             _ => None,
         },
     )
-}
-
-async fn get_example(
-    db: &DatabaseTransaction,
-    task_id: Uuid,
-    subtask_id: Uuid,
-    example_id: Uuid,
-) -> Result<
-    Option<(
-        challenges_coding_challenge_example::Model,
-        challenges_coding_challenges::Model,
-        challenges_subtasks::Model,
-    )>,
-    ErrorResponse,
-> {
-    let Some((cc, subtask)) = get_challenge(db, task_id, subtask_id).await? else {
-        return Ok(None);
-    };
-
-    let Some(example) = challenges_coding_challenge_example::Entity::find_by_id(example_id)
-        .filter(challenges_coding_challenge_example::Column::ChallengeId.eq(cc.subtask_id))
-        .one(db)
-        .await?
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some((example, cc, subtask)))
 }

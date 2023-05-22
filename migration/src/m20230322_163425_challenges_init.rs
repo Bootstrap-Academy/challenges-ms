@@ -307,10 +307,12 @@ pub enum CodingChallenge {
     MemoryLimit,
     Evaluator,
     Description,
+    SolutionEnvironment,
+    SolutionCode,
 }
 
 #[derive(Iden)]
-enum CodingChallengeExample {
+pub enum CodingChallengeExample {
     #[iden = "challenges_coding_challenge_example"]
     Table,
     Id,

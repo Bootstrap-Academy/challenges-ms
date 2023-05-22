@@ -13,12 +13,14 @@ pub struct Model {
     pub evaluator: String,
     #[sea_orm(column_type = "Text")]
     pub description: String,
+    #[sea_orm(column_type = "Text")]
+    pub solution_environment: String,
+    #[sea_orm(column_type = "Text")]
+    pub solution_code: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::challenges_coding_challenge_example::Entity")]
-    ChallengesCodingChallengeExample,
     #[sea_orm(
         belongs_to = "super::challenges_subtasks::Entity",
         from = "Column::SubtaskId",
@@ -27,12 +29,6 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     ChallengesSubtasks,
-}
-
-impl Related<super::challenges_coding_challenge_example::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::ChallengesCodingChallengeExample.def()
-    }
 }
 
 impl Related<super::challenges_subtasks::Entity> for Entity {

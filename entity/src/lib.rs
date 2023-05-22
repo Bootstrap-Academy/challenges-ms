@@ -4,7 +4,6 @@ pub mod prelude;
 
 pub mod challenges_challenge_categories;
 pub mod challenges_challenges;
-pub mod challenges_coding_challenge_example;
 pub mod challenges_coding_challenges;
 pub mod challenges_course_tasks;
 pub mod challenges_multiple_choice_attempts;

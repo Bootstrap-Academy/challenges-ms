@@ -1,14 +1,16 @@
 use fnct::{format::JsonFormatter, key};
 use lib::{Cache, CacheError};
 use sandkasten_client::{
-    schemas::programs::{BuildRequest, BuildRunError, BuildRunRequest, MainFile, RunRequest},
+    schemas::programs::{
+        BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, MainFile, RunRequest,
+    },
     SandkastenClient,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::schemas::coding_challenges::EvaluatorError;
+use crate::schemas::coding_challenges::{EvaluatorError, Example};
 
 pub struct Judge<'a> {
     pub sandkasten: &'a SandkastenClient,
@@ -70,6 +72,63 @@ impl Judge<'_> {
         self.exec(vec!["check".into(), seed.into()], Some(output))
             .await
     }
+
+    pub async fn get_example_checked(
+        &self,
+        seed: &str,
+        solution_environment: &str,
+        solution_code: &str,
+    ) -> Result<Example, Error> {
+        self.cache
+            .cached_result(
+                key!(self.evaluator, seed, solution_environment, solution_code),
+                &[],
+                None,
+                async {
+                    let input = self.generate(seed).await?;
+                    let output = self
+                        .sandkasten
+                        .build_and_run(&BuildRunRequest {
+                            build: BuildRequest {
+                                environment: solution_environment.into(),
+                                main_file: MainFile {
+                                    content: solution_code.into(),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            },
+                            run: RunRequest {
+                                stdin: Some(input.input.clone()),
+                                ..Default::default()
+                            },
+                        })
+                        .await?;
+                    if output.run.status != 0 || output.run.stdout.is_empty() {
+                        return Err(Error::SolutionFailed(Box::new(output)));
+                    }
+                    let result = self
+                        .check(
+                            seed,
+                            &Output {
+                                output: &output.run.stdout,
+                                data: &input.data,
+                            },
+                        )
+                        .await?;
+                    if result.ok {
+                        Ok(Example {
+                            input: input.input,
+                            output: output.run.stdout,
+                            explanation: (!output.run.stderr.is_empty())
+                                .then_some(output.run.stderr),
+                        })
+                    } else {
+                        Err(Error::WrongAnswer(result))
+                    }
+                },
+            )
+            .await?
+    }
 }
 
 #[derive(Debug, Error)]
@@ -82,6 +141,10 @@ pub enum Error {
     SerdeJson(#[from] serde_json::Error),
     #[error("failed to execute evaluator: {0:?}")]
     ExecutionFailed(EvaluatorError),
+    #[error("failed to run the solution code: {0:?}")]
+    SolutionFailed(Box<BuildRunResult>),
+    #[error("solution produced a wrong answer: {0:?}")]
+    WrongAnswer(Verdict),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

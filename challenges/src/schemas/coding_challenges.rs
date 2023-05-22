@@ -1,10 +1,9 @@
 use chrono::{DateTime, Utc};
-use entity::{
-    challenges_coding_challenge_example, challenges_coding_challenges, challenges_subtasks,
-};
+use entity::{challenges_coding_challenges, challenges_subtasks};
 use poem_ext::patch_value::PatchValue;
 use poem_openapi::{Enum, Object};
 use sandkasten_client::schemas::programs::{Limits, ResourceUsage};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Object)]
@@ -29,20 +28,13 @@ pub struct CodingChallenge {
     pub memory_limit: u16,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct Example {
-    /// The unique identifier of the example.
-    pub id: Uuid,
-    /// The coding challenge subtask.
-    pub challenge_id: Uuid,
     /// The input the program receives via stdin.
-    #[oai(validator(max_length = 4096))]
     pub input: String,
     /// The output the program should produce on stdout.
-    #[oai(validator(max_length = 4096))]
     pub output: String,
     /// An optional explanation for the example.
-    #[oai(validator(max_length = 4096))]
     pub explanation: Option<String>,
 }
 
@@ -59,12 +51,14 @@ pub struct CreateCodingChallengeRequest {
     pub time_limit: u64,
     /// The number of megabytes of memory the solution may use.
     pub memory_limit: u64,
-    /// A list of example inputs and outputs.
-    #[oai(validator(max_items = 8))]
-    pub examples: Vec<Example>,
     /// The program used to generate test cases and evaluate solutions
     #[oai(validator(max_length = 65536))]
     pub evaluator: String,
+    /// The environment to run the solution in.
+    pub solution_environment: String,
+    /// The solution code
+    #[oai(validator(max_length = 65536))]
+    pub solution_code: String,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -85,32 +79,11 @@ pub struct UpdateCodingChallengeRequest {
     /// The program used to generate test cases and evaluate solutions
     #[oai(validator(max_length = 65536))]
     pub evaluator: PatchValue<String>,
-}
-
-#[derive(Debug, Clone, Object)]
-pub struct CreateExampleRequest {
-    /// The input the program receives via stdin.
-    #[oai(validator(max_length = 4096))]
-    pub input: String,
-    /// The output the program should produce on stdout.
-    #[oai(validator(max_length = 4096))]
-    pub output: String,
-    /// An optional explanation for the example.
-    #[oai(validator(max_length = 4096))]
-    pub explanation: Option<String>,
-}
-
-#[derive(Debug, Clone, Object)]
-pub struct UpdateExampleRequest {
-    /// The input the program receives via stdin.
-    #[oai(validator(max_length = 4096))]
-    pub input: PatchValue<String>,
-    /// The output the program should produce on stdout.
-    #[oai(validator(max_length = 4096))]
-    pub output: PatchValue<String>,
-    /// An optional explanation for the example.
-    #[oai(validator(max_length = 4096))]
-    pub explanation: PatchValue<Option<String>>,
+    /// The environment to run the solution in.
+    pub solution_environment: PatchValue<String>,
+    /// The solution code
+    #[oai(validator(max_length = 65536))]
+    pub solution_code: PatchValue<String>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -119,7 +92,7 @@ pub struct Submission {
     pub environment: String,
     /// The solution code.
     #[oai(validator(max_length = 65536))]
-    pub solution: String,
+    pub code: String,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -185,18 +158,6 @@ impl CodingChallenge {
             description: cc.description,
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,
-        }
-    }
-}
-
-impl From<challenges_coding_challenge_example::Model> for Example {
-    fn from(value: challenges_coding_challenge_example::Model) -> Self {
-        Self {
-            id: value.id,
-            challenge_id: value.challenge_id,
-            input: value.input,
-            output: value.output,
-            explanation: value.explanation,
         }
     }
 }
