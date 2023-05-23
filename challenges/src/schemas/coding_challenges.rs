@@ -6,6 +6,8 @@ use sandkasten_client::schemas::programs::{Limits, ResourceUsage};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::services::judge;
+
 #[derive(Debug, Clone, Object)]
 pub struct CodingChallenge {
     /// The unique identifier of the subtask.
@@ -136,6 +138,7 @@ pub struct RunSummary {
 pub enum Verdict {
     Ok,
     WrongAnswer,
+    InvalidOutputFormat,
     TimeLimitExceeded,
     MemoryLimitExceeded,
     NoOutput,
@@ -158,6 +161,16 @@ impl CodingChallenge {
             description: cc.description,
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,
+        }
+    }
+}
+
+impl Verdict {
+    pub fn from(value: &judge::Verdict) -> Self {
+        match value {
+            judge::Verdict::Ok => Verdict::Ok,
+            judge::Verdict::WrongAnswer { .. } => Verdict::WrongAnswer,
+            judge::Verdict::InvalidOutputFormat { .. } => Verdict::InvalidOutputFormat,
         }
     }
 }

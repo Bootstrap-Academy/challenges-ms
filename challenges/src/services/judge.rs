@@ -2,7 +2,7 @@ use fnct::{format::JsonFormatter, key};
 use lib::{Cache, CacheError};
 use sandkasten_client::{
     schemas::programs::{
-        BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, MainFile, RunRequest,
+        BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, File, MainFile, RunRequest,
     },
     SandkastenClient,
 };
@@ -33,6 +33,10 @@ impl Judge<'_> {
                         content: self.evaluator.to_owned(),
                         ..Default::default()
                     },
+                    files: vec![File {
+                        name: "lib.py".into(),
+                        content: include_str!("../../assets/evaluator/lib.py").into(),
+                    }],
                     ..Default::default()
                 },
                 run: RunRequest {
@@ -115,15 +119,14 @@ impl Judge<'_> {
                             },
                         )
                         .await?;
-                    if result.ok {
-                        Ok(Example {
+                    match result {
+                        Verdict::Ok => Ok(Example {
                             input: input.input,
                             output: output.run.stdout,
                             explanation: (!output.run.stderr.is_empty())
                                 .then_some(output.run.stderr),
-                        })
-                    } else {
-                        Err(Error::WrongAnswer(result))
+                        }),
+                        v => Err(Error::WrongAnswer(v)),
                     }
                 },
             )
@@ -160,7 +163,19 @@ pub struct Output<'a> {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Verdict {
-    pub ok: bool,
-    pub reason: String,
+#[serde(tag = "verdict", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Verdict {
+    Ok,
+    WrongAnswer { reason: String },
+    InvalidOutputFormat { reason: String },
+}
+
+impl Verdict {
+    pub fn reason(self) -> Option<String> {
+        match self {
+            Verdict::Ok => None,
+            Verdict::WrongAnswer { reason } => Some(reason),
+            Verdict::InvalidOutputFormat { reason } => Some(reason),
+        }
+    }
 }

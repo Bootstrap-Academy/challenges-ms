@@ -9,7 +9,11 @@ use lib::{
 };
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
-use poem_openapi::{param::Path, payload::Json, OpenApi};
+use poem_openapi::{
+    param::Path,
+    payload::{Json, PlainText},
+    OpenApi,
+};
 use sandkasten_client::{
     schemas::programs::{BuildRequest, BuildRunError, BuildRunRequest, MainFile, RunRequest},
     Error as SandkastenError, SandkastenClient,
@@ -354,7 +358,7 @@ impl CodingChallenges {
         } else if out.run.stdout.is_empty() {
             (Verdict::NoOutput, None)
         } else {
-            let result = match judge
+            let verdict = match judge
                 .check(
                     seed,
                     &Output {
@@ -369,12 +373,7 @@ impl CodingChallenges {
                 }
                 x => x?,
             };
-            let verdict = if result.ok {
-                Verdict::Ok
-            } else {
-                Verdict::WrongAnswer
-            };
-            (verdict, Some(result.reason))
+            (Verdict::from(&verdict), verdict.reason())
         };
 
         let (build_stderr, build_time, build_memory) =
@@ -396,6 +395,18 @@ impl CodingChallenges {
             run_time: Some(out.run.resource_usage.time),
             run_memory: Some(out.run.resource_usage.memory),
         })
+    }
+
+    /// Return the evaluator template.
+    #[oai(path = "/coding_challenges/evaluator/template.py", method = "get")]
+    async fn get_evaluator_template(&self) -> PlainText<&'static str> {
+        PlainText(include_str!("../../assets/evaluator/template.py"))
+    }
+
+    /// Return the evaluator library.
+    #[oai(path = "/coding_challenges/evaluator/lib.py", method = "get")]
+    async fn get_evaluator_lib(&self) -> PlainText<&'static str> {
+        PlainText(include_str!("../../assets/evaluator/lib.py"))
     }
 }
 
@@ -437,12 +448,6 @@ response!(CreateCodingChallenge = {
     TaskNotFound(404, error),
 });
 
-response!(CreateExample = {
-    Ok(201) => Example,
-    /// Subtask does not exist.
-    SubtaskNotFound(404, error),
-});
-
 response!(UpdateCodingChallenge = {
     Ok(200) => CodingChallenge,
     /// Subtask does not exist.
@@ -451,22 +456,10 @@ response!(UpdateCodingChallenge = {
     TaskNotFound(404, error),
 });
 
-response!(UpdateExample = {
-    Ok(200) => Example,
-    /// Example does not exist.
-    ExampleNotFound(404, error),
-});
-
 response!(DeleteCodingChallenge = {
     Ok(200),
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-});
-
-response!(DeleteExample = {
-    Ok(200),
-    /// Example does not exist.
-    ExampleNotFound(404, error),
 });
 
 response!(TestExample = {
