@@ -1,12 +1,13 @@
 use chrono::{DateTime, Utc};
 use entity::{challenges_coding_challenges, challenges_subtasks};
 use poem_ext::patch_value::PatchValue;
-use poem_openapi::{Enum, Object};
-use sandkasten_client::schemas::programs::{Limits, ResourceUsage};
+use poem_openapi::{
+    types::{ParseFromJSON, ToJSON, Type},
+    Enum, Object,
+};
+use sandkasten_client::schemas::programs::{Limits, ResourceUsage, RunResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-use crate::services::judge;
 
 #[derive(Debug, Clone, Object)]
 pub struct CodingChallenge {
@@ -32,6 +33,8 @@ pub struct CodingChallenge {
 
 #[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct Example {
+    /// The unique identifier of the example.
+    pub id: String,
     /// The input the program receives via stdin.
     pub input: String,
     /// The output the program should produce on stdout.
@@ -125,16 +128,21 @@ pub struct EvaluatorError {
     pub stderr: String,
 }
 
-#[derive(Debug, Object)]
+#[derive(Debug, Clone, Object, Deserialize)]
 pub struct RunSummary {
+    /// The exit code of the processes.
     pub status: i32,
+    /// The stderr output the process produced.
     pub stderr: String,
+    /// The amount of resources the process used.
     pub resource_usage: ResourceUsage,
+    /// The limits that applied to the process.
     pub limits: Limits,
 }
 
-#[derive(Debug, Clone, Enum)]
+#[derive(Debug, Clone, Enum, Serialize, Deserialize)]
 #[oai(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Verdict {
     Ok,
     WrongAnswer,
@@ -144,6 +152,14 @@ pub enum Verdict {
     NoOutput,
     CompilationError,
     RuntimeError,
+}
+
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
+pub struct CheckResult<T: Send + Sync + Type + ParseFromJSON + ToJSON> {
+    pub verdict: Verdict,
+    pub reason: Option<String>,
+    pub compile: Option<T>,
+    pub run: Option<T>,
 }
 
 impl CodingChallenge {
@@ -165,12 +181,24 @@ impl CodingChallenge {
     }
 }
 
-impl Verdict {
-    pub fn from(value: &judge::Verdict) -> Self {
-        match value {
-            judge::Verdict::Ok => Verdict::Ok,
-            judge::Verdict::WrongAnswer { .. } => Verdict::WrongAnswer,
-            judge::Verdict::InvalidOutputFormat { .. } => Verdict::InvalidOutputFormat,
+impl From<RunResult> for RunSummary {
+    fn from(value: RunResult) -> Self {
+        Self {
+            status: value.status,
+            stderr: value.stderr,
+            resource_usage: value.resource_usage,
+            limits: value.limits,
+        }
+    }
+}
+
+impl From<CheckResult<RunResult>> for CheckResult<RunSummary> {
+    fn from(value: CheckResult<RunResult>) -> Self {
+        Self {
+            verdict: value.verdict,
+            reason: value.reason,
+            compile: value.compile.map(Into::into),
+            run: value.run.map(Into::into),
         }
     }
 }

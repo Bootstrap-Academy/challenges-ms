@@ -14,23 +14,21 @@ use poem_openapi::{
     payload::{Json, PlainText},
     OpenApi,
 };
-use sandkasten_client::{
-    schemas::programs::{BuildRequest, BuildRunError, BuildRunRequest, MainFile, RunRequest},
-    Error as SandkastenError, SandkastenClient,
-};
+use sandkasten_client::{schemas::programs::RunResult, SandkastenClient};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
     QueryOrder, Set, Unchanged,
 };
+use tracing::error;
 use uuid::Uuid;
 
 use crate::{
     schemas::coding_challenges::{
-        CodingChallenge, CreateCodingChallengeRequest, EvaluatorError, Example, Submission,
-        SubmissionResult, UpdateCodingChallengeRequest, Verdict,
+        CheckResult, CodingChallenge, CreateCodingChallengeRequest, Example, Submission,
+        UpdateCodingChallengeRequest,
     },
     services::{
-        judge::{self, Judge, Output},
+        judge::{self, Judge},
         tasks::get_task,
     },
 };
@@ -99,22 +97,35 @@ impl CodingChallenges {
         let judge = self.get_judge(&cc);
 
         let examples = match judge.examples().await {
-            Err(judge::Error::ExecutionFailed(err)) => return GetExamples::evaluator_failed(err),
+            Err(judge::Error::EvaluatorFailed(err) | judge::Error::InvalidOutput(err)) => {
+                error!(
+                    "evaluator for {} failed to execute: {:?}",
+                    subtask_id.0, err
+                );
+                return GetExamples::evaluator_failed();
+            }
             x => x?,
         };
         let mut out = Vec::with_capacity(examples.len());
-        for seed in &examples {
+        for (i, seed) in examples.iter().enumerate() {
             let example = judge
-                .get_example_checked(seed, &cc.solution_environment, &cc.solution_code)
-                .await;
+                .get_example_checked(
+                    seed,
+                    &cc.solution_environment,
+                    &cc.solution_code,
+                    None,
+                    None,
+                )
+                .await?;
             let example = match example {
-                Err(judge::Error::ExecutionFailed(err)) => {
-                    return GetExamples::evaluator_failed(err);
-                }
-                Err(judge::Error::SolutionFailed(_) | judge::Error::WrongAnswer(_)) => {
+                Ok(example) => example,
+                Err(err) => {
+                    error!(
+                        "example generation for {} failed on example {}: {:?}",
+                        subtask_id.0, i, err
+                    );
                     return GetExamples::example_generation_failed();
                 }
-                x => x?,
             };
             out.push(example);
         }
@@ -284,7 +295,7 @@ impl CodingChallenges {
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
-        example_id: Path<usize>,
+        example_id: Path<String>,
         data: Json<Submission>,
         db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
@@ -295,106 +306,55 @@ impl CodingChallenges {
         let judge = self.get_judge(&cc);
 
         let examples = match judge.examples().await {
-            Err(judge::Error::ExecutionFailed(err)) => return TestExample::evaluator_failed(err),
+            Err(judge::Error::EvaluatorFailed(err) | judge::Error::InvalidOutput(err)) => {
+                error!(
+                    "evaluator for {} failed to execute while listing examples: {:?}",
+                    subtask_id.0, err
+                );
+                return TestExample::evaluator_failed();
+            }
             x => x?,
         };
-        let seed = &examples[example_id.0];
-        let inp = match judge.generate(seed).await {
-            Err(judge::Error::ExecutionFailed(err)) => return TestExample::evaluator_failed(err),
-            x => x?,
-        };
+        if !examples.contains(&example_id.0) {
+            return TestExample::example_not_found();
+        }
 
-        let out = match self
-            .sandkasten
-            .build_and_run(&BuildRunRequest {
-                build: BuildRequest {
-                    environment: data.0.environment,
-                    main_file: MainFile {
-                        content: data.0.code,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                run: RunRequest {
-                    stdin: Some(inp.input),
-                    ..Default::default()
-                },
-            })
-            .await
-        {
-            Err(SandkastenError::ErrorResponse(err)) => {
-                let sandkasten_client::schemas::ErrorResponse::Inner(err) = *err else {
-                    return Err(SandkastenError::ErrorResponse(err).into());
-                };
-                match err {
-                    BuildRunError::EnvironmentNotFound => {
-                        return TestExample::environment_not_found()
-                    }
-                    BuildRunError::CompileError(result) => {
-                        return TestExample::ok(SubmissionResult {
-                            verdict: Verdict::CompilationError,
-                            reason: None,
-                            build_stderr: Some(result.stderr),
-                            build_time: Some(result.resource_usage.time),
-                            build_memory: Some(result.resource_usage.memory),
-                            run_stderr: None,
-                            run_time: None,
-                            run_memory: None,
-                        })
-                    }
-                    _ => {
-                        return Err(SandkastenError::ErrorResponse(
-                            sandkasten_client::schemas::ErrorResponse::Inner(err).into(),
-                        )
-                        .into())
-                    }
-                }
+        let inp = match judge.generate(&example_id.0).await {
+            Err(judge::Error::EvaluatorFailed(err) | judge::Error::InvalidOutput(err)) => {
+                error!(
+                    "evaluator for {} failed to execute while generating example input for {}: {:?}",
+                    subtask_id.0, example_id.0, err
+                );
+                return TestExample::evaluator_failed();
             }
             x => x?,
         };
 
-        let (verdict, reason) = if out.run.status != 0 {
-            (Verdict::RuntimeError, None)
-        } else if out.run.stdout.is_empty() {
-            (Verdict::NoOutput, None)
-        } else {
-            let verdict = match judge
-                .check(
-                    seed,
-                    &Output {
-                        output: &out.run.stdout,
-                        data: &inp.data,
-                    },
-                )
-                .await
-            {
-                Err(judge::Error::ExecutionFailed(err)) => {
-                    return TestExample::evaluator_failed(err)
-                }
-                x => x?,
-            };
-            (Verdict::from(&verdict), verdict.reason())
+        let result = match judge
+            .run_solution(
+                &example_id.0,
+                &inp,
+                &data.0.environment,
+                &data.0.code,
+                Some(cc.time_limit as _),
+                Some(cc.memory_limit as _),
+            )
+            .await
+        {
+            Err(judge::Error::EvaluatorFailed(err) | judge::Error::InvalidOutput(err)) => {
+                error!(
+                    "evaluator for {} failed to execute while testing submission for example {}: {:?}",
+                    subtask_id.0, example_id.0, err
+                );
+                return TestExample::evaluator_failed();
+            }
+            Err(judge::Error::EnvironmentNotFound) => {
+                return TestExample::environment_not_found();
+            }
+            x => x?,
         };
 
-        let (build_stderr, build_time, build_memory) =
-            out.build.map_or_else(Default::default, |x| {
-                (
-                    Some(x.stderr),
-                    Some(x.resource_usage.time),
-                    Some(x.resource_usage.memory),
-                )
-            });
-
-        TestExample::ok(SubmissionResult {
-            verdict,
-            reason,
-            build_stderr,
-            build_time,
-            build_memory,
-            run_stderr: Some(out.run.stderr),
-            run_time: Some(out.run.resource_usage.time),
-            run_memory: Some(out.run.resource_usage.memory),
-        })
+        TestExample::ok(result)
     }
 
     /// Return the evaluator template.
@@ -425,7 +385,7 @@ response!(GetExamples = {
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The evaluator failed to execute.
-    EvaluatorFailed(400, error) => EvaluatorError,
+    EvaluatorFailed(400, error),
     /// Failed to generate an example.
     ExampleGenerationFailed(400, error),
 });
@@ -463,13 +423,13 @@ response!(DeleteCodingChallenge = {
 });
 
 response!(TestExample = {
-    Ok(200) => SubmissionResult,
+    Ok(200) => CheckResult<RunResult>,
     /// Example does not exist.
     ExampleNotFound(404, error),
     /// Environment does not exist.
     EnvironmentNotFound(404, error),
     /// The evaluator failed to execute.
-    EvaluatorFailed(400, error) => EvaluatorError,
+    EvaluatorFailed(400, error),
 });
 
 impl CodingChallenges {
