@@ -33,7 +33,14 @@ impl Judge<'_> {
     ) -> Result<Result<Example, CheckResult<RunResult>>, Error> {
         self.cache
             .cached_result(
-                key!(self.evaluator, seed, solution_environment, solution_code),
+                key!(
+                    self.evaluator,
+                    seed,
+                    solution_environment,
+                    solution_code,
+                    time_limit,
+                    memory_limit
+                ),
                 &[],
                 None,
                 async {

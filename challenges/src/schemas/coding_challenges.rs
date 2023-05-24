@@ -53,8 +53,10 @@ pub struct CreateCodingChallengeRequest {
     #[oai(validator(max_length = 16384))]
     pub description: String,
     /// The number of milliseconds the solution may run.
+    #[oai(validator(minimum(value = "1")))]
     pub time_limit: u64,
     /// The number of megabytes of memory the solution may use.
+    #[oai(validator(minimum(value = "1")))]
     pub memory_limit: u64,
     /// The program used to generate test cases and evaluate solutions
     #[oai(validator(max_length = 65536))]
@@ -78,8 +80,10 @@ pub struct UpdateCodingChallengeRequest {
     #[oai(validator(max_length = 16384))]
     pub description: PatchValue<String>,
     /// The number of milliseconds the solution may run.
+    #[oai(validator(minimum(value = "1")))]
     pub time_limit: PatchValue<u64>,
     /// The number of megabytes of memory the solution may use.
+    #[oai(validator(minimum(value = "1")))]
     pub memory_limit: PatchValue<u64>,
     /// The program used to generate test cases and evaluate solutions
     #[oai(validator(max_length = 65536))]

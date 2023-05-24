@@ -12,9 +12,12 @@ use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{
     param::Path,
     payload::{Json, PlainText},
-    OpenApi,
+    Object, OpenApi,
 };
-use sandkasten_client::{schemas::programs::RunResult, SandkastenClient};
+use sandkasten_client::{
+    schemas::programs::{BuildRunResult, RunResult},
+    SandkastenClient,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
     QueryOrder, Set, Unchanged,
@@ -94,7 +97,7 @@ impl CodingChallenges {
         let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetExamples::subtask_not_found();
         };
-        let judge = self.get_judge(&cc);
+        let judge = self.get_judge(&cc.evaluator);
 
         let examples = match judge.examples().await {
             Err(judge::Error::EvaluatorFailed(err) | judge::Error::InvalidOutput(err)) => {
@@ -107,14 +110,14 @@ impl CodingChallenges {
             x => x?,
         };
         let mut out = Vec::with_capacity(examples.len());
-        for (i, seed) in examples.iter().enumerate() {
+        for seed in &examples {
             let example = judge
                 .get_example_checked(
                     seed,
                     &cc.solution_environment,
                     &cc.solution_code,
-                    None,
-                    None,
+                    Some(cc.time_limit as _),
+                    Some(cc.memory_limit as _),
                 )
                 .await?;
             let example = match example {
@@ -122,7 +125,7 @@ impl CodingChallenges {
                 Err(err) => {
                     error!(
                         "example generation for {} failed on example {}: {:?}",
-                        subtask_id.0, i, err
+                        subtask_id.0, seed, err
                     );
                     return GetExamples::example_generation_failed();
                 }
@@ -187,6 +190,20 @@ impl CodingChallenges {
             Some(task) => task,
             None => return CreateCodingChallenge::task_not_found(),
         };
+
+        if let Err(result) = self
+            .check_challenge(
+                &data.0.evaluator,
+                &data.0.solution_environment,
+                &data.0.solution_code,
+                data.0.time_limit,
+                data.0.memory_limit,
+            )
+            .await?
+        {
+            return Ok(result.into());
+        }
+
         let subtask = challenges_subtasks::ActiveModel {
             id: Set(Uuid::new_v4()),
             task_id: Set(task.id),
@@ -201,10 +218,8 @@ impl CodingChallenges {
             subtask_id: Set(subtask.id),
             time_limit: Set(data.0.time_limit as _),
             memory_limit: Set(data.0.memory_limit as _),
-            // TODO check evaluator
             evaluator: Set(data.0.evaluator),
             description: Set(data.0.description),
-            // TODO check solution
             solution_environment: Set(data.0.solution_environment),
             solution_code: Set(data.0.solution_code),
         }
@@ -237,14 +252,27 @@ impl CodingChallenges {
             return UpdateCodingChallenge::task_not_found();
         }
 
+        if let Err(result) = self
+            .check_challenge(
+                data.0.evaluator.get_new(&cc.evaluator),
+                data.0
+                    .solution_environment
+                    .get_new(&cc.solution_environment),
+                data.0.solution_code.get_new(&cc.solution_code),
+                *data.0.time_limit.get_new(&(cc.time_limit as _)),
+                *data.0.memory_limit.get_new(&(cc.memory_limit as _)),
+            )
+            .await?
+        {
+            return Ok(result.into());
+        }
+
         let cc = challenges_coding_challenges::ActiveModel {
             subtask_id: Unchanged(cc.subtask_id),
             time_limit: data.0.time_limit.map(|x| x as _).update(cc.time_limit),
             memory_limit: data.0.memory_limit.map(|x| x as _).update(cc.memory_limit),
-            // TODO check evaluator
             evaluator: data.0.evaluator.update(cc.evaluator),
             description: data.0.description.update(cc.description),
-            // TODO check solution
             solution_environment: data.0.solution_environment.update(cc.solution_environment),
             solution_code: data.0.solution_code.update(cc.solution_code),
         }
@@ -303,7 +331,7 @@ impl CodingChallenges {
         let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return TestExample::example_not_found();
         };
-        let judge = self.get_judge(&cc);
+        let judge = self.get_judge(&cc.evaluator);
 
         let examples = match judge.examples().await {
             Err(judge::Error::EvaluatorFailed(err) | judge::Error::InvalidOutput(err)) => {
@@ -406,6 +434,7 @@ response!(CreateCodingChallenge = {
     Ok(201) => CodingChallenge,
     /// Task does not exist.
     TaskNotFound(404, error),
+    ..CheckError::Response,
 });
 
 response!(UpdateCodingChallenge = {
@@ -414,6 +443,7 @@ response!(UpdateCodingChallenge = {
     SubtaskNotFound(404, error),
     /// Task does not exist.
     TaskNotFound(404, error),
+    ..CheckError::Response,
 });
 
 response!(DeleteCodingChallenge = {
@@ -433,12 +463,72 @@ response!(TestExample = {
 });
 
 impl CodingChallenges {
-    fn get_judge<'a>(&'a self, cc: &'a challenges_coding_challenges::Model) -> Judge<'a> {
+    fn get_judge<'a>(&'a self, evaluator: &'a str) -> Judge<'a> {
         Judge {
             sandkasten: &self.sandkasten,
-            evaluator: &cc.evaluator,
+            evaluator,
             cache: &self.judge_cache,
         }
+    }
+
+    async fn check_challenge(
+        &self,
+        evaluator: &str,
+        solution_environment: &str,
+        solution_code: &str,
+        time_limit: u64,
+        memory_limit: u64,
+    ) -> Result<Result<(), CheckError::Response>, ErrorResponse> {
+        let judge = self.get_judge(evaluator);
+
+        let examples = match judge.examples().await {
+            Err(judge::Error::EvaluatorFailed(err)) => {
+                return Ok(Err(CheckError::evaluator_failed(err)));
+            }
+            Err(judge::Error::InvalidOutput(err)) => {
+                return Ok(Err(CheckError::invalid_output(err)));
+            }
+            x => x?,
+        };
+        if examples.is_empty() {
+            return Ok(Err(CheckError::no_examples()));
+        }
+
+        for seed in examples
+            .into_iter()
+            .chain((0..10).map(|x| format!("_static_{x}")))
+            .chain((0..5).map(|_| Uuid::new_v4().to_string()))
+        {
+            let result = match judge
+                .get_example_checked(
+                    &seed,
+                    solution_environment,
+                    solution_code,
+                    Some(time_limit),
+                    Some(memory_limit),
+                )
+                .await
+            {
+                Err(judge::Error::EnvironmentNotFound) => {
+                    return Ok(Err(CheckError::environment_not_found()));
+                }
+                Err(judge::Error::EvaluatorFailed(err)) => {
+                    return Ok(Err(CheckError::evaluator_failed(err)));
+                }
+                Err(judge::Error::InvalidOutput(err)) => {
+                    return Ok(Err(CheckError::invalid_output(err)));
+                }
+                x => x?,
+            };
+            if let Err(result) = result {
+                return Ok(Err(CheckError::testcase_failed(CheckTestcaseError {
+                    seed: seed.clone(),
+                    result,
+                })));
+            }
+        }
+
+        Ok(Ok(()))
     }
 }
 
@@ -464,4 +554,27 @@ async fn get_challenge(
             _ => None,
         },
     )
+}
+
+mod _check_error {
+    use super::*;
+    response!(pub CheckError = {
+        /// The list of examples provided by the evaluator is empty.
+        NoExamples(404, error),
+        /// The solution environment does not exist.
+        EnvironmentNotFound(404, error),
+        /// The evaluator crashed.
+        EvaluatorFailed(400, error) => BuildRunResult,
+        /// The evaluator failed to produce valid output.
+        InvalidOutput(400, error) => BuildRunResult,
+        /// The sample solution failed on a specific test case.
+        TestcaseFailed(400, error) => CheckTestcaseError,
+    });
+}
+use _check_error::CheckError::raw as CheckError;
+
+#[derive(Debug, Object)]
+pub struct CheckTestcaseError {
+    seed: String,
+    result: CheckResult<RunResult>,
 }
