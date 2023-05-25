@@ -14,6 +14,7 @@ mod m20230330_174101_challenges_skills;
 mod m20230505_153021_coding_challenges;
 mod m20230522_183823_remove_examples;
 mod m20230522_192000_add_cc_solution;
+mod m20230525_065623_cc_number_of_tests;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -28,6 +29,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230505_153021_coding_challenges::Migration),
             Box::new(m20230522_183823_remove_examples::Migration),
             Box::new(m20230522_192000_add_cc_solution::Migration),
+            Box::new(m20230525_065623_cc_number_of_tests::Migration),
         ]
     }
 }

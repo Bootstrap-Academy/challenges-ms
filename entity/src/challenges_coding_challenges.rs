@@ -17,6 +17,8 @@ pub struct Model {
     pub solution_environment: String,
     #[sea_orm(column_type = "Text")]
     pub solution_code: String,
+    pub static_tests: i32,
+    pub random_tests: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

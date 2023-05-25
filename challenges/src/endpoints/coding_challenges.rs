@@ -193,14 +193,16 @@ impl CodingChallenges {
 
         let cc_id = Uuid::new_v4();
         if let Err(result) = self
-            .check_challenge(
-                cc_id,
-                &data.0.evaluator,
-                &data.0.solution_environment,
-                &data.0.solution_code,
-                data.0.time_limit,
-                data.0.memory_limit,
-            )
+            .check_challenge(CheckChallenge {
+                challenge_id: cc_id,
+                evaluator: &data.0.evaluator,
+                solution_environment: &data.0.solution_environment,
+                solution_code: &data.0.solution_code,
+                time_limit: data.0.time_limit,
+                memory_limit: data.0.memory_limit,
+                static_tests: data.0.static_tests,
+                random_tests: data.0.random_tests,
+            })
             .await?
         {
             return Ok(result.into());
@@ -220,6 +222,8 @@ impl CodingChallenges {
             subtask_id: Set(subtask.id),
             time_limit: Set(data.0.time_limit as _),
             memory_limit: Set(data.0.memory_limit as _),
+            static_tests: Set(data.0.static_tests as _),
+            random_tests: Set(data.0.random_tests as _),
             evaluator: Set(data.0.evaluator),
             description: Set(data.0.description),
             solution_environment: Set(data.0.solution_environment),
@@ -255,16 +259,19 @@ impl CodingChallenges {
         }
 
         if let Err(result) = self
-            .check_challenge(
-                cc.subtask_id,
-                data.0.evaluator.get_new(&cc.evaluator),
-                data.0
+            .check_challenge(CheckChallenge {
+                challenge_id: cc.subtask_id,
+                evaluator: data.0.evaluator.get_new(&cc.evaluator),
+                solution_environment: data
+                    .0
                     .solution_environment
                     .get_new(&cc.solution_environment),
-                data.0.solution_code.get_new(&cc.solution_code),
-                *data.0.time_limit.get_new(&(cc.time_limit as _)),
-                *data.0.memory_limit.get_new(&(cc.memory_limit as _)),
-            )
+                solution_code: data.0.solution_code.get_new(&cc.solution_code),
+                time_limit: *data.0.time_limit.get_new(&(cc.time_limit as _)),
+                memory_limit: *data.0.memory_limit.get_new(&(cc.memory_limit as _)),
+                static_tests: *data.0.static_tests.get_new(&(cc.static_tests as _)),
+                random_tests: *data.0.random_tests.get_new(&(cc.random_tests as _)),
+            })
             .await?
         {
             return Ok(result.into());
@@ -274,6 +281,8 @@ impl CodingChallenges {
             subtask_id: Unchanged(cc.subtask_id),
             time_limit: data.0.time_limit.map(|x| x as _).update(cc.time_limit),
             memory_limit: data.0.memory_limit.map(|x| x as _).update(cc.memory_limit),
+            static_tests: data.0.static_tests.map(|x| x as _).update(cc.static_tests),
+            random_tests: data.0.random_tests.map(|x| x as _).update(cc.random_tests),
             evaluator: data.0.evaluator.update(cc.evaluator),
             description: data.0.description.update(cc.description),
             solution_environment: data.0.solution_environment.update(cc.solution_environment),
@@ -476,12 +485,16 @@ impl CodingChallenges {
 
     async fn check_challenge(
         &self,
-        challenge_id: Uuid,
-        evaluator: &str,
-        solution_environment: &str,
-        solution_code: &str,
-        time_limit: u64,
-        memory_limit: u64,
+        CheckChallenge {
+            challenge_id,
+            evaluator,
+            solution_environment,
+            solution_code,
+            time_limit,
+            memory_limit,
+            static_tests,
+            random_tests,
+        }: CheckChallenge<'_>,
     ) -> Result<Result<(), CheckError::Response>, ErrorResponse> {
         let judge = self.get_judge(evaluator);
 
@@ -500,8 +513,8 @@ impl CodingChallenges {
 
         for seed in examples
             .into_iter()
-            .chain((0..10).map(|x| format!("_static_{x}_{challenge_id}")))
-            .chain((0..5).map(|_| Uuid::new_v4().to_string()))
+            .chain((0..static_tests).map(|x| format!("_static_{x}_{challenge_id}")))
+            .chain((0..random_tests).map(|_| Uuid::new_v4().to_string()))
         {
             let result = match judge
                 .get_example_checked(
@@ -558,6 +571,17 @@ async fn get_challenge(
             _ => None,
         },
     )
+}
+
+struct CheckChallenge<'a> {
+    challenge_id: Uuid,
+    evaluator: &'a str,
+    solution_environment: &'a str,
+    solution_code: &'a str,
+    time_limit: u64,
+    memory_limit: u64,
+    static_tests: u8,
+    random_tests: u8,
 }
 
 mod _check_error {

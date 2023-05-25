@@ -29,6 +29,10 @@ pub struct CodingChallenge {
     pub time_limit: u16,
     /// The number of megabytes of memory the solution may use.
     pub memory_limit: u16,
+    /// The number of static tests to run for submission evaluation.
+    pub static_tests: u8,
+    /// The number of random tests to run for submission evaluation.
+    pub random_tests: u8,
 }
 
 #[derive(Debug, Clone, Object, Serialize, Deserialize)]
@@ -58,6 +62,15 @@ pub struct CreateCodingChallengeRequest {
     /// The number of megabytes of memory the solution may use.
     #[oai(validator(minimum(value = "1")))]
     pub memory_limit: u64,
+    /// The number of static tests to run for submission evaluation.
+    #[oai(default = "tests_default", validator(maximum(value = "20")))]
+    pub static_tests: u8,
+    /// The number of random tests to run for submission evaluation.
+    #[oai(
+        default = "tests_default",
+        validator(minimum(value = "1"), maximum(value = "20"))
+    )]
+    pub random_tests: u8,
     /// The program used to generate test cases and evaluate solutions
     #[oai(validator(max_length = 65536))]
     pub evaluator: String,
@@ -66,6 +79,9 @@ pub struct CreateCodingChallengeRequest {
     /// The solution code
     #[oai(validator(max_length = 65536))]
     pub solution_code: String,
+}
+fn tests_default() -> u8 {
+    10
 }
 
 #[derive(Debug, Clone, Object)]
@@ -85,6 +101,12 @@ pub struct UpdateCodingChallengeRequest {
     /// The number of megabytes of memory the solution may use.
     #[oai(validator(minimum(value = "1")))]
     pub memory_limit: PatchValue<u64>,
+    /// The number of static tests to run for submission evaluation.
+    #[oai(validator(maximum(value = "20")))]
+    pub static_tests: PatchValue<u8>,
+    /// The number of random tests to run for submission evaluation.
+    #[oai(validator(minimum(value = "1"), maximum(value = "20")))]
+    pub random_tests: PatchValue<u8>,
     /// The program used to generate test cases and evaluate solutions
     #[oai(validator(max_length = 65536))]
     pub evaluator: PatchValue<String>,
@@ -181,6 +203,8 @@ impl CodingChallenge {
             description: cc.description,
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,
+            static_tests: cc.static_tests as _,
+            random_tests: cc.random_tests as _,
         }
     }
 }

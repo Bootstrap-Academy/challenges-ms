@@ -309,6 +309,8 @@ pub enum CodingChallenge {
     Description,
     SolutionEnvironment,
     SolutionCode,
+    StaticTests,
+    RandomTests,
 }
 
 #[derive(Iden)]
