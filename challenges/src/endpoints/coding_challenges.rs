@@ -191,8 +191,10 @@ impl CodingChallenges {
             None => return CreateCodingChallenge::task_not_found(),
         };
 
+        let cc_id = Uuid::new_v4();
         if let Err(result) = self
             .check_challenge(
+                cc_id,
                 &data.0.evaluator,
                 &data.0.solution_environment,
                 &data.0.solution_code,
@@ -205,7 +207,7 @@ impl CodingChallenges {
         }
 
         let subtask = challenges_subtasks::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(cc_id),
             task_id: Set(task.id),
             creator: Set(auth.0.id),
             creation_timestamp: Set(Utc::now().naive_utc()),
@@ -254,6 +256,7 @@ impl CodingChallenges {
 
         if let Err(result) = self
             .check_challenge(
+                cc.subtask_id,
                 data.0.evaluator.get_new(&cc.evaluator),
                 data.0
                     .solution_environment
@@ -473,6 +476,7 @@ impl CodingChallenges {
 
     async fn check_challenge(
         &self,
+        challenge_id: Uuid,
         evaluator: &str,
         solution_environment: &str,
         solution_code: &str,
@@ -496,7 +500,7 @@ impl CodingChallenges {
 
         for seed in examples
             .into_iter()
-            .chain((0..10).map(|x| format!("_static_{x}")))
+            .chain((0..10).map(|x| format!("_static_{x}_{challenge_id}")))
             .chain((0..5).map(|_| Uuid::new_v4().to_string()))
         {
             let result = match judge
