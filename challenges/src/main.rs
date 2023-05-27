@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
         auth_redis,
         services,
         cache,
+        db: db.clone(),
     });
 
     let api_service = OpenApiService::new(

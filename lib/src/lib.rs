@@ -2,6 +2,7 @@
 #![warn(clippy::dbg_macro, clippy::use_debug, clippy::todo)]
 
 use fnct::{backend::AsyncRedisBackend, format::PostcardFormatter, AsyncCache};
+use sea_orm::DatabaseConnection;
 use services::Services;
 
 use crate::jwt::JwtSecret;
@@ -22,4 +23,5 @@ pub struct SharedState {
     pub auth_redis: RedisConnection,
     pub services: Services,
     pub cache: Cache,
+    pub db: DatabaseConnection,
 }

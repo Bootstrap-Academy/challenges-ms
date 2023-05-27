@@ -18,4 +18,5 @@ pub struct MultipleChoiceQuestions {
 #[derive(Debug, Deserialize)]
 pub struct CodingChallenges {
     pub sandkasten_url: Url,
+    pub max_concurrency: usize,
 }

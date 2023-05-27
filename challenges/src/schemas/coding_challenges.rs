@@ -1,11 +1,14 @@
 use chrono::{DateTime, Utc};
-use entity::{challenges_coding_challenges, challenges_subtasks};
+use entity::{
+    challenges_coding_challenge_result, challenges_coding_challenge_submissions,
+    challenges_coding_challenges, challenges_subtasks, sea_orm_active_enums::ChallengesVerdict,
+};
 use poem_ext::patch_value::PatchValue;
 use poem_openapi::{
     types::{ParseFromJSON, ToJSON, Type},
-    Enum, Object,
+    Object,
 };
-use sandkasten_client::schemas::programs::{Limits, ResourceUsage, RunResult};
+use sandkasten_client::schemas::programs::{ResourceUsage, RunResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -119,31 +122,27 @@ pub struct UpdateCodingChallengeRequest {
 
 #[derive(Debug, Clone, Object)]
 pub struct Submission {
+    /// The unique identifier of the submission.
+    pub id: Uuid,
+    /// The challenge of the submission.
+    pub subtask_id: Uuid,
+    /// The create of the submission.
+    pub creator: Uuid,
+    /// The creation timestamp of the submission.
+    pub creation_timestamp: DateTime<Utc>,
+    /// The environment of the submission.
+    pub environment: String,
+    /// The evaluation result of the submission.
+    pub result: Option<CheckResult<RunSummary>>,
+}
+
+#[derive(Debug, Clone, Object)]
+pub struct SubmissionContent {
     /// The environment to run the solution in.
     pub environment: String,
     /// The solution code.
     #[oai(validator(max_length = 65536))]
     pub code: String,
-}
-
-#[derive(Debug, Clone, Object)]
-pub struct SubmissionResult {
-    /// The final verdict of the submission.
-    pub verdict: Verdict,
-    /// An optional reason for the verdict.
-    pub reason: Option<String>,
-    /// The stderr output of the compile step.
-    pub build_stderr: Option<String>,
-    /// The number of milliseconds the build step ran.
-    pub build_time: Option<u64>,
-    /// The amount of memory the build step used (in KB)
-    pub build_memory: Option<u64>,
-    /// The stderr output of the run step.
-    pub run_stderr: Option<String>,
-    /// The number of milliseconds the run step ran.
-    pub run_time: Option<u64>,
-    /// The amount of memory the run step used (in KB)
-    pub run_memory: Option<u64>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -162,27 +161,11 @@ pub struct RunSummary {
     pub stderr: String,
     /// The amount of resources the process used.
     pub resource_usage: ResourceUsage,
-    /// The limits that applied to the process.
-    pub limits: Limits,
-}
-
-#[derive(Debug, Clone, Enum, Serialize, Deserialize)]
-#[oai(rename_all = "SCREAMING_SNAKE_CASE")]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum Verdict {
-    Ok,
-    WrongAnswer,
-    InvalidOutputFormat,
-    TimeLimitExceeded,
-    MemoryLimitExceeded,
-    NoOutput,
-    CompilationError,
-    RuntimeError,
 }
 
 #[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct CheckResult<T: Send + Sync + Type + ParseFromJSON + ToJSON> {
-    pub verdict: Verdict,
+    pub verdict: ChallengesVerdict,
     pub reason: Option<String>,
     pub compile: Option<T>,
     pub run: Option<T>,
@@ -215,7 +198,6 @@ impl From<RunResult> for RunSummary {
             status: value.status,
             stderr: value.stderr,
             resource_usage: value.resource_usage,
-            limits: value.limits,
         }
     }
 }
@@ -227,6 +209,56 @@ impl From<CheckResult<RunResult>> for CheckResult<RunSummary> {
             reason: value.reason,
             compile: value.compile.map(Into::into),
             run: value.run.map(Into::into),
+        }
+    }
+}
+
+impl Submission {
+    pub fn from(
+        submission: challenges_coding_challenge_submissions::Model,
+        result: Option<CheckResult<RunSummary>>,
+    ) -> Self {
+        Self {
+            id: submission.id,
+            subtask_id: submission.subtask_id,
+            creator: submission.creator,
+            creation_timestamp: submission
+                .creation_timestamp
+                .and_local_timezone(Utc)
+                .unwrap(),
+            environment: submission.environment,
+            result,
+        }
+    }
+}
+
+impl From<challenges_coding_challenge_result::Model> for CheckResult<RunSummary> {
+    fn from(value: challenges_coding_challenge_result::Model) -> Self {
+        let summary = |status, stderr, time, memory| {
+            Some(RunSummary {
+                status: status?,
+                stderr: stderr?,
+                resource_usage: ResourceUsage {
+                    time: time? as _,
+                    memory: memory? as _,
+                },
+            })
+        };
+        Self {
+            verdict: value.verdict,
+            reason: value.reason,
+            compile: summary(
+                value.build_status,
+                value.build_stderr,
+                value.build_time,
+                value.build_memory,
+            ),
+            run: summary(
+                value.run_status,
+                value.run_stderr,
+                value.run_time,
+                value.run_memory,
+            ),
         }
     }
 }

@@ -1,3 +1,4 @@
+use entity::sea_orm_active_enums::ChallengesVerdict;
 use fnct::{format::JsonFormatter, key};
 use lib::{Cache, CacheError};
 use sandkasten_client::{
@@ -14,7 +15,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::schemas::coding_challenges::{CheckResult, Example, Verdict};
+use crate::schemas::coding_challenges::{CheckResult, Example};
 
 pub const EVALUATOR_TEMPLATE: &str = include_str!("../../assets/evaluator/template.py");
 pub const EVALUATOR_LIBRARY: &str = include_str!("../../assets/evaluator/lib.py");
@@ -60,7 +61,7 @@ impl Judge<'_> {
                         .await?;
                     Ok(match result {
                         CheckResult {
-                            verdict: Verdict::Ok,
+                            verdict: ChallengesVerdict::Ok,
                             run: Some(run),
                             ..
                         } => Ok(Example {
@@ -170,7 +171,7 @@ impl Judge<'_> {
                         Err(Error::EnvironmentNotFound)
                     }
                     ErrorResponse::Inner(BuildRunError::CompileError(result)) => Ok(CheckResult {
-                        verdict: Verdict::CompilationError,
+                        verdict: ChallengesVerdict::CompilationError,
                         reason: None,
                         compile: Some(result),
                         run: None,
@@ -183,13 +184,13 @@ impl Judge<'_> {
             x => x?,
         };
         if let Some(verdict) = match (time_limit, memory_limit) {
-            _ if output.run.status != 0 => Some(Verdict::RuntimeError),
-            _ if output.run.stdout.is_empty() => Some(Verdict::NoOutput),
+            _ if output.run.status != 0 => Some(ChallengesVerdict::RuntimeError),
+            _ if output.run.stdout.is_empty() => Some(ChallengesVerdict::NoOutput),
             (Some(time_limit), _) if output.run.resource_usage.time > time_limit => {
-                Some(Verdict::TimeLimitExceeded)
+                Some(ChallengesVerdict::TimeLimitExceeded)
             }
             (_, Some(memory_limit)) if output.run.resource_usage.memory / 1024 > memory_limit => {
-                Some(Verdict::MemoryLimitExceeded)
+                Some(ChallengesVerdict::MemoryLimitExceeded)
             }
             _ => None,
         } {
@@ -248,6 +249,6 @@ pub struct Output<'a> {
 
 #[derive(Debug, Deserialize)]
 struct EvaluatorCheckOutput {
-    verdict: Verdict,
+    verdict: ChallengesVerdict,
     reason: Option<String>,
 }

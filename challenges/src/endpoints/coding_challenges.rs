@@ -1,8 +1,11 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::Utc;
-use entity::{challenges_coding_challenges, challenges_subtasks};
-use fnct::format::JsonFormatter;
+use entity::{
+    challenges_coding_challenge_result, challenges_coding_challenge_submissions,
+    challenges_coding_challenges, challenges_subtasks, sea_orm_active_enums::ChallengesVerdict,
+};
+use fnct::{format::JsonFormatter, key};
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
     Cache, SharedState,
@@ -15,20 +18,25 @@ use poem_openapi::{
     Object, OpenApi,
 };
 use sandkasten_client::{
-    schemas::programs::{BuildRunResult, RunResult},
+    schemas::{
+        environments::Environment,
+        programs::{BuildRunResult, RunResult},
+    },
     SandkastenClient,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
-    QueryOrder, Set, Unchanged,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
+    QueryFilter, QueryOrder, Set, TransactionTrait, Unchanged,
 };
-use tracing::error;
+use thiserror::Error;
+use tokio::sync::Semaphore;
+use tracing::{debug, error, trace};
 use uuid::Uuid;
 
 use crate::{
     schemas::coding_challenges::{
         CheckResult, CodingChallenge, CreateCodingChallengeRequest, Example, Submission,
-        UpdateCodingChallengeRequest,
+        SubmissionContent, UpdateCodingChallengeRequest,
     },
     services::{
         judge::{self, Judge, EVALUATOR_LIBRARY, EVALUATOR_TEMPLATE},
@@ -42,6 +50,7 @@ pub struct CodingChallenges {
     pub state: Arc<SharedState>,
     pub sandkasten: SandkastenClient,
     pub judge_cache: Cache<JsonFormatter>,
+    pub judge_lock: Arc<Semaphore>,
 }
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
@@ -171,7 +180,7 @@ impl CodingChallenges {
             return GetSolution::subtask_not_found();
         };
 
-        GetSolution::ok(Submission {
+        GetSolution::ok(SubmissionContent {
             environment: cc.solution_environment,
             code: cc.solution_code,
         })
@@ -192,20 +201,19 @@ impl CodingChallenges {
         };
 
         let cc_id = Uuid::new_v4();
-        if let Err(result) = self
-            .check_challenge(CheckChallenge {
-                challenge_id: cc_id,
-                evaluator: &data.0.evaluator,
-                solution_environment: &data.0.solution_environment,
-                solution_code: &data.0.solution_code,
-                time_limit: data.0.time_limit,
-                memory_limit: data.0.memory_limit,
-                static_tests: data.0.static_tests,
-                random_tests: data.0.random_tests,
-            })
-            .await?
+        if let Err(result) = check_challenge(CheckChallenge {
+            judge: self.get_judge(&data.0.evaluator),
+            challenge_id: cc_id,
+            solution_environment: &data.0.solution_environment,
+            solution_code: &data.0.solution_code,
+            time_limit: data.0.time_limit,
+            memory_limit: data.0.memory_limit,
+            static_tests: data.0.static_tests,
+            random_tests: data.0.random_tests,
+        })
+        .await?
         {
-            return Ok(result.into());
+            return Ok(_CheckError::Response::from(result).into());
         }
 
         let subtask = challenges_subtasks::ActiveModel {
@@ -258,23 +266,22 @@ impl CodingChallenges {
             return UpdateCodingChallenge::task_not_found();
         }
 
-        if let Err(result) = self
-            .check_challenge(CheckChallenge {
-                challenge_id: cc.subtask_id,
-                evaluator: data.0.evaluator.get_new(&cc.evaluator),
-                solution_environment: data
-                    .0
-                    .solution_environment
-                    .get_new(&cc.solution_environment),
-                solution_code: data.0.solution_code.get_new(&cc.solution_code),
-                time_limit: *data.0.time_limit.get_new(&(cc.time_limit as _)),
-                memory_limit: *data.0.memory_limit.get_new(&(cc.memory_limit as _)),
-                static_tests: *data.0.static_tests.get_new(&(cc.static_tests as _)),
-                random_tests: *data.0.random_tests.get_new(&(cc.random_tests as _)),
-            })
-            .await?
+        if let Err(result) = check_challenge(CheckChallenge {
+            judge: self.get_judge(data.0.evaluator.get_new(&cc.evaluator)),
+            challenge_id: cc.subtask_id,
+            solution_environment: data
+                .0
+                .solution_environment
+                .get_new(&cc.solution_environment),
+            solution_code: data.0.solution_code.get_new(&cc.solution_code),
+            time_limit: *data.0.time_limit.get_new(&(cc.time_limit as _)),
+            memory_limit: *data.0.memory_limit.get_new(&(cc.memory_limit as _)),
+            static_tests: *data.0.static_tests.get_new(&(cc.static_tests as _)),
+            random_tests: *data.0.random_tests.get_new(&(cc.random_tests as _)),
+        })
+        .await?
         {
-            return Ok(result.into());
+            return Ok(_CheckError::Response::from(result).into());
         }
 
         let cc = challenges_coding_challenges::ActiveModel {
@@ -336,7 +343,7 @@ impl CodingChallenges {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         example_id: Path<String>,
-        data: Json<Submission>,
+        data: Json<SubmissionContent>,
         db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> TestExample::Response<VerifiedUserAuth> {
@@ -397,6 +404,137 @@ impl CodingChallenges {
         TestExample::ok(result)
     }
 
+    /// List all submissions of a coding challenge.
+    #[oai(
+        path = "/tasks/:task_id/coding_challenges/:subtask_id/submissions",
+        method = "get"
+    )]
+    async fn list_submission(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> ListSubmissions::Response<VerifiedUserAuth> {
+        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+            return ListSubmissions::subtask_not_found();
+        };
+
+        ListSubmissions::ok(
+            cc.find_related(challenges_coding_challenge_submissions::Entity)
+                .filter(challenges_coding_challenge_submissions::Column::Creator.eq(auth.0.id))
+                .find_also_related(challenges_coding_challenge_result::Entity)
+                .all(&***db)
+                .await?
+                .into_iter()
+                .map(|(submission, result)| Submission::from(submission, result.map(Into::into)))
+                .collect(),
+        )
+    }
+
+    /// Get a submission of a coding challenge by id.
+    #[oai(
+        path = "/tasks/:task_id/coding_challenges/:subtask_id/submissions/:submission_id",
+        method = "get"
+    )]
+    async fn get_submission(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        submission_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> GetSubmission::Response<VerifiedUserAuth> {
+        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+            return GetSubmission::submission_not_found();
+        };
+
+        let Some(submission) = challenges_coding_challenge_submissions::Entity::find_by_id(submission_id.0)
+            .filter(challenges_coding_challenge_submissions::Column::SubtaskId.eq(cc.subtask_id))
+            .filter(challenges_coding_challenge_submissions::Column::Creator.eq(auth.0.id))
+            .one(&***db)
+            .await?
+        else {
+            return GetSubmission::submission_not_found();
+        };
+
+        GetSubmission::ok(SubmissionContent {
+            environment: submission.environment,
+            code: submission.code,
+        })
+    }
+
+    /// Create a submission for a coding challenge.
+    #[oai(
+        path = "/tasks/:task_id/coding_challenges/:subtask_id/submissions",
+        method = "post"
+    )]
+    async fn create_submission(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        data: Json<SubmissionContent>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> CreateSubmission::Response<VerifiedUserAuth> {
+        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+            return CreateSubmission::subtask_not_found();
+        };
+
+        if !self
+            .get_environments()
+            .await?
+            .contains_key(&data.0.environment)
+        {
+            return CreateSubmission::environment_not_found();
+        }
+
+        let submission = challenges_coding_challenge_submissions::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            subtask_id: Set(cc.subtask_id),
+            creator: Set(auth.0.id),
+            creation_timestamp: Set(Utc::now().naive_utc()),
+            environment: Set(data.0.environment),
+            code: Set(data.0.code),
+        }
+        .insert(&***db)
+        .await?;
+
+        tokio::spawn({
+            let judge_lock = Arc::clone(&self.judge_lock);
+            let submission = submission.clone();
+            let db = self.state.db.clone();
+            let sandkasten = self.sandkasten.clone();
+            let cache = self.judge_cache.clone();
+            async move {
+                let _guard = judge_lock.acquire().await;
+                let submission_id = submission.id;
+                let db = match db.begin().await {
+                    Ok(x) => x,
+                    Err(err) => {
+                        error!(
+                            "judge task for {submission_id} failed to start db transaction: {err}",
+                        );
+                        return;
+                    }
+                };
+                let judge = Judge {
+                    sandkasten: &sandkasten,
+                    evaluator: &cc.evaluator,
+                    cache: &cache,
+                };
+                if let Err(err) = judge_submission(&db, &cc, submission, judge).await {
+                    error!("judge task for {submission_id} failed: {err}");
+                    db.rollback().await.ok();
+                } else if let Err(err) = db.commit().await {
+                    error!("judge task for {submission_id} failed to commit db transaction: {err}");
+                }
+            }
+        });
+
+        CreateSubmission::ok(Submission::from(submission, None))
+    }
+
     /// Return the evaluator template.
     #[oai(path = "/coding_challenges/evaluator/template.py", method = "get")]
     async fn get_evaluator_template(&self) -> PlainText<&'static str> {
@@ -437,7 +575,7 @@ response!(GetEvaluator = {
 });
 
 response!(GetSolution = {
-    Ok(200) => Submission,
+    Ok(200) => SubmissionContent,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
 });
@@ -446,7 +584,7 @@ response!(CreateCodingChallenge = {
     Ok(201) => CodingChallenge,
     /// Task does not exist.
     TaskNotFound(404, error),
-    ..CheckError::Response,
+    .._CheckError::Response,
 });
 
 response!(UpdateCodingChallenge = {
@@ -455,7 +593,7 @@ response!(UpdateCodingChallenge = {
     SubtaskNotFound(404, error),
     /// Task does not exist.
     TaskNotFound(404, error),
-    ..CheckError::Response,
+    .._CheckError::Response,
 });
 
 response!(DeleteCodingChallenge = {
@@ -474,6 +612,26 @@ response!(TestExample = {
     EvaluatorFailed(400, error),
 });
 
+response!(ListSubmissions = {
+    Ok(200) => Vec<Submission>,
+    /// Subtask does not exist.
+    SubtaskNotFound(404, error),
+});
+
+response!(GetSubmission = {
+    Ok(200) => SubmissionContent,
+    /// Submission does not exist.
+    SubmissionNotFound(404, error),
+});
+
+response!(CreateSubmission = {
+    Ok(201) => Submission,
+    /// Subtask does not exist.
+    SubtaskNotFound(404, error),
+    /// The solution environment does not exist.
+    EnvironmentNotFound(404, error),
+});
+
 impl CodingChallenges {
     fn get_judge<'a>(&'a self, evaluator: &'a str) -> Judge<'a> {
         Judge {
@@ -483,70 +641,77 @@ impl CodingChallenges {
         }
     }
 
-    async fn check_challenge(
-        &self,
-        CheckChallenge {
-            challenge_id,
-            evaluator,
-            solution_environment,
-            solution_code,
-            time_limit,
-            memory_limit,
-            static_tests,
-            random_tests,
-        }: CheckChallenge<'_>,
-    ) -> Result<Result<(), CheckError::Response>, ErrorResponse> {
-        let judge = self.get_judge(evaluator);
+    async fn get_environments(&self) -> Result<HashMap<String, Environment>, ErrorResponse> {
+        Ok(self
+            .state
+            .cache
+            .cached_result(key!(), &[], None, async {
+                self.sandkasten.list_environments().await
+            })
+            .await??)
+    }
+}
 
-        let examples = match judge.examples().await {
+async fn check_challenge(
+    CheckChallenge {
+        judge,
+        challenge_id,
+        solution_environment,
+        solution_code,
+        time_limit,
+        memory_limit,
+        static_tests,
+        random_tests,
+    }: CheckChallenge<'_>,
+) -> Result<Result<(), CheckError>, judge::Error> {
+    let examples = match judge.examples().await {
+        Err(judge::Error::EvaluatorFailed(err)) => {
+            return Ok(Err(CheckError::EvaluatorFailed(err)));
+        }
+        Err(judge::Error::InvalidOutput(err)) => {
+            return Ok(Err(CheckError::InvalidOutput(err)));
+        }
+        x => x?,
+    };
+    if examples.is_empty() {
+        return Ok(Err(CheckError::NoExamples));
+    }
+
+    for seed in examples
+        .into_iter()
+        .chain((0..static_tests).map(|x| format!("_static_{x}_{challenge_id}")))
+        .chain((0..random_tests).map(|_| Uuid::new_v4().to_string()))
+    {
+        let result = match judge
+            .get_example_checked(
+                &seed,
+                solution_environment,
+                solution_code,
+                Some(time_limit),
+                Some(memory_limit),
+            )
+            .await
+        {
+            Err(judge::Error::EnvironmentNotFound) => {
+                return Ok(Err(CheckError::EnvironmentNotFound));
+            }
             Err(judge::Error::EvaluatorFailed(err)) => {
-                return Ok(Err(CheckError::evaluator_failed(err)));
+                return Ok(Err(CheckError::EvaluatorFailed(err)));
             }
             Err(judge::Error::InvalidOutput(err)) => {
-                return Ok(Err(CheckError::invalid_output(err)));
+                return Ok(Err(CheckError::InvalidOutput(err)));
             }
             x => x?,
         };
-        if examples.is_empty() {
-            return Ok(Err(CheckError::no_examples()));
+        if let Err(result) = result {
+            return Ok(Err(CheckError::TestcaseFailed(CheckTestcaseError {
+                seed: seed.clone(),
+                result,
+            })));
         }
-
-        for seed in examples
-            .into_iter()
-            .chain((0..static_tests).map(|x| format!("_static_{x}_{challenge_id}")))
-            .chain((0..random_tests).map(|_| Uuid::new_v4().to_string()))
-        {
-            let result = match judge
-                .get_example_checked(
-                    &seed,
-                    solution_environment,
-                    solution_code,
-                    Some(time_limit),
-                    Some(memory_limit),
-                )
-                .await
-            {
-                Err(judge::Error::EnvironmentNotFound) => {
-                    return Ok(Err(CheckError::environment_not_found()));
-                }
-                Err(judge::Error::EvaluatorFailed(err)) => {
-                    return Ok(Err(CheckError::evaluator_failed(err)));
-                }
-                Err(judge::Error::InvalidOutput(err)) => {
-                    return Ok(Err(CheckError::invalid_output(err)));
-                }
-                x => x?,
-            };
-            if let Err(result) = result {
-                return Ok(Err(CheckError::testcase_failed(CheckTestcaseError {
-                    seed: seed.clone(),
-                    result,
-                })));
-            }
-        }
-
-        Ok(Ok(()))
     }
+
+    Ok(Ok(()))
 }
 
 async fn get_challenge(
@@ -573,15 +738,108 @@ async fn get_challenge(
     )
 }
 
+async fn judge_submission(
+    db: &DatabaseTransaction,
+    challenge: &challenges_coding_challenges::Model,
+    submission: challenges_coding_challenge_submissions::Model,
+    judge: Judge<'_>,
+) -> Result<(), JudgeSubmissionError> {
+    debug!("judging submission {}", submission.id);
+    let result = check_challenge(CheckChallenge {
+        judge,
+        challenge_id: challenge.subtask_id,
+        solution_environment: &submission.environment,
+        solution_code: &submission.code,
+        time_limit: challenge.time_limit as _,
+        memory_limit: challenge.memory_limit as _,
+        static_tests: challenge.static_tests as _,
+        random_tests: challenge.random_tests as _,
+    })
+    .await?;
+    trace!("judge result for {}: {result:?}", submission.id);
+    match result {
+        Ok(()) => {
+            // TODO send rewards
+            challenges_coding_challenge_result::ActiveModel {
+                submission_id: Set(submission.id),
+                verdict: Set(ChallengesVerdict::Ok),
+                reason: Set(None),
+                build_status: Set(None),
+                build_stderr: Set(None),
+                build_time: Set(None),
+                build_memory: Set(None),
+                run_status: Set(None),
+                run_stderr: Set(None),
+                run_time: Set(None),
+                run_memory: Set(None),
+            }
+            .insert(db)
+            .await?;
+        }
+        Err(CheckError::TestcaseFailed(CheckTestcaseError { result, .. })) => {
+            let (build_status, build_stderr, build_time, build_memory) = match result.compile {
+                Some(x) => (
+                    Some(x.status),
+                    Some(x.stderr),
+                    Some(x.resource_usage.time as _),
+                    Some(x.resource_usage.memory as _),
+                ),
+                None => (None, None, None, None),
+            };
+            let (run_status, run_stderr, run_time, run_memory) = match result.run {
+                Some(x) => (
+                    Some(x.status),
+                    Some(x.stderr),
+                    Some(x.resource_usage.time as _),
+                    Some(x.resource_usage.memory as _),
+                ),
+                None => (None, None, None, None),
+            };
+            challenges_coding_challenge_result::ActiveModel {
+                submission_id: Set(submission.id),
+                verdict: Set(result.verdict),
+                reason: Set(result.reason),
+                build_status: Set(build_status),
+                build_stderr: Set(build_stderr),
+                build_time: Set(build_time),
+                build_memory: Set(build_memory),
+                run_status: Set(run_status),
+                run_stderr: Set(run_stderr),
+                run_time: Set(run_time),
+                run_memory: Set(run_memory),
+            }
+            .insert(db)
+            .await?;
+        }
+        Err(err) => return Err(JudgeSubmissionError::Check(Box::new(err))),
+    }
+
+    Ok(())
+}
+
 struct CheckChallenge<'a> {
+    judge: Judge<'a>,
     challenge_id: Uuid,
-    evaluator: &'a str,
     solution_environment: &'a str,
     solution_code: &'a str,
     time_limit: u64,
     memory_limit: u64,
     static_tests: u8,
     random_tests: u8,
+}
+
+#[derive(Debug)]
+enum CheckError {
+    /// The list of examples provided by the evaluator is empty.
+    NoExamples,
+    /// The solution environment does not exist.
+    EnvironmentNotFound,
+    /// The evaluator crashed.
+    EvaluatorFailed(BuildRunResult),
+    /// The evaluator failed to produce valid output.
+    InvalidOutput(BuildRunResult),
+    /// The sample solution failed on a specific test case.
+    TestcaseFailed(CheckTestcaseError),
 }
 
 mod _check_error {
@@ -599,10 +857,32 @@ mod _check_error {
         TestcaseFailed(400, error) => CheckTestcaseError,
     });
 }
-use _check_error::CheckError::raw as CheckError;
+use _check_error::CheckError::raw as _CheckError;
+
+impl From<CheckError> for _CheckError::Response {
+    fn from(value: CheckError) -> Self {
+        match value {
+            CheckError::NoExamples => _CheckError::no_examples(),
+            CheckError::EnvironmentNotFound => _CheckError::environment_not_found(),
+            CheckError::EvaluatorFailed(x) => _CheckError::evaluator_failed(x),
+            CheckError::InvalidOutput(x) => _CheckError::invalid_output(x),
+            CheckError::TestcaseFailed(x) => _CheckError::testcase_failed(x),
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 pub struct CheckTestcaseError {
     seed: String,
     result: CheckResult<RunResult>,
+}
+
+#[derive(Debug, Error)]
+enum JudgeSubmissionError {
+    #[error("failed to judge submission: {0}")]
+    Judge(#[from] judge::Error),
+    #[error("database error: {0}")]
+    Db(#[from] DbErr),
+    #[error("check error: {0:?}")]
+    Check(Box<CheckError>),
 }
