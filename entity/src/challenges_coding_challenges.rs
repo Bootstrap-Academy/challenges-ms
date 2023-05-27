@@ -23,6 +23,8 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::challenges_coding_challenge_submissions::Entity")]
+    ChallengesCodingChallengeSubmissions,
     #[sea_orm(
         belongs_to = "super::challenges_subtasks::Entity",
         from = "Column::SubtaskId",
@@ -31,6 +33,12 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     ChallengesSubtasks,
+}
+
+impl Related<super::challenges_coding_challenge_submissions::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ChallengesCodingChallengeSubmissions.def()
+    }
 }
 
 impl Related<super::challenges_subtasks::Entity> for Entity {

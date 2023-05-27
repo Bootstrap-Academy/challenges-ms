@@ -7,3 +7,4 @@ publish = false
 [dependencies]
 poem-openapi = { workspace = true }
 sea-orm = { workspace = true }
+serde = { workspace = true }
