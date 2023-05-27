@@ -31,7 +31,7 @@ use crate::{
         UpdateCodingChallengeRequest,
     },
     services::{
-        judge::{self, Judge},
+        judge::{self, Judge, EVALUATOR_LIBRARY, EVALUATOR_TEMPLATE},
         tasks::get_task,
     },
 };
@@ -400,13 +400,13 @@ impl CodingChallenges {
     /// Return the evaluator template.
     #[oai(path = "/coding_challenges/evaluator/template.py", method = "get")]
     async fn get_evaluator_template(&self) -> PlainText<&'static str> {
-        PlainText(include_str!("../../assets/evaluator/template.py"))
+        PlainText(EVALUATOR_TEMPLATE)
     }
 
     /// Return the evaluator library.
     #[oai(path = "/coding_challenges/evaluator/lib.py", method = "get")]
     async fn get_evaluator_lib(&self) -> PlainText<&'static str> {
-        PlainText(include_str!("../../assets/evaluator/lib.py"))
+        PlainText(EVALUATOR_LIBRARY)
     }
 }
 

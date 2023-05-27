@@ -16,6 +16,9 @@ use thiserror::Error;
 
 use crate::schemas::coding_challenges::{CheckResult, Example, Verdict};
 
+pub const EVALUATOR_TEMPLATE: &str = include_str!("../../assets/evaluator/template.py");
+pub const EVALUATOR_LIBRARY: &str = include_str!("../../assets/evaluator/lib.py");
+
 pub struct Judge<'a> {
     pub sandkasten: &'a SandkastenClient,
     pub evaluator: &'a str,
@@ -112,7 +115,7 @@ impl Judge<'_> {
                     },
                     files: vec![File {
                         name: "lib.py".into(),
-                        content: include_str!("../../assets/evaluator/lib.py").into(),
+                        content: EVALUATOR_LIBRARY.into(),
                     }],
                     ..Default::default()
                 },
