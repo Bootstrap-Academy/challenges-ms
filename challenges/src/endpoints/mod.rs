@@ -49,6 +49,7 @@ pub fn get_api(state: Arc<SharedState>, config: Arc<Config>) -> impl OpenApi {
             judge_lock: Arc::new(Semaphore::new(
                 config.challenges.coding_challenges.max_concurrency,
             )),
-        },
+        }
+        .get_api(),
     )
 }
