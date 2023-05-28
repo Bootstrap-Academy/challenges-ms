@@ -47,6 +47,7 @@ impl CodingChallenges {
                 sandkasten: self.sandkasten,
                 judge_cache: self.judge_cache,
                 judge_lock: self.judge_lock,
+                reward_lock: Default::default(),
             },
         )
     }

@@ -234,6 +234,7 @@ dependencies = [
  "entity",
  "fnct",
  "itertools",
+ "key-rwlock",
  "lib",
  "poem",
  "poem-ext",
@@ -1043,6 +1044,15 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "key-rwlock"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "954b7404c4add84254f1e6b4073585476bdb52fb854f6dc59bfa18db198f0097"
+dependencies = [
+ "tokio",
 ]
 
 [[package]]

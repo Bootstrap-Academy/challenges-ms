@@ -3,9 +3,10 @@ use std::{collections::HashMap, sync::Arc};
 use chrono::Utc;
 use entity::{
     challenges_coding_challenge_result, challenges_coding_challenge_submissions,
-    challenges_coding_challenges, sea_orm_active_enums::ChallengesVerdict,
+    challenges_coding_challenges, challenges_subtasks, sea_orm_active_enums::ChallengesVerdict,
 };
 use fnct::{format::JsonFormatter, key};
+use key_rwlock::KeyRwLock;
 use lib::{auth::VerifiedUserAuth, Cache, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
@@ -23,7 +24,10 @@ use uuid::Uuid;
 use crate::{
     endpoints::Tags,
     schemas::coding_challenges::{Submission, SubmissionContent},
-    services::judge::{self, Judge},
+    services::{
+        judge::{self, Judge},
+        subtasks::{send_task_rewards, SendTaskRewardsError},
+    },
 };
 
 use super::{check_challenge, get_challenge, CheckChallenge, CheckError, CheckTestcaseError};
@@ -33,6 +37,7 @@ pub struct Api {
     pub sandkasten: SandkastenClient,
     pub judge_cache: Cache<JsonFormatter>,
     pub judge_lock: Arc<Semaphore>,
+    pub reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
 }
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
@@ -110,7 +115,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> CreateSubmission::Response<VerifiedUserAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return CreateSubmission::subtask_not_found();
         };
 
@@ -139,6 +144,8 @@ impl Api {
             let db = self.state.db.clone();
             let sandkasten = self.sandkasten.clone();
             let cache = self.judge_cache.clone();
+            let reward_lock = Arc::clone(&self.reward_lock);
+            let state = Arc::clone(&self.state);
             async move {
                 let _guard = judge_lock.acquire().await;
                 let submission_id = submission.id;
@@ -156,7 +163,10 @@ impl Api {
                     evaluator: &cc.evaluator,
                     cache: &cache,
                 };
-                if let Err(err) = judge_submission(&db, &cc, submission, judge).await {
+                if let Err(err) =
+                    judge_submission(&db, &subtask, &cc, submission, judge, reward_lock, state)
+                        .await
+                {
                     error!("judge task for {submission_id} failed: {err}");
                     db.rollback().await.ok();
                 } else if let Err(err) = db.commit().await {
@@ -191,9 +201,12 @@ response!(CreateSubmission = {
 
 async fn judge_submission(
     db: &DatabaseTransaction,
+    subtask: &challenges_subtasks::Model,
     challenge: &challenges_coding_challenges::Model,
     submission: challenges_coding_challenge_submissions::Model,
     judge: Judge<'_>,
+    reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
+    state: Arc<SharedState>,
 ) -> Result<(), JudgeSubmissionError> {
     debug!("judging submission {}", submission.id);
     let result = check_challenge(CheckChallenge {
@@ -210,7 +223,28 @@ async fn judge_submission(
     trace!("judge result for {}: {result:?}", submission.id);
     match result {
         Ok(()) => {
-            // TODO send rewards
+            {
+                let _guard = reward_lock
+                    .write((submission.subtask_id, submission.creator))
+                    .await;
+                let solved_previously = challenge
+                    .find_related(challenges_coding_challenge_submissions::Entity)
+                    .find_also_related(challenges_coding_challenge_result::Entity)
+                    .filter(
+                        challenges_coding_challenge_submissions::Column::Creator
+                            .eq(submission.creator),
+                    )
+                    .filter(
+                        challenges_coding_challenge_result::Column::Verdict
+                            .eq(ChallengesVerdict::Ok),
+                    )
+                    .one(db)
+                    .await?
+                    .is_some();
+                if !solved_previously {
+                    send_task_rewards(&state.services, db, submission.creator, subtask).await?;
+                }
+            }
             challenges_coding_challenge_result::ActiveModel {
                 submission_id: Set(submission.id),
                 verdict: Set(ChallengesVerdict::Ok),
@@ -276,6 +310,8 @@ enum JudgeSubmissionError {
     Db(#[from] DbErr),
     #[error("check error: {0:?}")]
     Check(Box<CheckError>),
+    #[error("could not send task rewards: {0}")]
+    TaskRewards(#[from] SendTaskRewardsError),
 }
 
 impl Api {
