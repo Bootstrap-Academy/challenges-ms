@@ -10,7 +10,7 @@ chrono = { workspace = true }
 entity = { workspace = true }
 fnct = { workspace = true }
 itertools = { workspace = true }
-key-rwlock = { version = "0.1.0", default-features = false }
+key-rwlock = { version = "0.1.1", default-features = false }
 lib = { workspace = true }
 poem = { workspace = true }
 poem-ext = { workspace = true }
