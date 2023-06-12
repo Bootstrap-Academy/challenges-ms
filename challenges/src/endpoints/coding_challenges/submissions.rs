@@ -318,7 +318,7 @@ impl Api {
         Ok(self
             .state
             .cache
-            .cached_result(key!(), &[], None, async {
+            .cached_result(key!(), &[], None, || async {
                 self.sandkasten.list_environments().await
             })
             .await??)

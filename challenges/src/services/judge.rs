@@ -47,7 +47,7 @@ impl Judge<'_> {
                 ),
                 &[],
                 None,
-                async {
+                || async {
                     let input = self.generate(seed).await?;
                     let result = self
                         .run_solution(
@@ -79,7 +79,7 @@ impl Judge<'_> {
 
     pub async fn examples(&self) -> Result<Vec<String>, Error> {
         self.cache
-            .cached_result(key!(self.evaluator), &[], None, async {
+            .cached_result(key!(self.evaluator), &[], None, || async {
                 self.run_evaluator(vec!["examples".into()], None::<()>)
                     .await
             })
@@ -88,7 +88,7 @@ impl Judge<'_> {
 
     pub async fn generate(&self, seed: &str) -> Result<Input, Error> {
         self.cache
-            .cached_result(key!(self.evaluator, seed), &[], None, async {
+            .cached_result(key!(self.evaluator, seed), &[], None, || async {
                 self.run_evaluator(vec!["generate".into(), seed.into()], None::<()>)
                     .await
             })

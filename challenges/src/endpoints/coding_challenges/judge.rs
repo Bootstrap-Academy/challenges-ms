@@ -101,7 +101,7 @@ impl Api {
     async fn list_environments(&self) -> ListEnvironments::Response {
         ListEnvironments::ok(ListEnvironmentsResponse(
             self.judge_cache
-                .cached_result(key!(), &[], None, async {
+                .cached_result(key!(), &[], None, || async {
                     self.sandkasten.list_environments().await
                 })
                 .await??,

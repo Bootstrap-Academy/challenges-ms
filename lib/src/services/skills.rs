@@ -20,7 +20,7 @@ impl SkillsService {
         Ok(self
             .0
             .cache
-            .cached_result::<_, reqwest::Error, _, _>(key!(), &["skills"], None, async {
+            .cached_result::<_, reqwest::Error, _, _>(key!(), &["skills"], None, || async {
                 let skills: Vec<Skill> = self
                     .0
                     .get("/skills")
@@ -41,7 +41,7 @@ impl SkillsService {
         Ok(self
             .0
             .cache
-            .cached_result::<_, reqwest::Error, _, _>(key!(), &["courses"], None, async {
+            .cached_result::<_, reqwest::Error, _, _>(key!(), &["courses"], None, || async {
                 self.0
                     .get("/courses")
                     .send()
