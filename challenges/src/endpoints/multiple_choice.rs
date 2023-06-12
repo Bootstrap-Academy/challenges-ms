@@ -18,6 +18,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use super::Tags;
 use crate::{
     schemas::multiple_choice::{
         check_answers, split_answers, Answer, CreateMultipleChoiceQuestionRequest,
@@ -26,8 +27,6 @@ use crate::{
     },
     services::{subtasks::send_task_rewards, tasks::get_task},
 };
-
-use super::Tags;
 
 pub struct MultipleChoice {
     pub state: Arc<SharedState>,

@@ -20,12 +20,11 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use super::Tags;
 use crate::schemas::challenges::{
     Category, Challenge, CreateCategoryRequest, CreateChallengeRequest, UpdateCategoryRequest,
     UpdateChallengeRequest,
 };
-
-use super::Tags;
 
 pub struct Challenges {
     pub state: Arc<SharedState>,

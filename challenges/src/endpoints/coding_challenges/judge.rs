@@ -7,13 +7,12 @@ use sandkasten_client::{schemas::programs::RunResult, SandkastenClient};
 use tracing::error;
 use uuid::Uuid;
 
+use super::get_challenge;
 use crate::{
     endpoints::Tags,
     schemas::coding_challenges::{CheckResult, SubmissionContent},
     services::judge::{self, Judge},
 };
-
-use super::get_challenge;
 
 pub struct Api {
     pub sandkasten: SandkastenClient,
@@ -58,7 +57,8 @@ impl Api {
         let inp = match judge.generate(&example_id.0).await {
             Err(judge::Error::EvaluatorFailed(err) | judge::Error::InvalidOutput(err)) => {
                 error!(
-                    "evaluator for {} failed to execute while generating example input for {}: {:?}",
+                    "evaluator for {} failed to execute while generating example input for {}: \
+                     {:?}",
                     subtask_id.0, example_id.0, err
                 );
                 return TestExample::evaluator_failed();
@@ -79,7 +79,8 @@ impl Api {
         {
             Err(judge::Error::EvaluatorFailed(err) | judge::Error::InvalidOutput(err)) => {
                 error!(
-                    "evaluator for {} failed to execute while testing submission for example {}: {:?}",
+                    "evaluator for {} failed to execute while testing submission for example {}: \
+                     {:?}",
                     subtask_id.0, example_id.0, err
                 );
                 return TestExample::evaluator_failed();

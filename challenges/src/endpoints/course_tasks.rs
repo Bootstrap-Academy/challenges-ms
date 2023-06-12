@@ -20,9 +20,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::schemas::course_tasks::{CourseTask, CreateCourseTaskRequest, UpdateCourseTaskRequest};
-
 use super::Tags;
+use crate::schemas::course_tasks::{CourseTask, CreateCourseTaskRequest, UpdateCourseTaskRequest};
 
 pub struct CourseTasks {
     pub state: Arc<SharedState>,

@@ -21,6 +21,7 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
+use super::{check_challenge, get_challenge, CheckChallenge, CheckError, CheckTestcaseError};
 use crate::{
     endpoints::Tags,
     schemas::coding_challenges::{Submission, SubmissionContent},
@@ -29,8 +30,6 @@ use crate::{
         subtasks::{send_task_rewards, SendTaskRewardsError},
     },
 };
-
-use super::{check_challenge, get_challenge, CheckChallenge, CheckError, CheckTestcaseError};
 
 pub struct Api {
     pub state: Arc<SharedState>,

@@ -15,6 +15,7 @@ use sea_orm::{
 use tracing::error;
 use uuid::Uuid;
 
+use super::{_CheckError, check_challenge, get_challenge, CheckChallenge};
 use crate::{
     endpoints::Tags,
     schemas::coding_challenges::{
@@ -26,8 +27,6 @@ use crate::{
         tasks::get_task,
     },
 };
-
-use super::{_CheckError, check_challenge, get_challenge, CheckChallenge};
 
 pub struct Api {
     pub sandkasten: SandkastenClient,

@@ -71,8 +71,8 @@ pub struct Answer {
 
 #[derive(Debug, Clone, Object)]
 pub struct SolveQuestionRequest {
-    /// For each possible answer exactly one boolean (`true` for "answer is correct" or `false` for
-    /// "answer is incorrect").
+    /// For each possible answer exactly one boolean (`true` for "answer is
+    /// correct" or `false` for "answer is incorrect").
     pub answers: Vec<bool>,
 }
 

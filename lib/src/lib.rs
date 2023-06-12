@@ -5,8 +5,7 @@ use fnct::{backend::AsyncRedisBackend, format::PostcardFormatter, AsyncCache};
 use sea_orm::DatabaseConnection;
 use services::Services;
 
-use crate::jwt::JwtSecret;
-use crate::redis::RedisConnection;
+use crate::{jwt::JwtSecret, redis::RedisConnection};
 
 pub mod auth;
 pub mod config;

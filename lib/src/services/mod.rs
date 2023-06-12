@@ -4,12 +4,11 @@ use reqwest::{Client, Method, RequestBuilder, StatusCode};
 use thiserror::Error;
 use url::Url;
 
+use self::{shop::ShopService, skills::SkillsService};
 use crate::{
     jwt::{sign_jwt, InternalAuthToken, JwtSecret},
     Cache, CacheError,
 };
-
-use self::{shop::ShopService, skills::SkillsService};
 
 pub mod shop;
 pub mod skills;
