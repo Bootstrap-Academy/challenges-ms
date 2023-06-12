@@ -9,10 +9,10 @@ pub struct Model {
     pub task_id: Uuid,
     #[sea_orm(column_type = "Text")]
     pub course_id: String,
-    #[sea_orm(column_type = "Text")]
-    pub section_id: String,
-    #[sea_orm(column_type = "Text")]
-    pub lecture_id: String,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub section_id: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub lecture_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

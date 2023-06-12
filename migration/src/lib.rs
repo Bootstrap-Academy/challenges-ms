@@ -13,6 +13,7 @@ mod m20230522_183823_remove_examples;
 mod m20230522_192000_add_cc_solution;
 mod m20230525_065623_cc_number_of_tests;
 mod m20230527_151432_cc_submissions;
+mod m20230612_182959_new_course_tasks;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -26,6 +27,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230522_192000_add_cc_solution::Migration),
             Box::new(m20230525_065623_cc_number_of_tests::Migration),
             Box::new(m20230527_151432_cc_submissions::Migration),
+            Box::new(m20230612_182959_new_course_tasks::Migration),
         ]
     }
 }

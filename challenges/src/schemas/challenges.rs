@@ -95,8 +95,8 @@ impl Challenge {
         Self {
             id: task.id,
             category: challenge.category_id,
-            title: task.title,
-            description: task.description,
+            title: challenge.title,
+            description: challenge.description,
             creator: task.creator,
             creation_timestamp: task.creation_timestamp.and_local_timezone(Utc).unwrap(),
             skills: challenge.skill_ids,

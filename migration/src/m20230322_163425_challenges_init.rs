@@ -253,10 +253,12 @@ pub enum Challenge {
     CategoryId,
     TaskId,
     SkillIds,
+    Title,
+    Description,
 }
 
 #[derive(Iden)]
-enum CourseTask {
+pub enum CourseTask {
     #[iden = "challenges_course_tasks"]
     Table,
     CourseId,
@@ -266,7 +268,7 @@ enum CourseTask {
 }
 
 #[derive(Iden)]
-enum Task {
+pub enum Task {
     #[iden = "challenges_tasks"]
     Table,
     Id,

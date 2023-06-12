@@ -15,13 +15,12 @@ use poem_openapi::{
     OpenApi,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, EntityTrait, ModelTrait,
-    QueryFilter, QueryOrder, Set, Unchanged,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, EntityTrait, QueryFilter, Set,
 };
 use uuid::Uuid;
 
 use super::Tags;
-use crate::schemas::course_tasks::{CourseTask, CreateCourseTaskRequest, UpdateCourseTaskRequest};
+use crate::schemas::course_tasks::{CourseTask, CreateCourseTaskRequest};
 
 pub struct CourseTasks {
     pub state: Arc<SharedState>,
@@ -34,8 +33,6 @@ impl CourseTasks {
     async fn list_tasks_in_skill(
         &self,
         skill_id: Path<String>,
-        /// Filter by task title
-        title: Query<Option<String>>,
         db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> ListTasksInSkill::Response<VerifiedUserAuth> {
@@ -55,13 +52,9 @@ impl CourseTasks {
             acc.add(challenges_course_tasks::Column::CourseId.eq(e))
         });
 
-        let mut query = challenges_course_tasks::Entity::find()
+        let query = challenges_course_tasks::Entity::find()
             .find_also_related(challenges_tasks::Entity)
-            .filter(condition)
-            .order_by_asc(challenges_tasks::Column::Title);
-        if let Some(title) = title.0 {
-            query = query.filter(challenges_tasks::Column::Title.contains(&title));
-        }
+            .filter(condition);
         ListTasksInSkill::ok(
             query
                 .all(&***db)
@@ -77,8 +70,6 @@ impl CourseTasks {
     async fn list_course_tasks(
         &self,
         course_id: Path<String>,
-        /// Filter by task title
-        title: Query<Option<String>>,
         /// Filter by section id
         section_id: Query<Option<String>>,
         /// Filter by lecture id
@@ -88,11 +79,7 @@ impl CourseTasks {
     ) -> ListCourseTasks::Response<VerifiedUserAuth> {
         let mut query = challenges_course_tasks::Entity::find()
             .find_also_related(challenges_tasks::Entity)
-            .filter(challenges_course_tasks::Column::CourseId.eq(course_id.0))
-            .order_by_asc(challenges_tasks::Column::Title);
-        if let Some(title) = title.0 {
-            query = query.filter(challenges_tasks::Column::Title.contains(&title));
-        }
+            .filter(challenges_course_tasks::Column::CourseId.eq(course_id.0));
         if let Some(section_id) = section_id.0 {
             query = query.filter(challenges_course_tasks::Column::SectionId.eq(section_id));
         }
@@ -133,21 +120,48 @@ impl CourseTasks {
         db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> CreateCourseTask::Response<AdminAuth> {
-        if !check_course(
+        if data.0.lecture_id.is_some() && data.0.section_id.is_none() {
+            return CreateCourseTask::lecture_without_section();
+        }
+
+        match check_course(
             &self.state.services,
             &course_id.0,
-            &data.0.section_id,
-            &data.0.lecture_id,
+            data.0.section_id.as_deref(),
+            data.0.lecture_id.as_deref(),
         )
         .await?
         {
-            return CreateCourseTask::course_not_found();
+            Ok(_) => {}
+            Err(CourseNotFoundError::Course) => return CreateCourseTask::course_not_found(),
+            Err(CourseNotFoundError::Section) => return CreateCourseTask::section_not_found(),
+            Err(CourseNotFoundError::Lecture) => return CreateCourseTask::lecture_not_found(),
+        }
+
+        let eq = |x: challenges_course_tasks::Column, y| match y {
+            Some(y) => x.eq(y),
+            None => x.is_null(),
+        };
+
+        if let Some((course_task, Some(task))) = challenges_course_tasks::Entity::find()
+            .find_also_related(challenges_tasks::Entity)
+            .filter(challenges_course_tasks::Column::CourseId.eq(&course_id.0))
+            .filter(eq(
+                challenges_course_tasks::Column::SectionId,
+                data.0.section_id.as_deref(),
+            ))
+            .filter(eq(
+                challenges_course_tasks::Column::LectureId,
+                data.0.lecture_id.as_deref(),
+            ))
+            .one(&***db)
+            .await?
+        {
+            return CreateCourseTask::ok(CourseTask::from(course_task, task));
         }
 
         let task = challenges_tasks::ActiveModel {
             id: Set(Uuid::new_v4()),
-            title: Set(data.0.title),
-            description: Set(data.0.description),
             creator: Set(auth.0.id),
             creation_timestamp: Set(Utc::now().naive_utc()),
         }
@@ -163,67 +177,7 @@ impl CourseTasks {
         .insert(&***db)
         .await?;
 
-        CreateCourseTask::ok(CourseTask::from(course_task, task))
-    }
-
-    /// Update a course task.
-    #[oai(path = "/courses/:course_id/tasks/:task_id", method = "patch")]
-    async fn update_course_task(
-        &self,
-        course_id: Path<String>,
-        task_id: Path<Uuid>,
-        data: Json<UpdateCourseTaskRequest>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> UpdateCourseTask::Response<AdminAuth> {
-        match get_course_task(&db, course_id.0, task_id.0).await? {
-            Some((course_task, task)) => {
-                let course_id = data.0.course_id.get_new(&course_task.course_id);
-                let section_id = &data.0.section_id.get_new(&course_task.section_id);
-                let lecture_id = &data.0.lecture_id.get_new(&course_task.lecture_id);
-                if !check_course(&self.state.services, course_id, section_id, lecture_id).await? {
-                    return UpdateCourseTask::course_not_found();
-                }
-
-                let course_task = challenges_course_tasks::ActiveModel {
-                    task_id: Unchanged(course_task.task_id),
-                    course_id: data.0.course_id.update(course_task.course_id),
-                    section_id: data.0.section_id.update(course_task.section_id),
-                    lecture_id: data.0.lecture_id.update(course_task.lecture_id),
-                }
-                .update(&***db)
-                .await?;
-                let task = challenges_tasks::ActiveModel {
-                    id: Unchanged(task.id),
-                    title: data.0.title.update(task.title),
-                    description: data.0.description.update(task.description),
-                    creator: Unchanged(task.creator),
-                    creation_timestamp: Unchanged(task.creation_timestamp),
-                }
-                .update(&***db)
-                .await?;
-                UpdateCourseTask::ok(CourseTask::from(course_task, task))
-            }
-            None => UpdateCourseTask::course_task_not_found(),
-        }
-    }
-
-    /// Delete a course task.
-    #[oai(path = "/courses/:course_id/tasks/:task_id", method = "delete")]
-    async fn delete_course_task(
-        &self,
-        course_id: Path<String>,
-        task_id: Path<Uuid>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> DeleteCourseTask::Response<AdminAuth> {
-        match get_course_task(&db, course_id.0, task_id.0).await? {
-            Some((_, task)) => {
-                task.delete(&***db).await?;
-                DeleteCourseTask::ok()
-            }
-            None => DeleteCourseTask::course_task_not_found(),
-        }
+        CreateCourseTask::created(CourseTask::from(course_task, task))
     }
 }
 
@@ -244,23 +198,16 @@ response!(GetCourseTask = {
 });
 
 response!(CreateCourseTask = {
-    Ok(201) => CourseTask,
-    /// Course does not exist.
-    CourseNotFound(404, error),
-});
-
-response!(UpdateCourseTask = {
+    Created(201) => CourseTask,
     Ok(200) => CourseTask,
-    /// Course task does not exist.
-    CourseTaskNotFound(404, error),
     /// Course does not exist.
     CourseNotFound(404, error),
-});
-
-response!(DeleteCourseTask = {
-    Ok(200),
-    /// Course task does not exist.
-    CourseTaskNotFound(404, error),
+    /// Section does not exist.
+    SectionNotFound(404, error),
+    /// Lecture does not exist.
+    LectureNotFound(404, error),
+    /// Cannot set lecture id without section id
+    LectureWithoutSection(400, error),
 });
 
 async fn get_course_task(
@@ -284,19 +231,34 @@ async fn get_course_task(
 async fn check_course(
     services: &Services,
     course_id: &str,
-    section_id: &str,
-    lecture_id: &str,
-) -> Result<bool, ErrorResponse> {
+    section_id: Option<&str>,
+    lecture_id: Option<&str>,
+) -> Result<Result<(), CourseNotFoundError>, ErrorResponse> {
     let courses = services.skills.get_courses().await?;
-    Ok((|| {
-        courses
-            .get(course_id)?
-            .sections
-            .iter()
-            .find(|e| e.id == section_id)?
-            .lectures
-            .iter()
-            .find(|e| e.id == lecture_id)
-    })()
-    .is_some())
+    let Some(course) = courses.get(course_id) else {
+        return Ok(Err(CourseNotFoundError::Course));
+    };
+
+    let Some(section_id) = section_id else {
+        return Ok(Ok(()));
+    };
+    let Some(section) = course.sections.iter().find(|e| e.id == section_id) else {
+        return Ok(Err(CourseNotFoundError::Section));
+    };
+
+    let Some(lecture_id) = lecture_id else {
+        return Ok(Ok(()));
+    };
+    let Some(_lecture) = section.lectures.iter().find(|e| e.id == lecture_id) else {
+        return Ok(Err(CourseNotFoundError::Lecture));
+    };
+
+    Ok(Ok(()))
+}
+
+#[derive(Debug)]
+enum CourseNotFoundError {
+    Course,
+    Section,
+    Lecture,
 }

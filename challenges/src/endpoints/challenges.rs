@@ -146,9 +146,9 @@ impl Challenges {
         let mut query = challenges_challenges::Entity::find()
             .find_also_related(challenges_tasks::Entity)
             .filter(challenges_challenges::Column::CategoryId.eq(category_id.0))
-            .order_by_asc(challenges_tasks::Column::Title);
+            .order_by_asc(challenges_challenges::Column::Title);
         if let Some(title) = title.0 {
-            query = query.filter(challenges_tasks::Column::Title.contains(&title));
+            query = query.filter(challenges_challenges::Column::Title.contains(&title));
         }
         ListChallenges::ok(
             query
@@ -199,8 +199,6 @@ impl Challenges {
 
         let task = challenges_tasks::ActiveModel {
             id: Set(Uuid::new_v4()),
-            title: Set(data.0.title),
-            description: Set(data.0.description),
             creator: Set(auth.0.id),
             creation_timestamp: Set(Utc::now().naive_utc()),
         }
@@ -211,6 +209,8 @@ impl Challenges {
             task_id: Set(task.id),
             category_id: Set(category.id),
             skill_ids: Set(data.0.skills),
+            title: Set(data.0.title),
+            description: Set(data.0.description),
         }
         .insert(&***db)
         .await?;
@@ -251,13 +251,13 @@ impl Challenges {
                     task_id: Unchanged(challenge.task_id),
                     category_id: data.0.category.update(challenge.category_id),
                     skill_ids: data.0.skills.update(challenge.skill_ids),
+                    title: data.0.title.update(challenge.title),
+                    description: data.0.description.update(challenge.description),
                 }
                 .update(&***db)
                 .await?;
                 let task = challenges_tasks::ActiveModel {
                     id: Unchanged(task.id),
-                    title: data.0.title.update(task.title),
-                    description: data.0.description.update(task.description),
                     creator: Unchanged(task.creator),
                     creation_timestamp: Unchanged(task.creation_timestamp),
                 }

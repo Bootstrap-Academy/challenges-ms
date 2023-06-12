@@ -9,6 +9,10 @@ pub struct Model {
     pub task_id: Uuid,
     pub category_id: Uuid,
     pub skill_ids: Vec<String>,
+    #[sea_orm(column_type = "Text")]
+    pub title: String,
+    #[sea_orm(column_type = "Text")]
+    pub description: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

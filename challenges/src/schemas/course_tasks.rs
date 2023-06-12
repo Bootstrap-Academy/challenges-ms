@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use entity::{challenges_course_tasks, challenges_tasks};
 use poem_ext::patch_value::PatchValue;
 use poem_openapi::Object;
@@ -11,31 +10,17 @@ pub struct CourseTask {
     /// The course this task is associated with
     pub course_id: String,
     /// The section this task is associated with
-    pub section_id: String,
+    pub section_id: Option<String>,
     /// The lecture this task is associated with
-    pub lecture_id: String,
-    /// The title of the task
-    pub title: String,
-    /// The description of the task
-    pub description: String,
-    /// The creator of the task
-    pub creator: Uuid,
-    /// The creation timestamp of the task
-    pub creation_timestamp: DateTime<Utc>,
+    pub lecture_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Object)]
 pub struct CreateCourseTaskRequest {
     /// The section this task is associated with
-    pub section_id: String,
+    pub section_id: Option<String>,
     /// The lecture this task is associated with
-    pub lecture_id: String,
-    /// The title of the task
-    #[oai(validator(max_length = 256))]
-    pub title: String,
-    /// The description of the task
-    #[oai(validator(max_length = 4096))]
-    pub description: String,
+    pub lecture_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -43,15 +28,9 @@ pub struct UpdateCourseTaskRequest {
     /// The course this task is associated with
     pub course_id: PatchValue<String>,
     /// The section this task is associated with
-    pub section_id: PatchValue<String>,
+    pub section_id: PatchValue<Option<String>>,
     /// The lecture this task is associated with
-    pub lecture_id: PatchValue<String>,
-    /// The title of the task
-    #[oai(validator(max_length = 256))]
-    pub title: PatchValue<String>,
-    /// The description of the task
-    #[oai(validator(max_length = 4096))]
-    pub description: PatchValue<String>,
+    pub lecture_id: PatchValue<Option<String>>,
 }
 
 impl CourseTask {
@@ -64,10 +43,6 @@ impl CourseTask {
             course_id: course_task.course_id,
             section_id: course_task.section_id,
             lecture_id: course_task.lecture_id,
-            title: task.title,
-            description: task.description,
-            creator: task.creator,
-            creation_timestamp: task.creation_timestamp.and_local_timezone(Utc).unwrap(),
         }
     }
 }
