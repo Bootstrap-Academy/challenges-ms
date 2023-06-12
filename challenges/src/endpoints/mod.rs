@@ -28,7 +28,11 @@ pub enum Tags {
     CodingChallenges,
 }
 
-pub fn get_api(state: Arc<SharedState>, config: Arc<Config>) -> impl OpenApi {
+pub fn get_api(
+    state: Arc<SharedState>,
+    config: Arc<Config>,
+    sandkasten: SandkastenClient,
+) -> impl OpenApi {
     (
         Challenges {
             state: state.clone(),
@@ -43,9 +47,7 @@ pub fn get_api(state: Arc<SharedState>, config: Arc<Config>) -> impl OpenApi {
         CodingChallenges {
             judge_cache: state.cache.with_formatter(JsonFormatter),
             state,
-            sandkasten: SandkastenClient::new(
-                config.challenges.coding_challenges.sandkasten_url.clone(),
-            ),
+            sandkasten,
             judge_lock: Arc::new(Semaphore::new(
                 config.challenges.coding_challenges.max_concurrency,
             )),
