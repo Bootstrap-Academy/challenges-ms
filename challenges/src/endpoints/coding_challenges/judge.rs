@@ -98,7 +98,10 @@ impl Api {
     }
 
     #[oai(path = "/environments", method = "get")]
-    async fn list_environments(&self) -> ListEnvironments::Response {
+    async fn list_environments(
+        &self,
+        _auth: VerifiedUserAuth,
+    ) -> ListEnvironments::Response<VerifiedUserAuth> {
         ListEnvironments::ok(ListEnvironmentsResponse(
             self.judge_cache
                 .cached_result(key!(), &[], None, || async {
