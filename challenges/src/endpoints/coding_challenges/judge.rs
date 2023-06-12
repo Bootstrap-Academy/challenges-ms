@@ -1,9 +1,12 @@
-use fnct::format::JsonFormatter;
+use fnct::{format::JsonFormatter, key};
 use lib::{auth::VerifiedUserAuth, Cache};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
-use sandkasten_client::{schemas::programs::RunResult, SandkastenClient};
+use sandkasten_client::{
+    schemas::{environments::ListEnvironmentsResponse, programs::RunResult},
+    SandkastenClient,
+};
 use tracing::error;
 use uuid::Uuid;
 
@@ -93,6 +96,17 @@ impl Api {
 
         TestExample::ok(result)
     }
+
+    #[oai(path = "/environments", method = "get")]
+    async fn list_environments(&self) -> ListEnvironments::Response {
+        ListEnvironments::ok(ListEnvironmentsResponse(
+            self.judge_cache
+                .cached_result(key!(), &[], None, async {
+                    self.sandkasten.list_environments().await
+                })
+                .await??,
+        ))
+    }
 }
 
 response!(TestExample = {
@@ -103,6 +117,11 @@ response!(TestExample = {
     EnvironmentNotFound(404, error),
     /// The evaluator failed to execute.
     EvaluatorFailed(400, error),
+});
+
+response!(ListEnvironments = {
+    /// Map of available environments.
+    Ok(200) => ListEnvironmentsResponse,
 });
 
 impl Api {
