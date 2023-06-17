@@ -60,6 +60,10 @@ pub async fn can_create_for_course(
     course_id: &str,
     user: &User,
 ) -> Result<bool, CheckPermissionsError> {
+    if user.admin {
+        return Ok(true);
+    }
+
     let skills = get_skills_of_course(services, course_id).await?;
     let levels = services.skills.get_skill_levels(user.id).await?;
     Ok(skills.iter().all(|skill| {
