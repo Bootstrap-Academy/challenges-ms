@@ -6,8 +6,14 @@ pub struct ChallengesConfig {
     pub host: String,
     pub port: u16,
     pub server: String,
+    pub quizzes: Quizzes,
     pub multiple_choice_questions: MultipleChoiceQuestions,
     pub coding_challenges: CodingChallenges,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Quizzes {
+    pub min_level: u32,
 }
 
 #[derive(Debug, Deserialize)]

@@ -71,6 +71,22 @@ impl SkillsService {
             code => return Err(super::ServiceError::UnexpectedStatusCode(code)),
         })
     }
+
+    pub async fn get_skill_levels(&self, user_id: Uuid) -> ServiceResult<HashMap<String, u32>> {
+        Ok(self
+            .0
+            .cache
+            .cached_result(key!(user_id), &[], None, || async {
+                self.0
+                    .get(&format!("/skills/{user_id}"))
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json()
+                    .await
+            })
+            .await??)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

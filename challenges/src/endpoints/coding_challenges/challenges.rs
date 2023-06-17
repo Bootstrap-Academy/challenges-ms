@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use chrono::Utc;
 use entity::{challenges_coding_challenges, challenges_subtasks};
 use fnct::format::JsonFormatter;
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
-    Cache,
+    config::Config,
+    Cache, SharedState,
 };
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response};
@@ -24,13 +27,16 @@ use crate::{
     },
     services::{
         judge::{self, Judge},
-        tasks::get_task,
+        subtasks::can_create,
+        tasks::{get_task, get_task_with_specific},
     },
 };
 
 pub struct Api {
     pub sandkasten: SandkastenClient,
     pub judge_cache: Cache<JsonFormatter>,
+    pub config: Arc<Config>,
+    pub state: Arc<SharedState>,
 }
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
@@ -135,13 +141,17 @@ impl Api {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> GetEvaluator::Response<AdminAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        auth: VerifiedUserAuth,
+    ) -> GetEvaluator::Response<VerifiedUserAuth> {
+        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetEvaluator::subtask_not_found();
         };
 
-        GetEvaluator::ok(cc.evaluator)
+        if auth.0.admin || auth.0.id == subtask.creator {
+            GetEvaluator::ok(cc.evaluator)
+        } else {
+            GetEvaluator::forbidden()
+        }
     }
 
     /// Get the solution of a coding challenge by id.
@@ -154,16 +164,20 @@ impl Api {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> GetSolution::Response<AdminAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        auth: VerifiedUserAuth,
+    ) -> GetSolution::Response<VerifiedUserAuth> {
+        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetSolution::subtask_not_found();
         };
 
-        GetSolution::ok(SubmissionContent {
-            environment: cc.solution_environment,
-            code: cc.solution_code,
-        })
+        if auth.0.admin || auth.0.id == subtask.creator {
+            GetSolution::ok(SubmissionContent {
+                environment: cc.solution_environment,
+                code: cc.solution_code,
+            })
+        } else {
+            GetSolution::forbidden()
+        }
     }
 
     /// Create a new coding challenge.
@@ -173,12 +187,15 @@ impl Api {
         task_id: Path<Uuid>,
         data: Json<CreateCodingChallengeRequest>,
         db: Data<&DbTxn>,
-        auth: AdminAuth,
-    ) -> CreateCodingChallenge::Response<AdminAuth> {
-        let task = match get_task(&db, task_id.0).await? {
+        auth: VerifiedUserAuth,
+    ) -> CreateCodingChallenge::Response<VerifiedUserAuth> {
+        let (task, specific) = match get_task_with_specific(&db, task_id.0).await? {
             Some(task) => task,
             None => return CreateCodingChallenge::task_not_found(),
         };
+        if !can_create(&self.state.services, &self.config, &specific, &auth.0).await? {
+            return CreateCodingChallenge::forbidden();
+        }
 
         let cc_id = Uuid::new_v4();
         if let Err(result) = check_challenge(CheckChallenge {
@@ -338,18 +355,24 @@ response!(GetEvaluator = {
     Ok(200) => String,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
+    /// The user is not allowed to request the evaluator of this coding challenge.
+    Forbidden(403, error),
 });
 
 response!(GetSolution = {
     Ok(200) => SubmissionContent,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
+    /// The user is not allowed to request the solution of this coding challenge.
+    Forbidden(403, error),
 });
 
 response!(CreateCodingChallenge = {
     Ok(201) => CodingChallenge,
     /// Task does not exist.
     TaskNotFound(404, error),
+    /// The user is not allowed to create questions in this task.
+    Forbidden(403, error),
     .._CheckError::Response,
 });
 

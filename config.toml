@@ -52,6 +52,9 @@ host = "0.0.0.0"
 port = 8000
 server = "/"
 
+[challenges.quizzes]
+min_level = 5
+
 [challenges.multiple_choice_questions]
 timeout_incr = 10  # seconds
 

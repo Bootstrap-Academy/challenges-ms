@@ -39,6 +39,7 @@ pub fn get_api(
         },
         CourseTasks {
             state: state.clone(),
+            config: Arc::clone(&config),
         },
         MultipleChoice {
             state: state.clone(),
@@ -51,6 +52,7 @@ pub fn get_api(
             judge_lock: Arc::new(Semaphore::new(
                 config.challenges.coding_challenges.max_concurrency,
             )),
+            config,
         }
         .get_api(),
     )

@@ -25,7 +25,10 @@ use crate::{
         MultipleChoiceQuestion, SolveQuestionFeedback, SolveQuestionRequest,
         UpdateMultipleChoiceQuestionRequest,
     },
-    services::{subtasks::send_task_rewards, tasks::get_task},
+    services::{
+        subtasks::{can_create, send_task_rewards},
+        tasks::{get_task, get_task_with_specific},
+    },
 };
 
 pub struct MultipleChoice {
@@ -85,11 +88,17 @@ impl MultipleChoice {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> GetQuestionWithSolution::Response<AdminAuth> {
+        auth: VerifiedUserAuth,
+    ) -> GetQuestionWithSolution::Response<VerifiedUserAuth> {
         match get_question(&db, task_id.0, subtask_id.0).await? {
             Some((mcq, subtask)) => {
-                GetQuestionWithSolution::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask))
+                if auth.0.admin || auth.0.id == subtask.creator {
+                    GetQuestionWithSolution::ok(MultipleChoiceQuestion::<Answer>::from(
+                        mcq, subtask,
+                    ))
+                } else {
+                    GetQuestionWithSolution::forbidden()
+                }
             }
             None => GetQuestionWithSolution::subtask_not_found(),
         }
@@ -102,12 +111,16 @@ impl MultipleChoice {
         task_id: Path<Uuid>,
         data: Json<CreateMultipleChoiceQuestionRequest>,
         db: Data<&DbTxn>,
-        auth: AdminAuth,
-    ) -> CreateQuestion::Response<AdminAuth> {
-        let task = match get_task(&db, task_id.0).await? {
+        auth: VerifiedUserAuth,
+    ) -> CreateQuestion::Response<VerifiedUserAuth> {
+        let (task, specific) = match get_task_with_specific(&db, task_id.0).await? {
             Some(task) => task,
             None => return CreateQuestion::task_not_found(),
         };
+        if !can_create(&self.state.services, &self.config, &specific, &auth.0).await? {
+            return CreateQuestion::forbidden();
+        }
+
         let subtask = challenges_subtasks::ActiveModel {
             id: Set(Uuid::new_v4()),
             task_id: Set(task.id),
@@ -276,12 +289,16 @@ response!(GetQuestionWithSolution = {
     Ok(200) => MultipleChoiceQuestion<Answer>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
+    /// The user is not allowed to view the solution to this question.
+    Forbidden(403, error),
 });
 
 response!(CreateQuestion = {
     Ok(201) => MultipleChoiceQuestion<Answer>,
     /// Task does not exist.
     TaskNotFound(404, error),
+    /// The user is not allowed to create questions in this task.
+    Forbidden(403, error),
 });
 
 response!(UpdateQuestion = {

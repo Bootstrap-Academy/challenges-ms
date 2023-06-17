@@ -2,11 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use entity::{challenges_course_tasks, challenges_tasks};
-use lib::{
-    auth::{AdminAuth, VerifiedUserAuth},
-    services::Services,
-    SharedState,
-};
+use lib::{auth::VerifiedUserAuth, config::Config, services::Services, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{
@@ -20,10 +16,14 @@ use sea_orm::{
 use uuid::Uuid;
 
 use super::Tags;
-use crate::schemas::course_tasks::{CourseTask, CreateCourseTaskRequest};
+use crate::{
+    schemas::course_tasks::{CourseTask, CreateCourseTaskRequest},
+    services::subtasks::can_create_for_course,
+};
 
 pub struct CourseTasks {
     pub state: Arc<SharedState>,
+    pub config: Arc<Config>,
 }
 
 #[OpenApi(tag = "Tags::CourseTasks")]
@@ -118,8 +118,8 @@ impl CourseTasks {
         course_id: Path<String>,
         data: Json<CreateCourseTaskRequest>,
         db: Data<&DbTxn>,
-        auth: AdminAuth,
-    ) -> CreateCourseTask::Response<AdminAuth> {
+        auth: VerifiedUserAuth,
+    ) -> CreateCourseTask::Response<VerifiedUserAuth> {
         if data.0.lecture_id.is_some() && data.0.section_id.is_none() {
             return CreateCourseTask::lecture_without_section();
         }
@@ -136,6 +136,11 @@ impl CourseTasks {
             Err(CourseNotFoundError::Course) => return CreateCourseTask::course_not_found(),
             Err(CourseNotFoundError::Section) => return CreateCourseTask::section_not_found(),
             Err(CourseNotFoundError::Lecture) => return CreateCourseTask::lecture_not_found(),
+        }
+
+        if !can_create_for_course(&self.state.services, &self.config, &course_id.0, &auth.0).await?
+        {
+            return CreateCourseTask::forbidden();
         }
 
         let eq = |x: challenges_course_tasks::Column, y| match y {
@@ -208,6 +213,8 @@ response!(CreateCourseTask = {
     LectureNotFound(404, error),
     /// Cannot set lecture id without section id
     LectureWithoutSection(400, error),
+    /// The user is not allowed to create this course task.
+    Forbidden(403, error),
 });
 
 async fn get_course_task(

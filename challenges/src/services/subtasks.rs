@@ -1,14 +1,19 @@
-use entity::{
-    challenges_challenges, challenges_course_tasks, challenges_subtasks, challenges_tasks,
-};
-use lib::services::{
-    shop::AddCoinsError, skills::AddSkillProgressError, ServiceError, ServiceResult, Services,
+use entity::{challenges_subtasks, challenges_tasks};
+use lib::{
+    auth::User,
+    config::Config,
+    services::{
+        shop::AddCoinsError, skills::AddSkillProgressError, ServiceError, ServiceResult, Services,
+    },
 };
 use sea_orm::{DatabaseTransaction, DbErr, ModelTrait};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::course_tasks::get_skills_of_course;
+use super::{
+    course_tasks::get_skills_of_course,
+    tasks::{get_specific_task, Task},
+};
 
 pub async fn send_task_rewards(
     services: &Services,
@@ -16,7 +21,7 @@ pub async fn send_task_rewards(
     user_id: Uuid,
     subtask: &challenges_subtasks::Model,
 ) -> Result<(), SendTaskRewardsError> {
-    let skills = get_skill(
+    let skills = get_skills(
         services,
         get_parent_task(db, subtask)
             .await?
@@ -37,32 +42,50 @@ pub async fn send_task_rewards(
     Ok(())
 }
 
+pub async fn can_create(
+    services: &Services,
+    config: &Config,
+    task: &Task,
+    user: &User,
+) -> Result<bool, CheckPermissionsError> {
+    Ok(match task {
+        Task::Challenge(_) => user.admin,
+        Task::CourseTask(t) => can_create_for_course(services, config, &t.course_id, user).await?,
+    })
+}
+
+pub async fn can_create_for_course(
+    services: &Services,
+    config: &Config,
+    course_id: &str,
+    user: &User,
+) -> Result<bool, CheckPermissionsError> {
+    let skills = get_skills_of_course(services, course_id).await?;
+    let levels = services.skills.get_skill_levels(user.id).await?;
+    Ok(skills.iter().all(|skill| {
+        levels
+            .get(skill)
+            .is_some_and(|&level| level >= config.challenges.quizzes.min_level)
+    }))
+}
+
 pub async fn get_parent_task(
     db: &DatabaseTransaction,
     subtask: &challenges_subtasks::Model,
 ) -> Result<Option<(challenges_tasks::Model, Task)>, DbErr> {
-    let Some(task) = subtask
-        .find_related(challenges_tasks::Entity)
-        .one(db)
-        .await? else {return Ok(None)};
-    if let Some(challenge) = task
-        .find_related(challenges_challenges::Entity)
-        .one(db)
-        .await?
-    {
-        return Ok(Some((task, Task::Challenge(challenge))));
-    }
-    if let Some(course_task) = task
-        .find_related(challenges_course_tasks::Entity)
-        .one(db)
-        .await?
-    {
-        return Ok(Some((task, Task::CourseTask(course_task))));
-    }
-    Ok(None)
+    Ok(
+        match subtask
+            .find_related(challenges_tasks::Entity)
+            .one(db)
+            .await?
+        {
+            Some(task) => get_specific_task(db, &task).await?.map(|x| (task, x)),
+            None => None,
+        },
+    )
 }
 
-pub async fn get_skill(services: &Services, task: Task) -> ServiceResult<Vec<String>> {
+pub async fn get_skills(services: &Services, task: Task) -> ServiceResult<Vec<String>> {
     Ok(match task {
         Task::Challenge(challenge) => challenge.skill_ids,
         Task::CourseTask(task) => get_skills_of_course(services, &task.course_id).await?,
@@ -83,8 +106,10 @@ pub enum SendTaskRewardsError {
     AddXp(#[from] AddSkillProgressError),
 }
 
-#[derive(Debug)]
-pub enum Task {
-    Challenge(challenges_challenges::Model),
-    CourseTask(challenges_course_tasks::Model),
+#[derive(Debug, Error)]
+pub enum CheckPermissionsError {
+    #[error("service error: {0}")]
+    ServiceError(#[from] ServiceError),
+    #[error("database error: {0}")]
+    DbErr(#[from] DbErr),
 }

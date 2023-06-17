@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use entity::{challenges_coding_challenges, challenges_subtasks};
 use fnct::format::JsonFormatter;
-use lib::{Cache, SharedState};
+use lib::{config::Config, Cache, SharedState};
 use poem_ext::{response, responses::ErrorResponse};
 use poem_openapi::{Object, OpenApi};
 use sandkasten_client::{
@@ -28,6 +28,7 @@ pub struct CodingChallenges {
     pub sandkasten: SandkastenClient,
     pub judge_cache: Cache<JsonFormatter>,
     pub judge_lock: Arc<Semaphore>,
+    pub config: Arc<Config>,
 }
 
 impl CodingChallenges {
@@ -37,6 +38,8 @@ impl CodingChallenges {
             challenges::Api {
                 sandkasten: self.sandkasten.clone(),
                 judge_cache: self.judge_cache.clone(),
+                config: self.config,
+                state: Arc::clone(&self.state),
             },
             judge::Api {
                 sandkasten: self.sandkasten.clone(),
