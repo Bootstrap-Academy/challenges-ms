@@ -1,17 +1,22 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use entity::{challenges_subtasks, challenges_unlocked_subtasks};
+use entity::{challenges_subtasks, challenges_tasks, challenges_unlocked_subtasks};
 use lib::{auth::VerifiedUserAuth, config::Config, services::shop::AddCoinsError, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
-use poem_openapi::{param::Path, OpenApi};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter, Set,
+    Unchanged,
 };
 use uuid::Uuid;
 
 use super::Tags;
+use crate::{
+    schemas::subtasks::UpdateSubtaskRequest,
+    services::tasks::{get_specific_task, Task},
+};
 
 pub struct Subtasks {
     pub state: Arc<SharedState>,
@@ -29,7 +34,7 @@ impl Subtasks {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> UnlockSubtask::Response<VerifiedUserAuth> {
-        let Some(subtask) = get_subtask(&db, task_id.0, subtask_id.0).await? else {
+        let Some((subtask, _)) = get_subtask(&db, task_id.0, subtask_id.0).await? else {
             return UnlockSubtask::subtask_not_found();
         };
 
@@ -70,6 +75,48 @@ impl Subtasks {
 
         UnlockSubtask::unlocked()
     }
+
+    /// Update a subtask.
+    #[oai(path = "/tasks/:task_id/subtasks/:subtask_id", method = "patch")]
+    pub async fn update_subtask(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        data: Json<UpdateSubtaskRequest>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> UpdateSubtask::Response {
+        let Some((subtask, task)) = get_subtask(&db, task_id.0, subtask_id.0).await? else {
+            return UpdateSubtask::subtask_not_found();
+        };
+        if !auth.0.admin && auth.0.id != subtask.creator {
+            return UpdateSubtask::permission_denied();
+        }
+
+        let Some(specific) = get_specific_task(&db, &task).await? else {
+            return UpdateSubtask::subtask_not_found();
+        };
+        if matches!(specific, Task::CourseTask(_))
+            && *data.0.fee.get_new(&(subtask.fee as _)) > self.config.challenges.quizzes.max_fee
+            && !auth.0.admin
+        {
+            return UpdateSubtask::fee_limit_exceeded(self.config.challenges.quizzes.max_fee);
+        }
+
+        challenges_subtasks::ActiveModel {
+            id: Unchanged(subtask.id),
+            task_id: Unchanged(subtask.task_id),
+            creator: Unchanged(subtask.creator),
+            creation_timestamp: Unchanged(subtask.creation_timestamp),
+            xp: Unchanged(subtask.xp),
+            coins: Unchanged(subtask.coins),
+            fee: data.0.fee.map(|x| x as _).update(subtask.fee),
+        }
+        .update(&***db)
+        .await?;
+
+        UpdateSubtask::ok()
+    }
 }
 
 response!(UnlockSubtask = {
@@ -83,13 +130,30 @@ response!(UnlockSubtask = {
     NotEnoughCoins(403, error),
 });
 
+response!(UpdateSubtask = {
+    Ok(200),
+    /// The subtask does not exist.
+    SubtaskNotFound(404, error),
+    /// The user is not allowed to modify this subtask.
+    PermissionDenied(403, error),
+    /// The max fee limit has been exceeded.
+    FeeLimitExceeded(403, error) => u64,
+});
+
 async fn get_subtask(
     db: &DatabaseTransaction,
     task_id: Uuid,
     subtask_id: Uuid,
-) -> Result<Option<challenges_subtasks::Model>, ErrorResponse> {
-    Ok(challenges_subtasks::Entity::find_by_id(subtask_id)
-        .filter(challenges_subtasks::Column::TaskId.eq(task_id))
-        .one(db)
-        .await?)
+) -> Result<Option<(challenges_subtasks::Model, challenges_tasks::Model)>, ErrorResponse> {
+    Ok(
+        match challenges_subtasks::Entity::find_by_id(subtask_id)
+            .find_also_related(challenges_tasks::Entity)
+            .filter(challenges_subtasks::Column::TaskId.eq(task_id))
+            .one(db)
+            .await?
+        {
+            Some((subtask, Some(task))) => Some((subtask, task)),
+            _ => None,
+        },
+    )
 }

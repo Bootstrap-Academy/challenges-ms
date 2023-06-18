@@ -208,7 +208,7 @@ impl MultipleChoice {
                     creation_timestamp: Unchanged(subtask.creation_timestamp),
                     xp: data.0.xp.update(subtask.xp),
                     coins: data.0.coins.update(subtask.coins),
-                    fee: data.0.fee.update(subtask.fee),
+                    fee: data.0.fee.map(|x| x as _).update(subtask.fee),
                 }
                 .update(&***db)
                 .await?;

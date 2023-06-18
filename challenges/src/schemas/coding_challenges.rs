@@ -125,7 +125,7 @@ pub struct UpdateCodingChallengeRequest {
     /// The number of morphcoins a user gets for completing this subtask.
     pub coins: PatchValue<i64>,
     /// The number of morphcoins a user has to pay to access this subtask.
-    pub fee: PatchValue<i64>,
+    pub fee: PatchValue<u64>,
     /// The challenge description.
     #[oai(validator(max_length = 16384))]
     pub description: PatchValue<String>,
