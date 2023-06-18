@@ -13,6 +13,33 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Object)]
+pub struct CodingChallengeSummary {
+    /// The unique identifier of the subtask.
+    pub id: Uuid,
+    /// The parent task.
+    pub task_id: Uuid,
+    /// The creator of the subtask
+    pub creator: Uuid,
+    /// The creation timestamp of the subtask
+    pub creation_timestamp: DateTime<Utc>,
+    /// The number of xp a user gets for completing this subtask.
+    pub xp: i64,
+    /// The number of morphcoins a user gets for completing this subtask.
+    pub coins: i64,
+    /// The challenge description. Only available if the user has unlocked the
+    /// subtask.
+    pub description: Option<String>,
+    /// The number of milliseconds the solution may run.
+    pub time_limit: u16,
+    /// The number of megabytes of memory the solution may use.
+    pub memory_limit: u16,
+    /// The number of static tests to run for submission evaluation.
+    pub static_tests: u8,
+    /// The number of random tests to run for submission evaluation.
+    pub random_tests: u8,
+}
+
+#[derive(Debug, Clone, Object)]
 pub struct CodingChallenge {
     /// The unique identifier of the subtask.
     pub id: Uuid,
@@ -173,6 +200,28 @@ pub struct CheckResult<T: Send + Sync + Type + ParseFromJSON + ToJSON> {
     pub reason: Option<String>,
     pub compile: Option<T>,
     pub run: Option<T>,
+}
+
+impl CodingChallengeSummary {
+    pub fn from(
+        cc: challenges_coding_challenges::Model,
+        subtask: challenges_subtasks::Model,
+        unlocked: bool,
+    ) -> Self {
+        Self {
+            id: subtask.id,
+            task_id: subtask.task_id,
+            creator: subtask.creator,
+            creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
+            xp: subtask.xp,
+            coins: subtask.coins,
+            description: unlocked.then_some(cc.description),
+            time_limit: cc.time_limit as _,
+            memory_limit: cc.memory_limit as _,
+            static_tests: cc.static_tests as _,
+            random_tests: cc.random_tests as _,
+        }
+    }
 }
 
 impl CodingChallenge {

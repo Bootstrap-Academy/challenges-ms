@@ -8,6 +8,28 @@ use poem_openapi::{
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Object)]
+pub struct MultipleChoiceQuestionSummary {
+    /// The unique identifier of the subtask.
+    pub id: Uuid,
+    /// The parent task.
+    pub task_id: Uuid,
+    /// The creator of the subtask
+    pub creator: Uuid,
+    /// The creation timestamp of the subtask
+    pub creation_timestamp: DateTime<Utc>,
+    /// The number of xp a user gets for completing this subtask.
+    pub xp: i64,
+    /// The number of morphcoins a user gets for completing this subtask.
+    pub coins: i64,
+    /// The number of morphcoins a user has to pay to access this subtask.
+    pub fee: i64,
+    /// Whether the user has unlocked this subtask.
+    pub unlocked: bool,
+    /// The question text. Only available if the user has unlocked the subtask.
+    pub question: Option<String>,
+}
+
+#[derive(Debug, Clone, Object)]
 pub struct MultipleChoiceQuestion<A>
 where
     A: Send + Sync + Type + ToJSON + ParseFromJSON,
@@ -24,6 +46,8 @@ where
     pub xp: i64,
     /// The number of morphcoins a user gets for completing this subtask.
     pub coins: i64,
+    /// The number of morphcoins a user has to pay to access this subtask.
+    pub fee: i64,
     /// The question text.
     pub question: String,
     /// The possible answers to the question.
@@ -88,6 +112,26 @@ pub struct SolveQuestionFeedback {
     pub correct: usize,
 }
 
+impl MultipleChoiceQuestionSummary {
+    pub fn from(
+        mcq: challenges_multiple_choice_quizes::Model,
+        subtask: challenges_subtasks::Model,
+        unlocked: bool,
+    ) -> Self {
+        Self {
+            id: subtask.id,
+            task_id: subtask.task_id,
+            creator: subtask.creator,
+            creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
+            xp: subtask.xp,
+            coins: subtask.coins,
+            fee: subtask.fee,
+            unlocked,
+            question: unlocked.then_some(mcq.question),
+        }
+    }
+}
+
 impl MultipleChoiceQuestion<Answer> {
     pub fn from(
         mcq: challenges_multiple_choice_quizes::Model,
@@ -100,6 +144,7 @@ impl MultipleChoiceQuestion<Answer> {
             creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
             xp: subtask.xp,
             coins: subtask.coins,
+            fee: subtask.fee,
             question: mcq.question,
             answers: combine_answers(mcq.answers, mcq.correct_answers),
         }
@@ -118,6 +163,7 @@ impl MultipleChoiceQuestion<String> {
             creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
             xp: subtask.xp,
             coins: subtask.coins,
+            fee: subtask.fee,
             question: mcq.question,
             answers: mcq.answers,
         }

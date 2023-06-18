@@ -27,7 +27,7 @@ use crate::{
     schemas::coding_challenges::{Submission, SubmissionContent},
     services::{
         judge::{self, Judge},
-        subtasks::{send_task_rewards, SendTaskRewardsError},
+        subtasks::{check_unlocked, send_task_rewards, SendTaskRewardsError},
     },
 };
 
@@ -117,6 +117,9 @@ impl Api {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return CreateSubmission::subtask_not_found();
         };
+        if !check_unlocked(&db, &auth.0, &subtask).await? {
+            return CreateSubmission::no_access();
+        }
 
         if !self
             .get_environments()
@@ -196,6 +199,8 @@ response!(CreateSubmission = {
     SubtaskNotFound(404, error),
     /// The solution environment does not exist.
     EnvironmentNotFound(404, error),
+    /// The user has not unlocked this question.
+    NoAccess(403, error),
 });
 
 async fn judge_submission(

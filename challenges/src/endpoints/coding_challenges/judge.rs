@@ -14,7 +14,10 @@ use super::get_challenge;
 use crate::{
     endpoints::Tags,
     schemas::coding_challenges::{CheckResult, SubmissionContent},
-    services::judge::{self, Judge},
+    services::{
+        judge::{self, Judge},
+        subtasks::check_unlocked,
+    },
 };
 
 pub struct Api {
@@ -36,11 +39,14 @@ impl Api {
         example_id: Path<String>,
         data: Json<SubmissionContent>,
         db: Data<&DbTxn>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> TestExample::Response<VerifiedUserAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return TestExample::example_not_found();
         };
+        if !check_unlocked(&db, &auth.0, &subtask).await? {
+            return TestExample::no_access();
+        }
         let judge = self.get_judge(&cc.evaluator);
 
         let examples = match judge.examples().await {
@@ -122,6 +128,8 @@ response!(TestExample = {
     ExampleNotFound(404, error),
     /// Environment does not exist.
     EnvironmentNotFound(404, error),
+    /// The user has not unlocked this question.
+    NoAccess(403, error),
     /// The evaluator failed to execute.
     EvaluatorFailed(400, error),
 });

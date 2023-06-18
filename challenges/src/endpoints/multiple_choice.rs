@@ -11,7 +11,11 @@ use lib::{
 };
 use poem::web::Data;
 use poem_ext::{db::DbTxn, patch_value::PatchValue, response, responses::ErrorResponse};
-use poem_openapi::{param::Path, payload::Json, OpenApi};
+use poem_openapi::{
+    param::{Path, Query},
+    payload::Json,
+    OpenApi,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
     QueryOrder, Set, Unchanged,
@@ -22,11 +26,11 @@ use super::Tags;
 use crate::{
     schemas::multiple_choice::{
         check_answers, split_answers, Answer, CreateMultipleChoiceQuestionRequest,
-        MultipleChoiceQuestion, SolveQuestionFeedback, SolveQuestionRequest,
-        UpdateMultipleChoiceQuestionRequest,
+        MultipleChoiceQuestion, MultipleChoiceQuestionSummary, SolveQuestionFeedback,
+        SolveQuestionRequest, UpdateMultipleChoiceQuestionRequest,
     },
     services::{
-        subtasks::{can_create, send_task_rewards},
+        subtasks::{can_create, check_unlocked, get_unlocked, send_task_rewards},
         tasks::{get_task, get_task_with_specific, Task},
     },
 };
@@ -43,9 +47,14 @@ impl MultipleChoice {
     async fn list_questions(
         &self,
         task_id: Path<Uuid>,
+        /// Whether to search for free questions.
+        free: Query<Option<bool>>,
+        /// Whether to search for unlocked questions.
+        unlocked: Query<Option<bool>>,
         db: Data<&DbTxn>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> ListQuestions::Response<VerifiedUserAuth> {
+        let unlocked_subtasks = get_unlocked(&db, auth.0.id).await?;
         ListQuestions::ok(
             challenges_multiple_choice_quizes::Entity::find()
                 .find_also_related(challenges_subtasks::Entity)
@@ -55,7 +64,15 @@ impl MultipleChoice {
                 .await?
                 .into_iter()
                 .filter_map(|(mcq, subtask)| {
-                    Some(MultipleChoiceQuestion::<String>::from(mcq, subtask?))
+                    let subtask = subtask?;
+                    let id = subtask.id;
+                    let free_ = subtask.fee <= 0;
+                    let unlocked_ = auth.0.admin
+                        || auth.0.id == subtask.creator
+                        || free_
+                        || unlocked_subtasks.contains(&id);
+                    (free.unwrap_or(free_) == free_ && unlocked.unwrap_or(unlocked_) == unlocked_)
+                        .then_some(MultipleChoiceQuestionSummary::from(mcq, subtask, unlocked_))
                 })
                 .collect(),
         )
@@ -68,12 +85,13 @@ impl MultipleChoice {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> GetQuestion::Response<VerifiedUserAuth> {
         match get_question(&db, task_id.0, subtask_id.0).await? {
-            Some((mcq, subtask)) => {
+            Some((mcq, subtask)) if check_unlocked(&db, &auth.0, &subtask).await? => {
                 GetQuestion::ok(MultipleChoiceQuestion::<String>::from(mcq, subtask))
             }
+            Some(_) => GetQuestion::no_access(),
             None => GetQuestion::subtask_not_found(),
         }
     }
@@ -237,6 +255,9 @@ impl MultipleChoice {
         let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
             return SolveQuestion::subtask_not_found();
         };
+        if !check_unlocked(&db, &auth.0, &subtask).await? {
+            return SolveQuestion::no_access();
+        }
         if data.0.answers.len() != mcq.answers.len() {
             return SolveQuestion::wrong_length();
         }
@@ -285,13 +306,15 @@ impl MultipleChoice {
 }
 
 response!(ListQuestions = {
-    Ok(200) => Vec<MultipleChoiceQuestion<String>>,
+    Ok(200) => Vec<MultipleChoiceQuestionSummary>,
 });
 
 response!(GetQuestion = {
     Ok(200) => MultipleChoiceQuestion<String>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
+    /// The user has not unlocked this question.
+    NoAccess(403, error),
 });
 
 response!(GetQuestionWithSolution = {
@@ -334,6 +357,8 @@ response!(SolveQuestion = {
     TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
+    /// The user has not unlocked this question.
+    NoAccess(403, error),
 });
 
 async fn get_question(

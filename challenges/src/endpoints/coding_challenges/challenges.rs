@@ -10,7 +10,11 @@ use lib::{
 };
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response};
-use poem_openapi::{param::Path, payload::Json, OpenApi};
+use poem_openapi::{
+    param::{Path, Query},
+    payload::Json,
+    OpenApi,
+};
 use sandkasten_client::SandkastenClient;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set, Unchanged,
@@ -22,12 +26,12 @@ use super::{_CheckError, check_challenge, get_challenge, CheckChallenge};
 use crate::{
     endpoints::Tags,
     schemas::coding_challenges::{
-        CodingChallenge, CreateCodingChallengeRequest, Example, SubmissionContent,
-        UpdateCodingChallengeRequest,
+        CodingChallenge, CodingChallengeSummary, CreateCodingChallengeRequest, Example,
+        SubmissionContent, UpdateCodingChallengeRequest,
     },
     services::{
         judge::{self, Judge},
-        subtasks::can_create,
+        subtasks::{can_create, check_unlocked, get_unlocked},
         tasks::{get_task, get_task_with_specific, Task},
     },
 };
@@ -46,9 +50,14 @@ impl Api {
     async fn list_challenges(
         &self,
         task_id: Path<Uuid>,
+        /// Whether to search for free coding challenges.
+        free: Query<Option<bool>>,
+        /// Whether to search for unlocked coding challenges.
+        unlocked: Query<Option<bool>>,
         db: Data<&DbTxn>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> ListCodingChallenges::Response<VerifiedUserAuth> {
+        let unlocked_subtasks = get_unlocked(&db, auth.0.id).await?;
         ListCodingChallenges::ok(
             challenges_coding_challenges::Entity::find()
                 .find_also_related(challenges_subtasks::Entity)
@@ -57,7 +66,17 @@ impl Api {
                 .all(&***db)
                 .await?
                 .into_iter()
-                .filter_map(|(cc, subtask)| Some(CodingChallenge::from(cc, subtask?)))
+                .filter_map(|(cc, subtask)| {
+                    let subtask = subtask?;
+                    let id = subtask.id;
+                    let free_ = subtask.fee <= 0;
+                    let unlocked_ = auth.0.admin
+                        || auth.0.id == subtask.creator
+                        || free_
+                        || unlocked_subtasks.contains(&id);
+                    (free.unwrap_or(free_) == free_ && unlocked.unwrap_or(unlocked_) == unlocked_)
+                        .then_some(CodingChallengeSummary::from(cc, subtask, unlocked_))
+                })
                 .collect(),
         )
     }
@@ -69,10 +88,13 @@ impl Api {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> GetCodingChallenge::Response<VerifiedUserAuth> {
         match get_challenge(&db, task_id.0, subtask_id.0).await? {
-            Some((cc, subtask)) => GetCodingChallenge::ok(CodingChallenge::from(cc, subtask)),
+            Some((cc, subtask)) if check_unlocked(&db, &auth.0, &subtask).await? => {
+                GetCodingChallenge::ok(CodingChallenge::from(cc, subtask))
+            }
+            Some(_) => GetCodingChallenge::no_access(),
             None => GetCodingChallenge::subtask_not_found(),
         }
     }
@@ -87,11 +109,14 @@ impl Api {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> GetExamples::Response<VerifiedUserAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetExamples::subtask_not_found();
         };
+        if !check_unlocked(&db, &auth.0, &subtask).await? {
+            return GetExamples::no_access();
+        }
         let judge = self.get_judge(&cc.evaluator);
 
         let examples = match judge.examples().await {
@@ -343,19 +368,23 @@ impl Api {
 }
 
 response!(ListCodingChallenges = {
-    Ok(200) => Vec<CodingChallenge>,
+    Ok(200) => Vec<CodingChallengeSummary>,
 });
 
 response!(GetCodingChallenge = {
     Ok(200) => CodingChallenge,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
+    /// The user has not unlocked this question.
+    NoAccess(403, error),
 });
 
 response!(GetExamples = {
     Ok(200) => Vec<Example>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
+    /// The user has not unlocked this question.
+    NoAccess(403, error),
     /// The evaluator failed to execute.
     EvaluatorFailed(400, error),
     /// Failed to generate an example.

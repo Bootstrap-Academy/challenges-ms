@@ -1,4 +1,6 @@
-use entity::{challenges_subtasks, challenges_tasks};
+use std::collections::HashSet;
+
+use entity::{challenges_subtasks, challenges_tasks, challenges_unlocked_subtasks};
 use lib::{
     auth::User,
     config::Config,
@@ -6,7 +8,7 @@ use lib::{
         shop::AddCoinsError, skills::AddSkillProgressError, ServiceError, ServiceResult, Services,
     },
 };
-use sea_orm::{DatabaseTransaction, DbErr, ModelTrait};
+use sea_orm::{ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait, QueryFilter};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -40,6 +42,32 @@ pub async fn send_task_rewards(
             .await??;
     }
     Ok(())
+}
+
+pub async fn get_unlocked(db: &DatabaseTransaction, user_id: Uuid) -> Result<HashSet<Uuid>, DbErr> {
+    Ok(challenges_unlocked_subtasks::Entity::find()
+        .filter(challenges_unlocked_subtasks::Column::UserId.eq(user_id))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|x| x.subtask_id)
+        .collect())
+}
+
+pub async fn check_unlocked(
+    db: &DatabaseTransaction,
+    user: &User,
+    subtask: &challenges_subtasks::Model,
+) -> Result<bool, DbErr> {
+    Ok(user.admin
+        || user.id == subtask.creator
+        || subtask.fee == 0
+        || challenges_unlocked_subtasks::Entity::find()
+            .filter(challenges_unlocked_subtasks::Column::UserId.eq(user.id))
+            .filter(challenges_unlocked_subtasks::Column::SubtaskId.eq(subtask.id))
+            .one(db)
+            .await?
+            .is_some())
 }
 
 pub async fn can_create(
