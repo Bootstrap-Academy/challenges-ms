@@ -97,6 +97,10 @@ impl Api {
         TestExample::ok(result)
     }
 
+    /// Return a map of all environments.
+    ///
+    /// The keys represent the environment ids and the values contain additional
+    /// information about the environments.
     #[oai(path = "/environments", method = "get")]
     async fn list_environments(
         &self,
