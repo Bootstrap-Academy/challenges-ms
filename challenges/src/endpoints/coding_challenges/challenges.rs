@@ -28,7 +28,7 @@ use crate::{
     services::{
         judge::{self, Judge},
         subtasks::can_create,
-        tasks::{get_task, get_task_with_specific},
+        tasks::{get_task, get_task_with_specific, Task},
     },
 };
 
@@ -197,6 +197,15 @@ impl Api {
             return CreateCodingChallenge::forbidden();
         }
 
+        if matches!(specific, Task::CourseTask(_))
+            && data.0.fee > self.config.challenges.quizzes.max_fee
+            && !auth.0.admin
+        {
+            return CreateCodingChallenge::fee_limit_exceeded(
+                self.config.challenges.quizzes.max_fee,
+            );
+        }
+
         let cc_id = Uuid::new_v4();
         if let Err(result) = check_challenge(CheckChallenge {
             judge: self.get_judge(&data.0.evaluator),
@@ -220,6 +229,7 @@ impl Api {
             creation_timestamp: Set(Utc::now().naive_utc()),
             xp: Set(data.0.xp),
             coins: Set(data.0.coins),
+            fee: Set(data.0.fee as _),
         }
         .insert(&***db)
         .await?;
@@ -302,6 +312,7 @@ impl Api {
             creation_timestamp: Unchanged(subtask.creation_timestamp),
             xp: data.0.xp.update(subtask.xp),
             coins: data.0.coins.update(subtask.coins),
+            fee: data.0.fee.update(subtask.fee),
         }
         .update(&***db)
         .await?;
@@ -373,6 +384,8 @@ response!(CreateCodingChallenge = {
     TaskNotFound(404, error),
     /// The user is not allowed to create questions in this task.
     Forbidden(403, error),
+    /// The max fee limit has been exceeded.
+    FeeLimitExceeded(403, error) => u64,
     .._CheckError::Response,
 });
 

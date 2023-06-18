@@ -12,6 +12,7 @@ pub struct Model {
     pub creation_timestamp: DateTime,
     pub xp: i64,
     pub coins: i64,
+    pub fee: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

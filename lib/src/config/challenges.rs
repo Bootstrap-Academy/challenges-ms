@@ -14,6 +14,7 @@ pub struct ChallengesConfig {
 #[derive(Debug, Deserialize)]
 pub struct Quizzes {
     pub min_level: u32,
+    pub max_fee: u64,
 }
 
 #[derive(Debug, Deserialize)]

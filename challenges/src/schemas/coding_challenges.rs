@@ -56,6 +56,8 @@ pub struct CreateCodingChallengeRequest {
     pub xp: i64,
     /// The number of morphcoins a user gets for completing this subtask.
     pub coins: i64,
+    /// The number of morphcoins a user has to pay to access this subtask.
+    pub fee: u64,
     /// The challenge description.
     #[oai(validator(max_length = 16384))]
     pub description: String,
@@ -95,6 +97,8 @@ pub struct UpdateCodingChallengeRequest {
     pub xp: PatchValue<i64>,
     /// The number of morphcoins a user gets for completing this subtask.
     pub coins: PatchValue<i64>,
+    /// The number of morphcoins a user has to pay to access this subtask.
+    pub fee: PatchValue<i64>,
     /// The challenge description.
     #[oai(validator(max_length = 16384))]
     pub description: PatchValue<String>,

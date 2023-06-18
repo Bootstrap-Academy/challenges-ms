@@ -279,7 +279,7 @@ pub enum Task {
 }
 
 #[derive(Iden)]
-enum Subtask {
+pub enum Subtask {
     #[iden = "challenges_subtasks"]
     Table,
     Id,
@@ -288,6 +288,7 @@ enum Subtask {
     CreationTimestamp,
     Xp,
     Coins,
+    Fee,
 }
 
 #[derive(Iden)]

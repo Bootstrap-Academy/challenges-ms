@@ -27,7 +27,7 @@ use crate::{
     },
     services::{
         subtasks::{can_create, send_task_rewards},
-        tasks::{get_task, get_task_with_specific},
+        tasks::{get_task, get_task_with_specific, Task},
     },
 };
 
@@ -121,6 +121,13 @@ impl MultipleChoice {
             return CreateQuestion::forbidden();
         }
 
+        if matches!(specific, Task::CourseTask(_))
+            && data.0.fee > self.config.challenges.quizzes.max_fee
+            && !auth.0.admin
+        {
+            return CreateQuestion::fee_limit_exceeded(self.config.challenges.quizzes.max_fee);
+        }
+
         let subtask = challenges_subtasks::ActiveModel {
             id: Set(Uuid::new_v4()),
             task_id: Set(task.id),
@@ -128,6 +135,7 @@ impl MultipleChoice {
             creation_timestamp: Set(Utc::now().naive_utc()),
             xp: Set(data.0.xp),
             coins: Set(data.0.coins),
+            fee: Set(data.0.fee as _),
         }
         .insert(&***db)
         .await?;
@@ -182,6 +190,7 @@ impl MultipleChoice {
                     creation_timestamp: Unchanged(subtask.creation_timestamp),
                     xp: data.0.xp.update(subtask.xp),
                     coins: data.0.coins.update(subtask.coins),
+                    fee: data.0.fee.update(subtask.fee),
                 }
                 .update(&***db)
                 .await?;
@@ -299,6 +308,8 @@ response!(CreateQuestion = {
     TaskNotFound(404, error),
     /// The user is not allowed to create questions in this task.
     Forbidden(403, error),
+    /// The max fee limit has been exceeded.
+    FeeLimitExceeded(403, error) => u64,
 });
 
 response!(UpdateQuestion = {
