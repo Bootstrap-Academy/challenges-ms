@@ -8,13 +8,14 @@ use tokio::sync::Semaphore;
 
 use self::{
     challenges::Challenges, coding_challenges::CodingChallenges, course_tasks::CourseTasks,
-    multiple_choice::MultipleChoice,
+    multiple_choice::MultipleChoice, subtasks::Subtasks,
 };
 
 mod challenges;
 mod coding_challenges;
 mod course_tasks;
 mod multiple_choice;
+mod subtasks;
 
 #[derive(poem_openapi::Tags)]
 pub enum Tags {
@@ -22,6 +23,8 @@ pub enum Tags {
     Challenges,
     /// Endpoints for tasks that exist within a course (tasks)
     CourseTasks,
+    /// Endpoints for all subtasks
+    Subtasks,
     /// Endpoints for multiple choice subtasks (subtasks)
     MultipleChoice,
     /// Endpoints for coding challenges (subtasks)
@@ -35,14 +38,18 @@ pub fn get_api(
 ) -> impl OpenApi {
     (
         Challenges {
-            state: state.clone(),
+            state: Arc::clone(&state),
         },
         CourseTasks {
-            state: state.clone(),
+            state: Arc::clone(&state),
+            config: Arc::clone(&config),
+        },
+        Subtasks {
+            state: Arc::clone(&state),
             config: Arc::clone(&config),
         },
         MultipleChoice {
-            state: state.clone(),
+            state: Arc::clone(&state),
             config: Arc::clone(&config),
         },
         CodingChallenges {

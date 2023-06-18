@@ -10,4 +10,5 @@ pub use super::{
     challenges_multiple_choice_attempts::Entity as ChallengesMultipleChoiceAttempts,
     challenges_multiple_choice_quizes::Entity as ChallengesMultipleChoiceQuizes,
     challenges_subtasks::Entity as ChallengesSubtasks, challenges_tasks::Entity as ChallengesTasks,
+    challenges_unlocked_subtasks::Entity as ChallengesUnlockedSubtasks,
 };

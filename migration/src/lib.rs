@@ -15,6 +15,7 @@ mod m20230525_065623_cc_number_of_tests;
 mod m20230527_151432_cc_submissions;
 mod m20230612_182959_new_course_tasks;
 mod m20230618_144250_add_fee_to_subtasks;
+mod m20230618_150706_add_unlocked_subtasks;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -30,6 +31,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230527_151432_cc_submissions::Migration),
             Box::new(m20230612_182959_new_course_tasks::Migration),
             Box::new(m20230618_144250_add_fee_to_subtasks::Migration),
+            Box::new(m20230618_150706_add_unlocked_subtasks::Migration),
         ]
     }
 }
