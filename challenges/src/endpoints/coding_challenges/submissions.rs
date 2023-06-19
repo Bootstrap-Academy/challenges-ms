@@ -273,7 +273,7 @@ async fn judge_submission(
                     .one(db)
                     .await?
                     .is_some();
-                if !solved_previously && submission.creator != subtask.creator {
+                if !solved_previously {
                     update_user_subtask(
                         db,
                         user_subtask.as_ref(),
@@ -290,7 +290,9 @@ async fn judge_submission(
                     )
                     .await?;
 
-                    send_task_rewards(&state.services, db, submission.creator, subtask).await?;
+                    if submission.creator != subtask.creator {
+                        send_task_rewards(&state.services, db, submission.creator, subtask).await?;
+                    }
                 }
             }
             challenges_coding_challenge_result::ActiveModel {

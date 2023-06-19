@@ -321,7 +321,7 @@ impl MultipleChoice {
 
         if !solved_previously {
             let now = Utc::now().naive_utc();
-            if solved && auth.0.id != subtask.creator {
+            if solved {
                 update_user_subtask(
                     &db,
                     user_subtask.as_ref(),
@@ -338,7 +338,9 @@ impl MultipleChoice {
                 )
                 .await?;
 
-                send_task_rewards(&self.state.services, &db, auth.0.id, &subtask).await?;
+                if auth.0.id != subtask.creator {
+                    send_task_rewards(&self.state.services, &db, auth.0.id, &subtask).await?;
+                }
             }
 
             challenges_multiple_choice_attempts::ActiveModel {
