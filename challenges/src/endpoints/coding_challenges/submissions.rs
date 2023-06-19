@@ -367,8 +367,7 @@ enum JudgeSubmissionError {
 impl Api {
     async fn get_environments(&self) -> Result<HashMap<String, Environment>, ErrorResponse> {
         Ok(self
-            .state
-            .cache
+            .judge_cache
             .cached_result(key!(), &[], None, || async {
                 self.sandkasten.list_environments().await
             })
