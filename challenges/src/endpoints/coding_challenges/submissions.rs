@@ -245,7 +245,7 @@ async fn judge_submission(
                     .one(db)
                     .await?
                     .is_some();
-                if !solved_previously {
+                if !solved_previously && submission.creator != subtask.creator {
                     send_task_rewards(&state.services, db, submission.creator, subtask).await?;
                 }
             }

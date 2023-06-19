@@ -293,7 +293,7 @@ impl MultipleChoice {
         let solved = correct == mcq.answers.len();
 
         if !solved_previously {
-            if solved {
+            if solved && auth.0.id != subtask.creator {
                 send_task_rewards(&self.state.services, &db, auth.0.id, &subtask).await?;
             }
 
