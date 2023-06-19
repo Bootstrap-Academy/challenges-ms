@@ -29,8 +29,8 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     ChallengesTasks,
-    #[sea_orm(has_many = "super::challenges_unlocked_subtasks::Entity")]
-    ChallengesUnlockedSubtasks,
+    #[sea_orm(has_many = "super::challenges_user_subtasks::Entity")]
+    ChallengesUserSubtasks,
 }
 
 impl Related<super::challenges_coding_challenges::Entity> for Entity {
@@ -51,9 +51,9 @@ impl Related<super::challenges_tasks::Entity> for Entity {
     }
 }
 
-impl Related<super::challenges_unlocked_subtasks::Entity> for Entity {
+impl Related<super::challenges_user_subtasks::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::ChallengesUnlockedSubtasks.def()
+        Relation::ChallengesUserSubtasks.def()
     }
 }
 

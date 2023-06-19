@@ -1,21 +1,23 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use entity::{challenges_subtasks, challenges_tasks, challenges_unlocked_subtasks};
+use entity::{challenges_subtasks, challenges_tasks, challenges_user_subtasks};
 use lib::{auth::VerifiedUserAuth, config::Config, services::shop::AddCoinsError, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter, Set,
-    Unchanged,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set, Unchanged,
 };
 use uuid::Uuid;
 
 use super::Tags;
 use crate::{
     schemas::subtasks::UpdateSubtaskRequest,
-    services::tasks::{get_specific_task, Task},
+    services::{
+        subtasks::check_unlocked,
+        tasks::{get_specific_task, Task},
+    },
 };
 
 pub struct Subtasks {
@@ -38,17 +40,7 @@ impl Subtasks {
             return UnlockSubtask::subtask_not_found();
         };
 
-        if subtask.fee <= 0 {
-            return UnlockSubtask::ok();
-        }
-
-        if subtask
-            .find_related(challenges_unlocked_subtasks::Entity)
-            .filter(challenges_unlocked_subtasks::Column::UserId.eq(auth.0.id))
-            .one(&***db)
-            .await?
-            .is_some()
-        {
+        if check_unlocked(&db, &auth.0, &subtask).await? {
             return UnlockSubtask::ok();
         }
 
@@ -65,13 +57,30 @@ impl Subtasks {
             }
         }
 
-        challenges_unlocked_subtasks::ActiveModel {
-            user_id: Set(auth.0.id),
-            subtask_id: Set(subtask.id),
-            timestamp: Set(Utc::now().naive_utc()),
+        if let Some(user_subtask) = challenges_user_subtasks::Entity::find()
+            .filter(challenges_user_subtasks::Column::UserId.eq(auth.0.id))
+            .filter(challenges_user_subtasks::Column::SubtaskId.eq(subtask.id))
+            .one(&***db)
+            .await?
+        {
+            challenges_user_subtasks::ActiveModel {
+                user_id: Unchanged(user_subtask.user_id),
+                subtask_id: Unchanged(user_subtask.subtask_id),
+                unlocked_timestamp: Set(Some(Utc::now().naive_utc())),
+                solved_timestamp: Unchanged(user_subtask.solved_timestamp),
+            }
+            .update(&***db)
+            .await?;
+        } else {
+            challenges_user_subtasks::ActiveModel {
+                user_id: Set(auth.0.id),
+                subtask_id: Set(subtask.id),
+                unlocked_timestamp: Set(Some(Utc::now().naive_utc())),
+                solved_timestamp: Set(None),
+            }
+            .insert(&***db)
+            .await?;
         }
-        .insert(&***db)
-        .await?;
 
         UnlockSubtask::unlocked()
     }

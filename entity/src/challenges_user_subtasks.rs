@@ -3,13 +3,14 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "challenges_unlocked_subtasks")]
+#[sea_orm(table_name = "challenges_user_subtasks")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub user_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub subtask_id: Uuid,
-    pub timestamp: DateTime,
+    pub unlocked_timestamp: Option<DateTime>,
+    pub solved_timestamp: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

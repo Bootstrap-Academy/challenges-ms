@@ -42,7 +42,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum UnlockedSubtask {
+pub enum UnlockedSubtask {
     #[iden = "challenges_unlocked_subtasks"]
     Table,
     UserId,

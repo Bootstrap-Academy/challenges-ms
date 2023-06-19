@@ -12,5 +12,5 @@ pub mod challenges_multiple_choice_attempts;
 pub mod challenges_multiple_choice_quizes;
 pub mod challenges_subtasks;
 pub mod challenges_tasks;
-pub mod challenges_unlocked_subtasks;
+pub mod challenges_user_subtasks;
 pub mod sea_orm_active_enums;
