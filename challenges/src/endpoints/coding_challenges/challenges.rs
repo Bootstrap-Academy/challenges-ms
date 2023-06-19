@@ -31,7 +31,7 @@ use crate::{
     },
     services::{
         judge::{self, Judge},
-        subtasks::{can_create, check_unlocked, get_unlocked},
+        subtasks::{can_create, get_user_subtask, get_user_subtasks, UserSubtaskExt},
         tasks::{get_task, get_task_with_specific, Task},
     },
 };
@@ -54,10 +54,12 @@ impl Api {
         free: Query<Option<bool>>,
         /// Whether to search for unlocked coding challenges.
         unlocked: Query<Option<bool>>,
+        /// Whether to search for solved questions.
+        solved: Query<Option<bool>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListCodingChallenges::Response<VerifiedUserAuth> {
-        let unlocked_subtasks = get_unlocked(&db, auth.0.id).await?;
+        let subtasks = get_user_subtasks(&db, auth.0.id).await?;
         ListCodingChallenges::ok(
             challenges_coding_challenges::Entity::find()
                 .find_also_related(challenges_subtasks::Entity)
@@ -70,12 +72,14 @@ impl Api {
                     let subtask = subtask?;
                     let id = subtask.id;
                     let free_ = subtask.fee <= 0;
-                    let unlocked_ = auth.0.admin
-                        || auth.0.id == subtask.creator
-                        || free_
-                        || unlocked_subtasks.contains(&id);
-                    (free.unwrap_or(free_) == free_ && unlocked.unwrap_or(unlocked_) == unlocked_)
-                        .then_some(CodingChallengeSummary::from(cc, subtask, unlocked_))
+                    let unlocked_ = subtasks.get(&id).check_access(&auth.0, &subtask);
+                    let solved_ = subtasks.get(&id).is_solved();
+                    (free.unwrap_or(free_) == free_
+                        && unlocked.unwrap_or(unlocked_) == unlocked_
+                        && solved.unwrap_or(solved_) == solved_)
+                        .then_some(CodingChallengeSummary::from(
+                            cc, subtask, unlocked_, solved_,
+                        ))
                 })
                 .collect(),
         )
@@ -90,13 +94,16 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetCodingChallenge::Response<VerifiedUserAuth> {
-        match get_challenge(&db, task_id.0, subtask_id.0).await? {
-            Some((cc, subtask)) if check_unlocked(&db, &auth.0, &subtask).await? => {
-                GetCodingChallenge::ok(CodingChallenge::from(cc, subtask))
-            }
-            Some(_) => GetCodingChallenge::no_access(),
-            None => GetCodingChallenge::subtask_not_found(),
+        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+            return GetCodingChallenge::subtask_not_found();
+        };
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        if !user_subtask.check_access(&auth.0, &subtask) {
+            return GetCodingChallenge::no_access();
         }
+
+        GetCodingChallenge::ok(CodingChallenge::from(cc, subtask, user_subtask.is_solved()))
     }
 
     /// Get the examples of a coding challenge by id.
@@ -114,9 +121,12 @@ impl Api {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetExamples::subtask_not_found();
         };
-        if !check_unlocked(&db, &auth.0, &subtask).await? {
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        if !user_subtask.check_access(&auth.0, &subtask) {
             return GetExamples::no_access();
         }
+
         let judge = self.get_judge(&cc.evaluator);
 
         let examples = match judge.examples().await {
@@ -280,7 +290,7 @@ impl Api {
         }
         .insert(&***db)
         .await?;
-        CreateCodingChallenge::ok(CodingChallenge::from(cc, subtask))
+        CreateCodingChallenge::ok(CodingChallenge::from(cc, subtask, false))
     }
 
     /// Update a coding challenge.
@@ -294,7 +304,7 @@ impl Api {
         subtask_id: Path<Uuid>,
         data: Json<UpdateCodingChallengeRequest>,
         db: Data<&DbTxn>,
-        _auth: AdminAuth,
+        auth: AdminAuth,
     ) -> UpdateCodingChallenge::Response<AdminAuth> {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return UpdateCodingChallenge::subtask_not_found();
@@ -351,7 +361,8 @@ impl Api {
         .update(&***db)
         .await?;
 
-        UpdateCodingChallenge::ok(CodingChallenge::from(cc, subtask))
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        UpdateCodingChallenge::ok(CodingChallenge::from(cc, subtask, user_subtask.is_solved()))
     }
 
     /// Delete a coding challenge.

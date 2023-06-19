@@ -30,6 +30,8 @@ pub struct CodingChallengeSummary {
     pub fee: u64,
     /// Whether the user has unlocked this subtask.
     pub unlocked: bool,
+    /// Whether the user has completed this subtask.
+    pub solved: bool,
     /// The challenge description. Only available if the user has unlocked the
     /// subtask.
     pub description: Option<String>,
@@ -59,6 +61,8 @@ pub struct CodingChallenge {
     pub coins: u64,
     /// The number of morphcoins a user has to pay to access this subtask.
     pub fee: u64,
+    /// Whether the user has completed this subtask.
+    pub solved: bool,
     /// The challenge description.
     pub description: String,
     /// The number of milliseconds the solution may run.
@@ -219,6 +223,7 @@ impl CodingChallengeSummary {
         cc: challenges_coding_challenges::Model,
         subtask: challenges_subtasks::Model,
         unlocked: bool,
+        solved: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -229,6 +234,7 @@ impl CodingChallengeSummary {
             coins: subtask.coins as _,
             fee: subtask.fee as _,
             unlocked,
+            solved,
             description: unlocked.then_some(cc.description),
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,
@@ -242,6 +248,7 @@ impl CodingChallenge {
     pub fn from(
         cc: challenges_coding_challenges::Model,
         subtask: challenges_subtasks::Model,
+        solved: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -251,6 +258,7 @@ impl CodingChallenge {
             xp: subtask.xp as _,
             coins: subtask.coins as _,
             fee: subtask.fee as _,
+            solved,
             description: cc.description,
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,

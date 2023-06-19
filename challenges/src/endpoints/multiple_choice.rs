@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use entity::{
     challenges_multiple_choice_attempts, challenges_multiple_choice_quizes, challenges_subtasks,
+    challenges_user_subtasks,
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -30,7 +31,10 @@ use crate::{
         SolveQuestionRequest, UpdateMultipleChoiceQuestionRequest,
     },
     services::{
-        subtasks::{can_create, check_unlocked, get_unlocked, send_task_rewards},
+        subtasks::{
+            can_create, get_user_subtask, get_user_subtasks, send_task_rewards,
+            update_user_subtask, UserSubtaskExt,
+        },
         tasks::{get_task, get_task_with_specific, Task},
     },
 };
@@ -51,10 +55,12 @@ impl MultipleChoice {
         free: Query<Option<bool>>,
         /// Whether to search for unlocked questions.
         unlocked: Query<Option<bool>>,
+        /// Whether to search for solved questions.
+        solved: Query<Option<bool>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListQuestions::Response<VerifiedUserAuth> {
-        let unlocked_subtasks = get_unlocked(&db, auth.0.id).await?;
+        let subtasks = get_user_subtasks(&db, auth.0.id).await?;
         ListQuestions::ok(
             challenges_multiple_choice_quizes::Entity::find()
                 .find_also_related(challenges_subtasks::Entity)
@@ -67,12 +73,14 @@ impl MultipleChoice {
                     let subtask = subtask?;
                     let id = subtask.id;
                     let free_ = subtask.fee <= 0;
-                    let unlocked_ = auth.0.admin
-                        || auth.0.id == subtask.creator
-                        || free_
-                        || unlocked_subtasks.contains(&id);
-                    (free.unwrap_or(free_) == free_ && unlocked.unwrap_or(unlocked_) == unlocked_)
-                        .then_some(MultipleChoiceQuestionSummary::from(mcq, subtask, unlocked_))
+                    let unlocked_ = subtasks.get(&id).check_access(&auth.0, &subtask);
+                    let solved_ = subtasks.get(&id).is_solved();
+                    (free.unwrap_or(free_) == free_
+                        && unlocked.unwrap_or(unlocked_) == unlocked_
+                        && solved.unwrap_or(solved_) == solved_)
+                        .then_some(MultipleChoiceQuestionSummary::from(
+                            mcq, subtask, unlocked_, solved_,
+                        ))
                 })
                 .collect(),
         )
@@ -87,13 +95,20 @@ impl MultipleChoice {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetQuestion::Response<VerifiedUserAuth> {
-        match get_question(&db, task_id.0, subtask_id.0).await? {
-            Some((mcq, subtask)) if check_unlocked(&db, &auth.0, &subtask).await? => {
-                GetQuestion::ok(MultipleChoiceQuestion::<String>::from(mcq, subtask))
-            }
-            Some(_) => GetQuestion::no_access(),
-            None => GetQuestion::subtask_not_found(),
+        let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+            return GetQuestion::subtask_not_found();
+        };
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        if !user_subtask.check_access(&auth.0, &subtask) {
+            return GetQuestion::no_access();
         }
+
+        GetQuestion::ok(MultipleChoiceQuestion::<String>::from(
+            mcq,
+            subtask,
+            user_subtask.is_solved(),
+        ))
     }
 
     /// Get a multiple choice question and its solution by id.
@@ -108,18 +123,20 @@ impl MultipleChoice {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetQuestionWithSolution::Response<VerifiedUserAuth> {
-        match get_question(&db, task_id.0, subtask_id.0).await? {
-            Some((mcq, subtask)) => {
-                if auth.0.admin || auth.0.id == subtask.creator {
-                    GetQuestionWithSolution::ok(MultipleChoiceQuestion::<Answer>::from(
-                        mcq, subtask,
-                    ))
-                } else {
-                    GetQuestionWithSolution::forbidden()
-                }
-            }
-            None => GetQuestionWithSolution::subtask_not_found(),
+        let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+            return GetQuestionWithSolution::subtask_not_found();
+        };
+
+        if !(auth.0.admin || auth.0.id == subtask.creator) {
+            return GetQuestionWithSolution::forbidden();
         }
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        GetQuestionWithSolution::ok(MultipleChoiceQuestion::<Answer>::from(
+            mcq,
+            subtask,
+            user_subtask.is_solved(),
+        ))
     }
 
     /// Create a new multiple choice question.
@@ -173,7 +190,7 @@ impl MultipleChoice {
         }
         .insert(&***db)
         .await?;
-        CreateQuestion::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask))
+        CreateQuestion::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask, false))
     }
 
     /// Update a multiple choice question.
@@ -184,45 +201,52 @@ impl MultipleChoice {
         subtask_id: Path<Uuid>,
         data: Json<UpdateMultipleChoiceQuestionRequest>,
         db: Data<&DbTxn>,
-        _auth: AdminAuth,
+        auth: AdminAuth,
     ) -> UpdateQuestion::Response<AdminAuth> {
-        match get_question(&db, task_id.0, subtask_id.0).await? {
-            Some((mcq, subtask)) => {
-                if get_task(&db, *data.0.task_id.get_new(&subtask.task_id))
-                    .await?
-                    .is_none()
-                {
-                    return UpdateQuestion::task_not_found();
-                };
-                let (answers, correct) = if let PatchValue::Set(answers) = data.0.answers {
-                    let (a, c) = split_answers(answers);
-                    (Set(a), Set(c))
-                } else {
-                    (Unchanged(mcq.answers), Unchanged(mcq.correct_answers))
-                };
-                let mcq = challenges_multiple_choice_quizes::ActiveModel {
-                    subtask_id: Unchanged(mcq.subtask_id),
-                    question: data.0.question.update(mcq.question),
-                    answers,
-                    correct_answers: correct,
-                }
-                .update(&***db)
-                .await?;
-                let subtask = challenges_subtasks::ActiveModel {
-                    id: Unchanged(subtask.id),
-                    task_id: data.0.task_id.update(subtask.task_id),
-                    creator: Unchanged(subtask.creator),
-                    creation_timestamp: Unchanged(subtask.creation_timestamp),
-                    xp: data.0.xp.map(|x| x as _).update(subtask.xp),
-                    coins: data.0.coins.map(|x| x as _).update(subtask.coins),
-                    fee: data.0.fee.map(|x| x as _).update(subtask.fee),
-                }
-                .update(&***db)
-                .await?;
-                UpdateQuestion::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask))
-            }
-            None => UpdateQuestion::subtask_not_found(),
+        let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+            return UpdateQuestion::subtask_not_found();
+        };
+
+        if get_task(&db, *data.0.task_id.get_new(&subtask.task_id))
+            .await?
+            .is_none()
+        {
+            return UpdateQuestion::task_not_found();
+        };
+
+        let (answers, correct) = if let PatchValue::Set(answers) = data.0.answers {
+            let (a, c) = split_answers(answers);
+            (Set(a), Set(c))
+        } else {
+            (Unchanged(mcq.answers), Unchanged(mcq.correct_answers))
+        };
+
+        let mcq = challenges_multiple_choice_quizes::ActiveModel {
+            subtask_id: Unchanged(mcq.subtask_id),
+            question: data.0.question.update(mcq.question),
+            answers,
+            correct_answers: correct,
         }
+        .update(&***db)
+        .await?;
+        let subtask = challenges_subtasks::ActiveModel {
+            id: Unchanged(subtask.id),
+            task_id: data.0.task_id.update(subtask.task_id),
+            creator: Unchanged(subtask.creator),
+            creation_timestamp: Unchanged(subtask.creation_timestamp),
+            xp: data.0.xp.map(|x| x as _).update(subtask.xp),
+            coins: data.0.coins.map(|x| x as _).update(subtask.coins),
+            fee: data.0.fee.map(|x| x as _).update(subtask.fee),
+        }
+        .update(&***db)
+        .await?;
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        UpdateQuestion::ok(MultipleChoiceQuestion::<Answer>::from(
+            mcq,
+            subtask,
+            user_subtask.is_solved(),
+        ))
     }
 
     /// Delete a multiple choice question.
@@ -262,9 +286,12 @@ impl MultipleChoice {
         let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
             return SolveQuestion::subtask_not_found();
         };
-        if !check_unlocked(&db, &auth.0, &subtask).await? {
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        if !user_subtask.check_access(&auth.0, &subtask) {
             return SolveQuestion::no_access();
         }
+
         if data.0.answers.len() != mcq.answers.len() {
             return SolveQuestion::wrong_length();
         }
@@ -275,7 +302,7 @@ impl MultipleChoice {
             .order_by_desc(challenges_multiple_choice_attempts::Column::Timestamp)
             .all(&***db)
             .await?;
-        let solved_previously = previous_attempts.iter().any(|a| a.solved);
+        let solved_previously = user_subtask.is_solved();
         if let Some(last_attempt) = previous_attempts.first() {
             let time_left = self
                 .config
@@ -293,7 +320,24 @@ impl MultipleChoice {
         let solved = correct_cnt == mcq.answers.len();
 
         if !solved_previously {
+            let now = Utc::now().naive_utc();
             if solved && auth.0.id != subtask.creator {
+                update_user_subtask(
+                    &db,
+                    user_subtask.as_ref(),
+                    challenges_user_subtasks::ActiveModel {
+                        user_id: Set(auth.0.id),
+                        subtask_id: Set(subtask.id),
+                        unlocked_timestamp: user_subtask
+                            .as_ref()
+                            .and_then(|x| x.unlocked_timestamp)
+                            .map(|x| Unchanged(Some(x)))
+                            .unwrap_or(Set(Some(now))),
+                        solved_timestamp: Set(Some(now)),
+                    },
+                )
+                .await?;
+
                 send_task_rewards(&self.state.services, &db, auth.0.id, &subtask).await?;
             }
 
@@ -301,7 +345,7 @@ impl MultipleChoice {
                 id: Set(Uuid::new_v4()),
                 question_id: Set(mcq.subtask_id),
                 user_id: Set(auth.0.id),
-                timestamp: Set(Utc::now().naive_utc()),
+                timestamp: Set(now),
                 solved: Set(solved),
             }
             .insert(&***db)

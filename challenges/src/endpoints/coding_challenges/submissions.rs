@@ -3,7 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use chrono::Utc;
 use entity::{
     challenges_coding_challenge_result, challenges_coding_challenge_submissions,
-    challenges_coding_challenges, challenges_subtasks, sea_orm_active_enums::ChallengesVerdict,
+    challenges_coding_challenges, challenges_subtasks, challenges_user_subtasks,
+    sea_orm_active_enums::ChallengesVerdict,
 };
 use fnct::{format::JsonFormatter, key};
 use key_rwlock::KeyRwLock;
@@ -14,7 +15,7 @@ use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sandkasten_client::{schemas::environments::Environment, SandkastenClient};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, Set, TransactionTrait,
+    QueryFilter, Set, TransactionTrait, Unchanged,
 };
 use thiserror::Error;
 use tokio::sync::Semaphore;
@@ -27,7 +28,10 @@ use crate::{
     schemas::coding_challenges::{Submission, SubmissionContent},
     services::{
         judge::{self, Judge},
-        subtasks::{check_unlocked, send_task_rewards, SendTaskRewardsError},
+        subtasks::{
+            get_user_subtask, send_task_rewards, update_user_subtask, SendTaskRewardsError,
+            UserSubtaskExt,
+        },
     },
 };
 
@@ -117,7 +121,9 @@ impl Api {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return CreateSubmission::subtask_not_found();
         };
-        if !check_unlocked(&db, &auth.0, &subtask).await? {
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        if !user_subtask.check_access(&auth.0, &subtask) {
             return CreateSubmission::no_access();
         }
 
@@ -165,9 +171,17 @@ impl Api {
                     evaluator: &cc.evaluator,
                     cache: &cache,
                 };
-                if let Err(err) =
-                    judge_submission(&db, &subtask, &cc, submission, judge, reward_lock, state)
-                        .await
+                if let Err(err) = judge_submission(JudgeSubmission {
+                    db: &db,
+                    subtask: &subtask,
+                    challenge: &cc,
+                    submission,
+                    judge,
+                    reward_lock,
+                    state,
+                    user_subtask,
+                })
+                .await
                 {
                     error!("judge task for {submission_id} failed: {err}");
                     db.rollback().await.ok();
@@ -203,14 +217,28 @@ response!(CreateSubmission = {
     NoAccess(403, error),
 });
 
-async fn judge_submission(
-    db: &DatabaseTransaction,
-    subtask: &challenges_subtasks::Model,
-    challenge: &challenges_coding_challenges::Model,
+struct JudgeSubmission<'a, 'b> {
+    db: &'a DatabaseTransaction,
+    subtask: &'a challenges_subtasks::Model,
+    challenge: &'a challenges_coding_challenges::Model,
     submission: challenges_coding_challenge_submissions::Model,
-    judge: Judge<'_>,
+    judge: Judge<'b>,
     reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     state: Arc<SharedState>,
+    user_subtask: Option<challenges_user_subtasks::Model>,
+}
+
+async fn judge_submission(
+    JudgeSubmission {
+        db,
+        subtask,
+        challenge,
+        submission,
+        judge,
+        reward_lock,
+        state,
+        user_subtask,
+    }: JudgeSubmission<'_, '_>,
 ) -> Result<(), JudgeSubmissionError> {
     debug!("judging submission {}", submission.id);
     let result = check_challenge(CheckChallenge {
@@ -246,6 +274,22 @@ async fn judge_submission(
                     .await?
                     .is_some();
                 if !solved_previously && submission.creator != subtask.creator {
+                    update_user_subtask(
+                        db,
+                        user_subtask.as_ref(),
+                        challenges_user_subtasks::ActiveModel {
+                            user_id: Set(submission.creator),
+                            subtask_id: Set(subtask.id),
+                            unlocked_timestamp: user_subtask
+                                .as_ref()
+                                .and_then(|x| x.unlocked_timestamp)
+                                .map(|x| Unchanged(Some(x)))
+                                .unwrap_or(Set(Some(submission.creation_timestamp))),
+                            solved_timestamp: Set(Some(submission.creation_timestamp)),
+                        },
+                    )
+                    .await?;
+
                     send_task_rewards(&state.services, db, submission.creator, subtask).await?;
                 }
             }

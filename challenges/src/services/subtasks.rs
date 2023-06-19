@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use entity::{challenges_subtasks, challenges_tasks, challenges_user_subtasks};
 use lib::{
@@ -8,7 +8,10 @@ use lib::{
         shop::AddCoinsError, skills::AddSkillProgressError, ServiceError, ServiceResult, Services,
     },
 };
-use sea_orm::{ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
+    QueryFilter, Unchanged,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -48,32 +51,49 @@ pub async fn send_task_rewards(
     Ok(())
 }
 
-pub async fn get_unlocked(db: &DatabaseTransaction, user_id: Uuid) -> Result<HashSet<Uuid>, DbErr> {
+pub async fn get_user_subtasks(
+    db: &DatabaseTransaction,
+    user_id: Uuid,
+) -> Result<HashMap<Uuid, challenges_user_subtasks::Model>, DbErr> {
     Ok(challenges_user_subtasks::Entity::find()
         .filter(challenges_user_subtasks::Column::UserId.eq(user_id))
         .all(db)
         .await?
         .into_iter()
-        .filter(|x| x.unlocked_timestamp.is_some())
-        .map(|x| x.subtask_id)
+        .map(|x| (x.subtask_id, x))
         .collect())
 }
 
-pub async fn check_unlocked(
+pub async fn get_user_subtask(
     db: &DatabaseTransaction,
-    user: &User,
-    subtask: &challenges_subtasks::Model,
-) -> Result<bool, DbErr> {
-    Ok(user.admin
-        || user.id == subtask.creator
-        || subtask.fee == 0
-        || challenges_user_subtasks::Entity::find()
-            .filter(challenges_user_subtasks::Column::UserId.eq(user.id))
-            .filter(challenges_user_subtasks::Column::SubtaskId.eq(subtask.id))
-            .filter(challenges_user_subtasks::Column::UnlockedTimestamp.is_not_null())
-            .one(db)
-            .await?
-            .is_some())
+    user_id: Uuid,
+    subtask_id: Uuid,
+) -> Result<Option<challenges_user_subtasks::Model>, DbErr> {
+    challenges_user_subtasks::Entity::find()
+        .filter(challenges_user_subtasks::Column::UserId.eq(user_id))
+        .filter(challenges_user_subtasks::Column::SubtaskId.eq(subtask_id))
+        .one(db)
+        .await
+}
+
+pub async fn update_user_subtask(
+    db: &DatabaseTransaction,
+    user_subtask: Option<&challenges_user_subtasks::Model>,
+    values: challenges_user_subtasks::ActiveModel,
+) -> Result<challenges_user_subtasks::Model, DbErr> {
+    if let Some(user_subtask) = user_subtask {
+        challenges_user_subtasks::ActiveModel {
+            user_id: Unchanged(user_subtask.user_id),
+            subtask_id: Unchanged(user_subtask.subtask_id),
+            ..values
+        }
+        .update(db)
+        .await
+    } else {
+        challenges_user_subtasks::ActiveModel { ..values }
+            .insert(db)
+            .await
+    }
 }
 
 pub async fn can_create(
@@ -128,6 +148,45 @@ pub async fn get_skills(services: &Services, task: Task) -> ServiceResult<Vec<St
         Task::Challenge(challenge) => challenge.skill_ids,
         Task::CourseTask(task) => get_skills_of_course(services, &task.course_id).await?,
     })
+}
+
+pub trait UserSubtaskExt {
+    fn is_unlocked(&self) -> bool;
+    fn is_solved(&self) -> bool;
+
+    fn check_access(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
+        user.admin || user.id == subtask.creator || subtask.fee == 0 || self.is_unlocked()
+    }
+}
+
+impl UserSubtaskExt for challenges_user_subtasks::Model {
+    fn is_unlocked(&self) -> bool {
+        self.unlocked_timestamp.is_some()
+    }
+
+    fn is_solved(&self) -> bool {
+        self.solved_timestamp.is_some()
+    }
+}
+
+impl<T: UserSubtaskExt> UserSubtaskExt for &T {
+    fn is_unlocked(&self) -> bool {
+        T::is_unlocked(self)
+    }
+
+    fn is_solved(&self) -> bool {
+        T::is_solved(self)
+    }
+}
+
+impl<T: UserSubtaskExt> UserSubtaskExt for Option<T> {
+    fn is_unlocked(&self) -> bool {
+        self.as_ref().is_some_and(|x| x.is_unlocked())
+    }
+
+    fn is_solved(&self) -> bool {
+        self.as_ref().is_some_and(|x| x.is_solved())
+    }
 }
 
 #[derive(Debug, Error)]

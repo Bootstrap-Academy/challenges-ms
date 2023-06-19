@@ -15,7 +15,7 @@ use super::Tags;
 use crate::{
     schemas::subtasks::UpdateSubtaskRequest,
     services::{
-        subtasks::check_unlocked,
+        subtasks::{get_user_subtask, update_user_subtask, UserSubtaskExt},
         tasks::{get_specific_task, Task},
     },
 };
@@ -40,7 +40,8 @@ impl Subtasks {
             return UnlockSubtask::subtask_not_found();
         };
 
-        if check_unlocked(&db, &auth.0, &subtask).await? {
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        if user_subtask.check_access(&auth.0, &subtask) {
             return UnlockSubtask::ok();
         }
 
@@ -57,30 +58,17 @@ impl Subtasks {
             }
         }
 
-        if let Some(user_subtask) = challenges_user_subtasks::Entity::find()
-            .filter(challenges_user_subtasks::Column::UserId.eq(auth.0.id))
-            .filter(challenges_user_subtasks::Column::SubtaskId.eq(subtask.id))
-            .one(&***db)
-            .await?
-        {
-            challenges_user_subtasks::ActiveModel {
-                user_id: Unchanged(user_subtask.user_id),
-                subtask_id: Unchanged(user_subtask.subtask_id),
-                unlocked_timestamp: Set(Some(Utc::now().naive_utc())),
-                solved_timestamp: Unchanged(user_subtask.solved_timestamp),
-            }
-            .update(&***db)
-            .await?;
-        } else {
+        update_user_subtask(
+            &db,
+            user_subtask.as_ref(),
             challenges_user_subtasks::ActiveModel {
                 user_id: Set(auth.0.id),
                 subtask_id: Set(subtask.id),
                 unlocked_timestamp: Set(Some(Utc::now().naive_utc())),
-                solved_timestamp: Set(None),
-            }
-            .insert(&***db)
-            .await?;
-        }
+                ..Default::default()
+            },
+        )
+        .await?;
 
         UnlockSubtask::unlocked()
     }

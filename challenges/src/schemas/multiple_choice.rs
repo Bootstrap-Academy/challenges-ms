@@ -25,6 +25,8 @@ pub struct MultipleChoiceQuestionSummary {
     pub fee: u64,
     /// Whether the user has unlocked this subtask.
     pub unlocked: bool,
+    /// Whether the user has completed this subtask.
+    pub solved: bool,
     /// The question text. Only available if the user has unlocked the subtask.
     pub question: Option<String>,
 }
@@ -48,6 +50,8 @@ where
     pub coins: u64,
     /// The number of morphcoins a user has to pay to access this subtask.
     pub fee: u64,
+    /// Whether the user has completed this subtask.
+    pub solved: bool,
     /// The question text.
     pub question: String,
     /// The possible answers to the question.
@@ -123,6 +127,7 @@ impl MultipleChoiceQuestionSummary {
         mcq: challenges_multiple_choice_quizes::Model,
         subtask: challenges_subtasks::Model,
         unlocked: bool,
+        solved: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -133,6 +138,7 @@ impl MultipleChoiceQuestionSummary {
             coins: subtask.coins as _,
             fee: subtask.fee as _,
             unlocked,
+            solved,
             question: unlocked.then_some(mcq.question),
         }
     }
@@ -142,6 +148,7 @@ impl MultipleChoiceQuestion<Answer> {
     pub fn from(
         mcq: challenges_multiple_choice_quizes::Model,
         subtask: challenges_subtasks::Model,
+        solved: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -151,6 +158,7 @@ impl MultipleChoiceQuestion<Answer> {
             xp: subtask.xp as _,
             coins: subtask.coins as _,
             fee: subtask.fee as _,
+            solved,
             question: mcq.question,
             answers: combine_answers(mcq.answers, mcq.correct_answers),
         }
@@ -161,6 +169,7 @@ impl MultipleChoiceQuestion<String> {
     pub fn from(
         mcq: challenges_multiple_choice_quizes::Model,
         subtask: challenges_subtasks::Model,
+        solved: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -170,6 +179,7 @@ impl MultipleChoiceQuestion<String> {
             xp: subtask.xp as _,
             coins: subtask.coins as _,
             fee: subtask.fee as _,
+            solved,
             question: mcq.question,
             answers: mcq.answers,
         }

@@ -16,7 +16,7 @@ use crate::{
     schemas::coding_challenges::{CheckResult, SubmissionContent},
     services::{
         judge::{self, Judge},
-        subtasks::check_unlocked,
+        subtasks::{get_user_subtask, UserSubtaskExt},
     },
 };
 
@@ -44,9 +44,12 @@ impl Api {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return TestExample::example_not_found();
         };
-        if !check_unlocked(&db, &auth.0, &subtask).await? {
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+        if !user_subtask.check_access(&auth.0, &subtask) {
             return TestExample::no_access();
         }
+
         let judge = self.get_judge(&cc.evaluator);
 
         let examples = match judge.examples().await {
