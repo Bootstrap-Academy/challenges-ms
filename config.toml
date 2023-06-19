@@ -54,6 +54,8 @@ server = "/"
 
 [challenges.quizzes]
 min_level = 5
+max_xp = 0
+max_coins = 0
 max_fee = 1
 
 [challenges.multiple_choice_questions]

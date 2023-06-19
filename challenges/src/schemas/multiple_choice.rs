@@ -18,11 +18,11 @@ pub struct MultipleChoiceQuestionSummary {
     /// The creation timestamp of the subtask
     pub creation_timestamp: DateTime<Utc>,
     /// The number of xp a user gets for completing this subtask.
-    pub xp: i64,
+    pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: i64,
+    pub coins: u64,
     /// The number of morphcoins a user has to pay to access this subtask.
-    pub fee: i64,
+    pub fee: u64,
     /// Whether the user has unlocked this subtask.
     pub unlocked: bool,
     /// The question text. Only available if the user has unlocked the subtask.
@@ -43,11 +43,11 @@ where
     /// The creation timestamp of the subtask
     pub creation_timestamp: DateTime<Utc>,
     /// The number of xp a user gets for completing this subtask.
-    pub xp: i64,
+    pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: i64,
+    pub coins: u64,
     /// The number of morphcoins a user has to pay to access this subtask.
-    pub fee: i64,
+    pub fee: u64,
     /// The question text.
     pub question: String,
     /// The possible answers to the question.
@@ -63,10 +63,13 @@ pub struct CreateMultipleChoiceQuestionRequest {
     #[oai(validator(min_items = 1, max_items = 32))]
     pub answers: Vec<Answer>,
     /// The number of xp a user gets for completing this subtask.
-    pub xp: i64,
+    #[oai(validator(maximum(value = "9223372036854775807")))]
+    pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: i64,
+    #[oai(validator(maximum(value = "9223372036854775807")))]
+    pub coins: u64,
     /// The number of morphcoins a user has to pay to access this subtask.
+    #[oai(validator(maximum(value = "9223372036854775807")))]
     pub fee: u64,
 }
 
@@ -75,10 +78,13 @@ pub struct UpdateMultipleChoiceQuestionRequest {
     /// The parent task.
     pub task_id: PatchValue<Uuid>,
     /// The number of xp a user gets for completing this subtask.
-    pub xp: PatchValue<i64>,
+    #[oai(validator(maximum(value = "9223372036854775807")))]
+    pub xp: PatchValue<u64>,
     /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: PatchValue<i64>,
+    #[oai(validator(maximum(value = "9223372036854775807")))]
+    pub coins: PatchValue<u64>,
     /// The number of morphcoins a user has to pay to access this subtask.
+    #[oai(validator(maximum(value = "9223372036854775807")))]
     pub fee: PatchValue<u64>,
     /// The question text.
     #[oai(validator(max_length = 4096))]
@@ -123,9 +129,9 @@ impl MultipleChoiceQuestionSummary {
             task_id: subtask.task_id,
             creator: subtask.creator,
             creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
-            xp: subtask.xp,
-            coins: subtask.coins,
-            fee: subtask.fee,
+            xp: subtask.xp as _,
+            coins: subtask.coins as _,
+            fee: subtask.fee as _,
             unlocked,
             question: unlocked.then_some(mcq.question),
         }
@@ -142,9 +148,9 @@ impl MultipleChoiceQuestion<Answer> {
             task_id: subtask.task_id,
             creator: subtask.creator,
             creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
-            xp: subtask.xp,
-            coins: subtask.coins,
-            fee: subtask.fee,
+            xp: subtask.xp as _,
+            coins: subtask.coins as _,
+            fee: subtask.fee as _,
             question: mcq.question,
             answers: combine_answers(mcq.answers, mcq.correct_answers),
         }
@@ -161,9 +167,9 @@ impl MultipleChoiceQuestion<String> {
             task_id: subtask.task_id,
             creator: subtask.creator,
             creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
-            xp: subtask.xp,
-            coins: subtask.coins,
-            fee: subtask.fee,
+            xp: subtask.xp as _,
+            coins: subtask.coins as _,
+            fee: subtask.fee as _,
             question: mcq.question,
             answers: mcq.answers,
         }

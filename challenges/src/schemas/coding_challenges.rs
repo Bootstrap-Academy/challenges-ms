@@ -23,9 +23,13 @@ pub struct CodingChallengeSummary {
     /// The creation timestamp of the subtask
     pub creation_timestamp: DateTime<Utc>,
     /// The number of xp a user gets for completing this subtask.
-    pub xp: i64,
+    pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: i64,
+    pub coins: u64,
+    /// The number of morphcoins a user has to pay to access this subtask.
+    pub fee: u64,
+    /// Whether the user has unlocked this subtask.
+    pub unlocked: bool,
     /// The challenge description. Only available if the user has unlocked the
     /// subtask.
     pub description: Option<String>,
@@ -50,9 +54,11 @@ pub struct CodingChallenge {
     /// The creation timestamp of the subtask
     pub creation_timestamp: DateTime<Utc>,
     /// The number of xp a user gets for completing this subtask.
-    pub xp: i64,
+    pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: i64,
+    pub coins: u64,
+    /// The number of morphcoins a user has to pay to access this subtask.
+    pub fee: u64,
     /// The challenge description.
     pub description: String,
     /// The number of milliseconds the solution may run.
@@ -80,10 +86,13 @@ pub struct Example {
 #[derive(Debug, Clone, Object)]
 pub struct CreateCodingChallengeRequest {
     /// The number of xp a user gets for completing this subtask.
-    pub xp: i64,
+    #[oai(validator(maximum(value = "9223372036854775807")))]
+    pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: i64,
+    #[oai(validator(maximum(value = "9223372036854775807")))]
+    pub coins: u64,
     /// The number of morphcoins a user has to pay to access this subtask.
+    #[oai(validator(maximum(value = "9223372036854775807")))]
     pub fee: u64,
     /// The challenge description.
     #[oai(validator(max_length = 16384))]
@@ -121,10 +130,13 @@ pub struct UpdateCodingChallengeRequest {
     /// The parent task.
     pub task_id: PatchValue<Uuid>,
     /// The number of xp a user gets for completing this subtask.
-    pub xp: PatchValue<i64>,
+    #[oai(validator(maximum(value = "9223372036854775807")))]
+    pub xp: PatchValue<u64>,
     /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: PatchValue<i64>,
+    #[oai(validator(maximum(value = "9223372036854775807")))]
+    pub coins: PatchValue<u64>,
     /// The number of morphcoins a user has to pay to access this subtask.
+    #[oai(validator(maximum(value = "9223372036854775807")))]
     pub fee: PatchValue<u64>,
     /// The challenge description.
     #[oai(validator(max_length = 16384))]
@@ -213,8 +225,10 @@ impl CodingChallengeSummary {
             task_id: subtask.task_id,
             creator: subtask.creator,
             creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
-            xp: subtask.xp,
-            coins: subtask.coins,
+            xp: subtask.xp as _,
+            coins: subtask.coins as _,
+            fee: subtask.fee as _,
+            unlocked,
             description: unlocked.then_some(cc.description),
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,
@@ -234,8 +248,9 @@ impl CodingChallenge {
             task_id: subtask.task_id,
             creator: subtask.creator,
             creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
-            xp: subtask.xp,
-            coins: subtask.coins,
+            xp: subtask.xp as _,
+            coins: subtask.coins as _,
+            fee: subtask.fee as _,
             description: cc.description,
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,

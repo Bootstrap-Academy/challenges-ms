@@ -222,13 +222,22 @@ impl Api {
             return CreateCodingChallenge::forbidden();
         }
 
-        if matches!(specific, Task::CourseTask(_))
-            && data.0.fee > self.config.challenges.quizzes.max_fee
-            && !auth.0.admin
-        {
-            return CreateCodingChallenge::fee_limit_exceeded(
-                self.config.challenges.quizzes.max_fee,
-            );
+        if matches!(specific, Task::CourseTask(_)) && !auth.0.admin {
+            if data.0.xp > self.config.challenges.quizzes.max_xp {
+                return CreateCodingChallenge::xp_limit_exceeded(
+                    self.config.challenges.quizzes.max_xp,
+                );
+            }
+            if data.0.coins > self.config.challenges.quizzes.max_coins {
+                return CreateCodingChallenge::coin_limit_exceeded(
+                    self.config.challenges.quizzes.max_coins,
+                );
+            }
+            if data.0.fee > self.config.challenges.quizzes.max_fee {
+                return CreateCodingChallenge::fee_limit_exceeded(
+                    self.config.challenges.quizzes.max_fee,
+                );
+            }
         }
 
         let cc_id = Uuid::new_v4();
@@ -252,8 +261,8 @@ impl Api {
             task_id: Set(task.id),
             creator: Set(auth.0.id),
             creation_timestamp: Set(Utc::now().naive_utc()),
-            xp: Set(data.0.xp),
-            coins: Set(data.0.coins),
+            xp: Set(data.0.xp as _),
+            coins: Set(data.0.coins as _),
             fee: Set(data.0.fee as _),
         }
         .insert(&***db)
@@ -335,8 +344,8 @@ impl Api {
             task_id: data.0.task_id.update(subtask.task_id),
             creator: Unchanged(subtask.creator),
             creation_timestamp: Unchanged(subtask.creation_timestamp),
-            xp: data.0.xp.update(subtask.xp),
-            coins: data.0.coins.update(subtask.coins),
+            xp: data.0.xp.map(|x| x as _).update(subtask.xp),
+            coins: data.0.coins.map(|x| x as _).update(subtask.coins),
             fee: data.0.fee.map(|x| x as _).update(subtask.fee),
         }
         .update(&***db)
@@ -413,6 +422,10 @@ response!(CreateCodingChallenge = {
     TaskNotFound(404, error),
     /// The user is not allowed to create questions in this task.
     Forbidden(403, error),
+    /// The max xp limit has been exceeded.
+    XpLimitExceeded(403, error) => u64,
+    /// The max coin limit has been exceeded.
+    CoinLimitExceeded(403, error) => u64,
     /// The max fee limit has been exceeded.
     FeeLimitExceeded(403, error) => u64,
     .._CheckError::Response,
