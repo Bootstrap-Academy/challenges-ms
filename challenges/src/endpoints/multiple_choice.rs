@@ -289,8 +289,8 @@ impl MultipleChoice {
             }
         }
 
-        let correct = check_answers(&data.0.answers, mcq.correct_answers);
-        let solved = correct == mcq.answers.len();
+        let correct_cnt = check_answers(&data.0.answers, mcq.correct_answers);
+        let solved = correct_cnt == mcq.answers.len();
 
         if !solved_previously {
             if solved && auth.0.id != subtask.creator {
@@ -308,7 +308,10 @@ impl MultipleChoice {
             .await?;
         }
 
-        SolveQuestion::ok(SolveQuestionFeedback { solved, correct })
+        SolveQuestion::ok(SolveQuestionFeedback {
+            solved,
+            correct: correct_cnt,
+        })
     }
 }
 
