@@ -218,6 +218,14 @@ pub struct CheckResult<T: Send + Sync + Type + ParseFromJSON + ToJSON> {
     pub run: Option<T>,
 }
 
+#[derive(Debug, Clone, Object)]
+pub struct ExecutorConfig {
+    /// The maximum `time_limit` in milliseconds.
+    pub time_limit: u64,
+    /// The maximum `memory_limit` in megabytes.
+    pub memory_limit: u64,
+}
+
 impl CodingChallengeSummary {
     pub fn from(
         cc: challenges_coding_challenges::Model,

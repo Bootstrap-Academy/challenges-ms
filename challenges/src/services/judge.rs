@@ -3,6 +3,7 @@ use fnct::{format::JsonFormatter, key};
 use lib::{Cache, CacheError};
 use sandkasten_client::{
     schemas::{
+        configuration::PublicConfig,
         programs::{
             BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, File, LimitsOpt,
             MainFile, RunRequest, RunResult,
@@ -217,6 +218,17 @@ impl Judge<'_> {
             run: Some(output.run),
         })
     }
+}
+
+pub async fn get_executor_config(
+    cache: &Cache<JsonFormatter>,
+    sandkasten: &SandkastenClient,
+) -> anyhow::Result<PublicConfig> {
+    Ok(cache
+        .cached_result(key!(), &[], None, || async {
+            sandkasten.get_config().await
+        })
+        .await??)
 }
 
 #[derive(Debug, Error)]

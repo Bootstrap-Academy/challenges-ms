@@ -13,9 +13,9 @@ use uuid::Uuid;
 use super::get_challenge;
 use crate::{
     endpoints::Tags,
-    schemas::coding_challenges::{CheckResult, SubmissionContent},
+    schemas::coding_challenges::{CheckResult, ExecutorConfig, SubmissionContent},
     services::{
-        judge::{self, Judge},
+        judge::{self, get_executor_config, Judge},
         subtasks::{get_user_subtask, UserSubtaskExt},
     },
 };
@@ -106,11 +106,11 @@ impl Api {
         TestExample::ok(result)
     }
 
-    /// Return a map of all environments.
+    /// Return a map of all environments available on the code execution engine.
     ///
     /// The keys represent the environment ids and the values contain additional
     /// information about the environments.
-    #[oai(path = "/environments", method = "get")]
+    #[oai(path = "/executor/environments", method = "get")]
     async fn list_environments(
         &self,
         _auth: VerifiedUserAuth,
@@ -122,6 +122,19 @@ impl Api {
                 })
                 .await??,
         ))
+    }
+
+    /// Return the config of the code execution engine.
+    ///
+    /// The keys represent the environment ids and the values contain additional
+    /// information about the environments.
+    #[oai(path = "/executor/config", method = "get")]
+    async fn get_config(&self, _auth: VerifiedUserAuth) -> GetConfig::Response<VerifiedUserAuth> {
+        let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
+        GetConfig::ok(ExecutorConfig {
+            time_limit: (config.run_limits.time - 1) * 1000,
+            memory_limit: config.run_limits.memory,
+        })
     }
 }
 
@@ -140,6 +153,11 @@ response!(TestExample = {
 response!(ListEnvironments = {
     /// Map of available environments.
     Ok(200) => ListEnvironmentsResponse,
+});
+
+response!(GetConfig = {
+    /// Configuration of the code execution engine.
+    Ok(200) => ExecutorConfig,
 });
 
 impl Api {

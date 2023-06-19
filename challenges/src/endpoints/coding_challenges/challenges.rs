@@ -30,7 +30,7 @@ use crate::{
         SubmissionContent, UpdateCodingChallengeRequest,
     },
     services::{
-        judge::{self, Judge},
+        judge::{self, get_executor_config, Judge},
         subtasks::{can_create, get_user_subtask, get_user_subtasks, UserSubtaskExt},
         tasks::{get_task, get_task_with_specific, Task},
     },
@@ -250,6 +250,14 @@ impl Api {
             }
         }
 
+        let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
+        if data.0.time_limit > (config.run_limits.time - 1) * 1000 {
+            return CreateCodingChallenge::time_limit_exceeded((config.run_limits.time - 1) * 1000);
+        }
+        if data.0.memory_limit > config.run_limits.memory {
+            return CreateCodingChallenge::memory_limit_exceeded(config.run_limits.memory);
+        }
+
         let cc_id = Uuid::new_v4();
         if let Err(result) = check_challenge(CheckChallenge {
             judge: self.get_judge(&data.0.evaluator),
@@ -315,6 +323,14 @@ impl Api {
             .is_none()
         {
             return UpdateCodingChallenge::task_not_found();
+        }
+
+        let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
+        if *data.0.time_limit.get_new(&(cc.time_limit as _)) > (config.run_limits.time - 1) * 1000 {
+            return UpdateCodingChallenge::time_limit_exceeded((config.run_limits.time - 1) * 1000);
+        }
+        if *data.0.memory_limit.get_new(&(cc.time_limit as _)) > config.run_limits.memory {
+            return UpdateCodingChallenge::memory_limit_exceeded(config.run_limits.memory);
         }
 
         if let Err(result) = check_challenge(CheckChallenge {
@@ -439,6 +455,10 @@ response!(CreateCodingChallenge = {
     CoinLimitExceeded(403, error) => u64,
     /// The max fee limit has been exceeded.
     FeeLimitExceeded(403, error) => u64,
+    /// Time limit exceeded
+    TimeLimitExceeded(403, error) => u64,
+    /// Memory limit exceeded
+    MemoryLimitExceeded(403, error) => u64,
     .._CheckError::Response,
 });
 
@@ -448,6 +468,10 @@ response!(UpdateCodingChallenge = {
     SubtaskNotFound(404, error),
     /// Task does not exist.
     TaskNotFound(404, error),
+    /// Time limit exceeded
+    TimeLimitExceeded(403, error) => u64,
+    /// Memory limit exceeded
+    MemoryLimitExceeded(403, error) => u64,
     .._CheckError::Response,
 });
 
