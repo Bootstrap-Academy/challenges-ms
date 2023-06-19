@@ -1,7 +1,7 @@
 use std::env;
 
 use config::{ConfigError, File};
-use serde::Deserialize;
+use serde::{de::DeserializeOwned, Deserialize};
 use url::Url;
 
 use self::challenges::ChallengesConfig;
@@ -9,6 +9,14 @@ use self::challenges::ChallengesConfig;
 mod challenges;
 
 pub fn load() -> Result<Config, ConfigError> {
+    load_config()
+}
+
+pub fn load_database_config() -> Result<Database, ConfigError> {
+    Ok(load_config::<DatabaseConfig>()?.database)
+}
+
+pub fn load_config<T: DeserializeOwned>() -> Result<T, ConfigError> {
     config::Config::builder()
         .add_source(File::with_name(
             &env::var("CONFIG_PATH").unwrap_or("config.toml".to_owned()),
@@ -26,6 +34,11 @@ pub struct Config {
     pub redis: Redis,
     pub services: Services,
     pub challenges: ChallengesConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DatabaseConfig {
+    pub database: Database,
 }
 
 #[derive(Debug, Deserialize)]
