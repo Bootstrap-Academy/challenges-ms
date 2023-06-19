@@ -23,22 +23,26 @@ pub async fn send_task_rewards(
     user_id: Uuid,
     subtask: &challenges_subtasks::Model,
 ) -> Result<(), SendTaskRewardsError> {
-    let skills = get_skills(
-        services,
-        get_parent_task(db, subtask)
-            .await?
-            .ok_or(SendTaskRewardsError::NoParentTask)?
-            .1,
-    )
-    .await?;
-    services
-        .shop
-        .add_coins(user_id, subtask.coins, "Challenges / Aufgaben", true)
-        .await??;
-    for skill in &skills {
+    if subtask.xp != 0 {
+        let skills = get_skills(
+            services,
+            get_parent_task(db, subtask)
+                .await?
+                .ok_or(SendTaskRewardsError::NoParentTask)?
+                .1,
+        )
+        .await?;
+        for skill in &skills {
+            services
+                .skills
+                .add_skill_progress(user_id, skill, subtask.xp / skills.len() as i64)
+                .await??;
+        }
+    }
+    if subtask.coins != 0 {
         services
-            .skills
-            .add_skill_progress(user_id, skill, subtask.xp / skills.len() as i64)
+            .shop
+            .add_coins(user_id, subtask.coins, "Challenges / Aufgaben", true)
             .await??;
     }
     Ok(())
