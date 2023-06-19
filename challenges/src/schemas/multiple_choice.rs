@@ -67,13 +67,13 @@ pub struct CreateMultipleChoiceQuestionRequest {
     #[oai(validator(min_items = 1, max_items = 32))]
     pub answers: Vec<Answer>,
     /// The number of xp a user gets for completing this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")))]
+    #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")))]
+    #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub coins: u64,
     /// The number of morphcoins a user has to pay to access this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")))]
+    #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub fee: u64,
 }
 
@@ -82,13 +82,13 @@ pub struct UpdateMultipleChoiceQuestionRequest {
     /// The parent task.
     pub task_id: PatchValue<Uuid>,
     /// The number of xp a user gets for completing this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")))]
+    #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub xp: PatchValue<u64>,
     /// The number of morphcoins a user gets for completing this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")))]
+    #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub coins: PatchValue<u64>,
     /// The number of morphcoins a user has to pay to access this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")))]
+    #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub fee: PatchValue<u64>,
     /// The question text.
     #[oai(validator(max_length = 4096))]
