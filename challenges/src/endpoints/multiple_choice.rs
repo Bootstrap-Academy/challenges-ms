@@ -48,6 +48,7 @@ pub struct MultipleChoice {
 impl MultipleChoice {
     /// List all multiple choice questions in a task.
     #[oai(path = "/tasks/:task_id/multiple_choice", method = "get")]
+    #[allow(clippy::too_many_arguments)]
     async fn list_questions(
         &self,
         task_id: Path<Uuid>,
@@ -57,6 +58,8 @@ impl MultipleChoice {
         unlocked: Query<Option<bool>>,
         /// Whether to search for solved questions.
         solved: Query<Option<bool>>,
+        /// Whether to search for rated questions.
+        rated: Query<Option<bool>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListQuestions::Response<VerifiedUserAuth> {
@@ -75,11 +78,13 @@ impl MultipleChoice {
                     let free_ = subtask.fee <= 0;
                     let unlocked_ = subtasks.get(&id).check_access(&auth.0, &subtask);
                     let solved_ = subtasks.get(&id).is_solved();
+                    let rated_ = subtasks.get(&id).is_rated();
                     (free.unwrap_or(free_) == free_
                         && unlocked.unwrap_or(unlocked_) == unlocked_
-                        && solved.unwrap_or(solved_) == solved_)
+                        && solved.unwrap_or(solved_) == solved_
+                        && rated.unwrap_or(rated_) == rated_)
                         .then_some(MultipleChoiceQuestionSummary::from(
-                            mcq, subtask, unlocked_, solved_,
+                            mcq, subtask, unlocked_, solved_, rated_,
                         ))
                 })
                 .collect(),
@@ -108,6 +113,7 @@ impl MultipleChoice {
             mcq,
             subtask,
             user_subtask.is_solved(),
+            user_subtask.is_rated(),
         ))
     }
 
@@ -135,6 +141,7 @@ impl MultipleChoice {
         GetQuestionWithSolution::ok(MultipleChoiceQuestion::<Answer>::from(
             mcq,
             subtask,
+            user_subtask.is_solved(),
             user_subtask.is_solved(),
         ))
     }
@@ -190,7 +197,9 @@ impl MultipleChoice {
         }
         .insert(&***db)
         .await?;
-        CreateQuestion::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask, false))
+        CreateQuestion::ok(MultipleChoiceQuestion::<Answer>::from(
+            mcq, subtask, false, false,
+        ))
     }
 
     /// Update a multiple choice question.
@@ -246,6 +255,7 @@ impl MultipleChoice {
             mcq,
             subtask,
             user_subtask.is_solved(),
+            user_subtask.is_rated(),
         ))
     }
 
@@ -334,6 +344,7 @@ impl MultipleChoice {
                             .map(|x| Unchanged(Some(x)))
                             .unwrap_or(Set(Some(now))),
                         solved_timestamp: Set(Some(now)),
+                        ..Default::default()
                     },
                 )
                 .await?;

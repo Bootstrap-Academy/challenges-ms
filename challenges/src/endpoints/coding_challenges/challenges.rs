@@ -46,6 +46,7 @@ pub struct Api {
 #[OpenApi(tag = "Tags::CodingChallenges")]
 impl Api {
     /// List all coding challenges in a task.
+    #[allow(clippy::too_many_arguments)]
     #[oai(path = "/tasks/:task_id/coding_challenges", method = "get")]
     async fn list_challenges(
         &self,
@@ -54,8 +55,10 @@ impl Api {
         free: Query<Option<bool>>,
         /// Whether to search for unlocked coding challenges.
         unlocked: Query<Option<bool>>,
-        /// Whether to search for solved questions.
+        /// Whether to search for solved challenges.
         solved: Query<Option<bool>>,
+        /// Whether to search for rated challenges.
+        rated: Query<Option<bool>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListCodingChallenges::Response<VerifiedUserAuth> {
@@ -74,11 +77,13 @@ impl Api {
                     let free_ = subtask.fee <= 0;
                     let unlocked_ = subtasks.get(&id).check_access(&auth.0, &subtask);
                     let solved_ = subtasks.get(&id).is_solved();
+                    let rated_ = subtasks.get(&id).is_rated();
                     (free.unwrap_or(free_) == free_
                         && unlocked.unwrap_or(unlocked_) == unlocked_
-                        && solved.unwrap_or(solved_) == solved_)
+                        && solved.unwrap_or(solved_) == solved_
+                        && rated.unwrap_or(rated_) == rated_)
                         .then_some(CodingChallengeSummary::from(
-                            cc, subtask, unlocked_, solved_,
+                            cc, subtask, unlocked_, solved_, rated_,
                         ))
                 })
                 .collect(),
@@ -103,7 +108,12 @@ impl Api {
             return GetCodingChallenge::no_access();
         }
 
-        GetCodingChallenge::ok(CodingChallenge::from(cc, subtask, user_subtask.is_solved()))
+        GetCodingChallenge::ok(CodingChallenge::from(
+            cc,
+            subtask,
+            user_subtask.is_solved(),
+            user_subtask.is_rated(),
+        ))
     }
 
     /// Get the examples of a coding challenge by id.
@@ -298,7 +308,7 @@ impl Api {
         }
         .insert(&***db)
         .await?;
-        CreateCodingChallenge::ok(CodingChallenge::from(cc, subtask, false))
+        CreateCodingChallenge::ok(CodingChallenge::from(cc, subtask, false, false))
     }
 
     /// Update a coding challenge.
@@ -378,7 +388,12 @@ impl Api {
         .await?;
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        UpdateCodingChallenge::ok(CodingChallenge::from(cc, subtask, user_subtask.is_solved()))
+        UpdateCodingChallenge::ok(CodingChallenge::from(
+            cc,
+            subtask,
+            user_subtask.is_solved(),
+            user_subtask.is_rated(),
+        ))
     }
 
     /// Delete a coding challenge.

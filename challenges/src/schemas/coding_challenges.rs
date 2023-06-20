@@ -32,6 +32,8 @@ pub struct CodingChallengeSummary {
     pub unlocked: bool,
     /// Whether the user has completed this subtask.
     pub solved: bool,
+    /// Whether the user has rated this subtask.
+    pub rated: bool,
     /// The challenge description. Only available if the user has unlocked the
     /// subtask.
     pub description: Option<String>,
@@ -63,6 +65,8 @@ pub struct CodingChallenge {
     pub fee: u64,
     /// Whether the user has completed this subtask.
     pub solved: bool,
+    /// Whether the user has rated this subtask.
+    pub rated: bool,
     /// The challenge description.
     pub description: String,
     /// The number of milliseconds the solution may run.
@@ -232,6 +236,7 @@ impl CodingChallengeSummary {
         subtask: challenges_subtasks::Model,
         unlocked: bool,
         solved: bool,
+        rated: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -243,6 +248,7 @@ impl CodingChallengeSummary {
             fee: subtask.fee as _,
             unlocked,
             solved,
+            rated,
             description: unlocked.then_some(cc.description),
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,
@@ -257,6 +263,7 @@ impl CodingChallenge {
         cc: challenges_coding_challenges::Model,
         subtask: challenges_subtasks::Model,
         solved: bool,
+        rated: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -267,6 +274,7 @@ impl CodingChallenge {
             coins: subtask.coins as _,
             fee: subtask.fee as _,
             solved,
+            rated,
             description: cc.description,
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,

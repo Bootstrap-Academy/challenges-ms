@@ -153,9 +153,14 @@ pub async fn get_skills(services: &Services, task: Task) -> ServiceResult<Vec<St
 pub trait UserSubtaskExt {
     fn is_unlocked(&self) -> bool;
     fn is_solved(&self) -> bool;
+    fn is_rated(&self) -> bool;
 
     fn check_access(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
         user.admin || user.id == subtask.creator || subtask.fee == 0 || self.is_unlocked()
+    }
+
+    fn can_rate(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
+        user.id != subtask.creator && self.is_solved() && !self.is_rated()
     }
 }
 
@@ -167,15 +172,21 @@ impl UserSubtaskExt for challenges_user_subtasks::Model {
     fn is_solved(&self) -> bool {
         self.solved_timestamp.is_some()
     }
+
+    fn is_rated(&self) -> bool {
+        self.rating_timestamp.is_some()
+    }
 }
 
 impl<T: UserSubtaskExt> UserSubtaskExt for &T {
     fn is_unlocked(&self) -> bool {
         T::is_unlocked(self)
     }
-
     fn is_solved(&self) -> bool {
         T::is_solved(self)
+    }
+    fn is_rated(&self) -> bool {
+        T::is_rated(self)
     }
 }
 
@@ -183,9 +194,11 @@ impl<T: UserSubtaskExt> UserSubtaskExt for Option<T> {
     fn is_unlocked(&self) -> bool {
         self.as_ref().is_some_and(|x| x.is_unlocked())
     }
-
     fn is_solved(&self) -> bool {
         self.as_ref().is_some_and(|x| x.is_solved())
+    }
+    fn is_rated(&self) -> bool {
+        self.as_ref().is_some_and(|x| x.is_rated())
     }
 }
 

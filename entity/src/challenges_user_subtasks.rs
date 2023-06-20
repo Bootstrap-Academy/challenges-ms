@@ -2,6 +2,8 @@
 
 use sea_orm::entity::prelude::*;
 
+use super::sea_orm_active_enums::ChallengesRating;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "challenges_user_subtasks")]
 pub struct Model {
@@ -11,6 +13,8 @@ pub struct Model {
     pub subtask_id: Uuid,
     pub unlocked_timestamp: Option<DateTime>,
     pub solved_timestamp: Option<DateTime>,
+    pub rating: Option<ChallengesRating>,
+    pub rating_timestamp: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

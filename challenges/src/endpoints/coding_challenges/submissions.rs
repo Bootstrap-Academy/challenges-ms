@@ -286,6 +286,7 @@ async fn judge_submission(
                                 .map(|x| Unchanged(Some(x)))
                                 .unwrap_or(Set(Some(submission.creation_timestamp))),
                             solved_timestamp: Set(Some(submission.creation_timestamp)),
+                            ..Default::default()
                         },
                     )
                     .await?;

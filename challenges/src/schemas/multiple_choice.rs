@@ -27,6 +27,8 @@ pub struct MultipleChoiceQuestionSummary {
     pub unlocked: bool,
     /// Whether the user has completed this subtask.
     pub solved: bool,
+    /// Whether the user has rated this subtask.
+    pub rated: bool,
     /// The question text. Only available if the user has unlocked the subtask.
     pub question: Option<String>,
 }
@@ -52,6 +54,8 @@ where
     pub fee: u64,
     /// Whether the user has completed this subtask.
     pub solved: bool,
+    /// Whether the user has rated this subtask.
+    pub rated: bool,
     /// The question text.
     pub question: String,
     /// The possible answers to the question.
@@ -128,6 +132,7 @@ impl MultipleChoiceQuestionSummary {
         subtask: challenges_subtasks::Model,
         unlocked: bool,
         solved: bool,
+        rated: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -139,6 +144,7 @@ impl MultipleChoiceQuestionSummary {
             fee: subtask.fee as _,
             unlocked,
             solved,
+            rated,
             question: unlocked.then_some(mcq.question),
         }
     }
@@ -149,6 +155,7 @@ impl MultipleChoiceQuestion<Answer> {
         mcq: challenges_multiple_choice_quizes::Model,
         subtask: challenges_subtasks::Model,
         solved: bool,
+        rated: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -159,6 +166,7 @@ impl MultipleChoiceQuestion<Answer> {
             coins: subtask.coins as _,
             fee: subtask.fee as _,
             solved,
+            rated,
             question: mcq.question,
             answers: combine_answers(mcq.answers, mcq.correct_answers),
         }
@@ -170,6 +178,7 @@ impl MultipleChoiceQuestion<String> {
         mcq: challenges_multiple_choice_quizes::Model,
         subtask: challenges_subtasks::Model,
         solved: bool,
+        rated: bool,
     ) -> Self {
         Self {
             id: subtask.id,
@@ -180,6 +189,7 @@ impl MultipleChoiceQuestion<String> {
             coins: subtask.coins as _,
             fee: subtask.fee as _,
             solved,
+            rated,
             question: mcq.question,
             answers: mcq.answers,
         }
