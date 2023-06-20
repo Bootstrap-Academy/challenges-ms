@@ -98,7 +98,7 @@ impl Challenge {
             title: challenge.title,
             description: challenge.description,
             creator: task.creator,
-            creation_timestamp: task.creation_timestamp.and_local_timezone(Utc).unwrap(),
+            creation_timestamp: task.creation_timestamp.and_utc(),
             skills: challenge.skill_ids,
         }
     }

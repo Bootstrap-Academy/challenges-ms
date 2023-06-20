@@ -61,14 +61,12 @@ impl Report {
             task_id,
             subtask_id: report.subtask_id,
             user_id: report.user_id,
-            timestamp: report.timestamp.and_local_timezone(Utc).unwrap(),
+            timestamp: report.timestamp.and_utc(),
             reason: report.reason,
             comment: report.comment,
             completed: report.completed_by.is_some(),
             completed_by: report.completed_by,
-            completed_timestamp: report
-                .completed_timestamp
-                .map(|x| x.and_local_timezone(Utc).unwrap()),
+            completed_timestamp: report.completed_timestamp.map(|x| x.and_utc()),
         }
     }
 }

@@ -248,7 +248,7 @@ impl CodingChallengeSummary {
             id: subtask.id,
             task_id: subtask.task_id,
             creator: subtask.creator,
-            creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
+            creation_timestamp: subtask.creation_timestamp.and_utc(),
             xp: subtask.xp as _,
             coins: subtask.coins as _,
             fee: subtask.fee as _,
@@ -276,7 +276,7 @@ impl CodingChallenge {
             id: subtask.id,
             task_id: subtask.task_id,
             creator: subtask.creator,
-            creation_timestamp: subtask.creation_timestamp.and_local_timezone(Utc).unwrap(),
+            creation_timestamp: subtask.creation_timestamp.and_utc(),
             xp: subtask.xp as _,
             coins: subtask.coins as _,
             fee: subtask.fee as _,
@@ -322,10 +322,7 @@ impl Submission {
             id: submission.id,
             subtask_id: submission.subtask_id,
             creator: submission.creator,
-            creation_timestamp: submission
-                .creation_timestamp
-                .and_local_timezone(Utc)
-                .unwrap(),
+            creation_timestamp: submission.creation_timestamp.and_utc(),
             environment: submission.environment,
             result,
         }
