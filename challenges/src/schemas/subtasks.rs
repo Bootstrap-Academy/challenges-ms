@@ -23,7 +23,7 @@ pub struct Report {
     pub id: Uuid,
     pub task_id: Uuid,
     pub subtask_id: Uuid,
-    pub user_id: Uuid,
+    pub user_id: Option<Uuid>,
     pub timestamp: DateTime<Utc>,
     pub reason: ChallengesReportReason,
     pub comment: String,

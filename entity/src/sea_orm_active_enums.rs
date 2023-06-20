@@ -47,6 +47,8 @@ pub enum ChallengesRating {
 pub enum ChallengesReportReason {
     #[sea_orm(string_value = "abuse")]
     Abuse,
+    #[sea_orm(string_value = "dislike")]
+    Dislike,
     #[sea_orm(string_value = "other")]
     Other,
     #[sea_orm(string_value = "unrelated_skill")]

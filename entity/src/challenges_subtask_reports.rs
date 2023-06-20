@@ -10,7 +10,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub subtask_id: Uuid,
-    pub user_id: Uuid,
+    pub user_id: Option<Uuid>,
     pub timestamp: DateTime,
     pub reason: ChallengesReportReason,
     #[sea_orm(column_type = "Text")]

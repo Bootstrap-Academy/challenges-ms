@@ -87,7 +87,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Report {
+pub enum Report {
     #[iden = "challenges_subtask_reports"]
     Table,
     Id,
@@ -101,11 +101,12 @@ enum Report {
 }
 
 #[derive(Iden)]
-enum ReportReason {
+pub enum ReportReason {
     #[iden = "challenges_report_reason"]
     Type,
     Wrong,
     Abuse,
     UnrelatedSkill,
+    Dislike,
     Other,
 }

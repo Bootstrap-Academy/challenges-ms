@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use entity::{
     challenges_subtask_reports, challenges_subtasks, challenges_tasks, challenges_user_subtasks,
-    sea_orm_active_enums::ChallengesRating,
+    sea_orm_active_enums::{ChallengesRating, ChallengesReportReason},
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -177,6 +177,35 @@ impl Subtasks {
                 .await??;
         }
 
+        if data.0.rating == ChallengesRating::Negative {
+            let ratings = challenges_user_subtasks::Entity::find()
+                .filter(challenges_user_subtasks::Column::UserId.eq(subtask.id))
+                .filter(challenges_user_subtasks::Column::Rating.is_not_null())
+                .all(&***db)
+                .await?;
+            let positive = ratings
+                .iter()
+                .filter(|x| x.rating == Some(ChallengesRating::Positive))
+                .count();
+            let negative = ratings
+                .iter()
+                .filter(|x| x.rating == Some(ChallengesRating::Negative))
+                .count();
+            if negative >= 10 && negative > positive {
+                create_report(
+                    &db,
+                    None,
+                    subtask,
+                    None,
+                    ChallengesReportReason::Dislike,
+                    format!(
+                        "Subtask has received more dislikes ({negative}) than likes ({positive})."
+                    ),
+                )
+                .await?;
+            }
+        }
+
         PostFeedback::created()
     }
 
@@ -228,42 +257,17 @@ impl Subtasks {
             return CreateReport::permission_denied();
         }
 
-        let now = Utc::now().naive_utc();
-
-        update_user_subtask(
+        let (report, _) = create_report(
             &db,
+            Some(auth.0.id),
+            subtask,
             user_subtask.as_ref(),
-            challenges_user_subtasks::ActiveModel {
-                user_id: Set(auth.0.id),
-                subtask_id: Set(subtask.id),
-                rating: Set(None),
-                rating_timestamp: Set(Some(now)),
-                ..Default::default()
-            },
+            data.0.reason,
+            data.0.comment,
         )
         .await?;
 
-        let report = challenges_subtask_reports::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            subtask_id: Set(subtask.id),
-            user_id: Set(auth.0.id),
-            timestamp: Set(now),
-            reason: Set(data.0.reason),
-            comment: Set(data.0.comment),
-            completed_by: Set(None),
-            completed_timestamp: Set(None),
-        }
-        .insert(&***db)
-        .await?;
-
-        let subtask = challenges_subtasks::ActiveModel {
-            enabled: Set(false),
-            ..subtask.into()
-        }
-        .update(&***db)
-        .await?;
-
-        CreateReport::created(Report::from(report, subtask.task_id))
+        CreateReport::created(report)
     }
 }
 
@@ -325,4 +329,52 @@ async fn get_subtask(
             _ => None,
         },
     )
+}
+
+async fn create_report(
+    db: &DatabaseTransaction,
+    user_id: Option<Uuid>,
+    subtask: challenges_subtasks::Model,
+    user_subtask: Option<&challenges_user_subtasks::Model>,
+    reason: ChallengesReportReason,
+    comment: String,
+) -> Result<(Report, challenges_subtasks::Model), ErrorResponse> {
+    let now = Utc::now().naive_utc();
+
+    if let Some(user_id) = user_id {
+        update_user_subtask(
+            db,
+            user_subtask,
+            challenges_user_subtasks::ActiveModel {
+                user_id: Set(user_id),
+                subtask_id: Set(subtask.id),
+                rating: Set(None),
+                rating_timestamp: Set(Some(now)),
+                ..Default::default()
+            },
+        )
+        .await?;
+    }
+
+    let report = challenges_subtask_reports::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        subtask_id: Set(subtask.id),
+        user_id: Set(user_id),
+        timestamp: Set(now),
+        reason: Set(reason),
+        comment: Set(comment),
+        completed_by: Set(None),
+        completed_timestamp: Set(None),
+    }
+    .insert(db)
+    .await?;
+
+    let subtask = challenges_subtasks::ActiveModel {
+        enabled: Set(false),
+        ..subtask.into()
+    }
+    .update(db)
+    .await?;
+
+    Ok((Report::from(report, subtask.task_id), subtask))
 }
