@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use chrono::Utc;
-use entity::{challenges_coding_challenges, challenges_subtasks};
+use chrono::{DateTime, Utc};
+use entity::{
+    challenges_coding_challenges, challenges_subtasks, sea_orm_active_enums::ChallengesBanAction,
+};
 use fnct::format::JsonFormatter;
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -31,7 +33,10 @@ use crate::{
     },
     services::{
         judge::{self, get_executor_config, Judge},
-        subtasks::{can_create, get_user_subtask, get_user_subtasks, UserSubtaskExt},
+        subtasks::{
+            can_create, get_active_ban, get_user_subtask, get_user_subtasks, ActiveBan,
+            UserSubtaskExt,
+        },
         tasks::{get_task, get_task_with_specific, Task},
     },
 };
@@ -271,6 +276,12 @@ impl Api {
             }
         }
 
+        match get_active_ban(&db, &auth.0, ChallengesBanAction::Create).await? {
+            ActiveBan::NotBanned => {}
+            ActiveBan::Temporary(end) => return CreateCodingChallenge::banned(Some(end)),
+            ActiveBan::Permanent => return CreateCodingChallenge::banned(None),
+        }
+
         let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
         if data.0.time_limit > (config.run_limits.time - 1) * 1000 {
             return CreateCodingChallenge::time_limit_exceeded((config.run_limits.time - 1) * 1000);
@@ -477,6 +488,8 @@ response!(CreateCodingChallenge = {
     TaskNotFound(404, error),
     /// The user is not allowed to create questions in this task.
     Forbidden(403, error),
+    /// The user is currently banned from creating subtasks.
+    Banned(403, error) => Option<DateTime<Utc>>,
     /// The max xp limit has been exceeded.
     XpLimitExceeded(403, error) => u64,
     /// The max coin limit has been exceeded.

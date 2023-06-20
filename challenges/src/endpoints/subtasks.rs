@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use entity::{
     challenges_ban, challenges_subtask_reports, challenges_subtasks, challenges_tasks,
     challenges_user_subtasks,
@@ -32,7 +32,9 @@ use crate::{
         ResolveReportRequest, UpdateSubtaskRequest,
     },
     services::{
-        subtasks::{get_user_subtask, update_user_subtask, UserSubtaskExt},
+        subtasks::{
+            get_active_ban, get_user_subtask, update_user_subtask, ActiveBan, UserSubtaskExt,
+        },
         tasks::{get_specific_task, Task},
     },
 };
@@ -262,6 +264,12 @@ impl Subtasks {
             return CreateReport::permission_denied();
         }
 
+        match get_active_ban(&db, &auth.0, ChallengesBanAction::Report).await? {
+            ActiveBan::NotBanned => {}
+            ActiveBan::Temporary(end) => return CreateReport::banned(Some(end)),
+            ActiveBan::Permanent => return CreateReport::banned(None),
+        }
+
         let (report, _) = create_report(
             &db,
             Some(auth.0.id),
@@ -380,6 +388,8 @@ response!(CreateReport = {
     SubtaskNotFound(404, error),
     /// The user is not allowed to report this subtask.
     PermissionDenied(403, error),
+    /// The user is currently banned from reporting subtasks.
+    Banned(403, error) => Option<DateTime<Utc>>,
 });
 
 response!(ResolveReport = {

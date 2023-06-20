@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use entity::{
     challenges_multiple_choice_attempts, challenges_multiple_choice_quizes, challenges_subtasks,
-    challenges_user_subtasks,
+    challenges_user_subtasks, sea_orm_active_enums::ChallengesBanAction,
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -32,8 +32,8 @@ use crate::{
     },
     services::{
         subtasks::{
-            can_create, get_user_subtask, get_user_subtasks, send_task_rewards,
-            update_user_subtask, UserSubtaskExt,
+            can_create, get_active_ban, get_user_subtask, get_user_subtasks, send_task_rewards,
+            update_user_subtask, ActiveBan, UserSubtaskExt,
         },
         tasks::{get_task, get_task_with_specific, Task},
     },
@@ -183,6 +183,12 @@ impl MultipleChoice {
             if data.0.fee > self.config.challenges.quizzes.max_fee {
                 return CreateQuestion::fee_limit_exceeded(self.config.challenges.quizzes.max_fee);
             }
+        }
+
+        match get_active_ban(&db, &auth.0, ChallengesBanAction::Create).await? {
+            ActiveBan::NotBanned => {}
+            ActiveBan::Temporary(end) => return CreateQuestion::banned(Some(end)),
+            ActiveBan::Permanent => return CreateQuestion::banned(None),
         }
 
         let subtask = challenges_subtasks::ActiveModel {
@@ -411,6 +417,8 @@ response!(CreateQuestion = {
     TaskNotFound(404, error),
     /// The user is not allowed to create questions in this task.
     Forbidden(403, error),
+    /// The user is currently banned from creating subtasks.
+    Banned(403, error) => Option<DateTime<Utc>>,
     /// The max xp limit has been exceeded.
     XpLimitExceeded(403, error) => u64,
     /// The max coin limit has been exceeded.

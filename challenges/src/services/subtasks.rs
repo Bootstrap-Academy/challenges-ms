@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-use entity::{challenges_subtasks, challenges_tasks, challenges_user_subtasks};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use entity::{
+    challenges_ban, challenges_subtasks, challenges_tasks, challenges_user_subtasks,
+    sea_orm_active_enums::ChallengesBanAction,
+};
 use lib::{
     auth::User,
     config::Config,
@@ -94,6 +98,38 @@ pub async fn update_user_subtask(
             .insert(db)
             .await
     }
+}
+
+pub async fn get_active_ban(
+    db: &DatabaseTransaction,
+    user: &User,
+    action: ChallengesBanAction,
+) -> Result<ActiveBan, DbErr> {
+    if user.admin {
+        return Ok(ActiveBan::NotBanned);
+    }
+    let bans = challenges_ban::Entity::find()
+        .filter(challenges_ban::Column::UserId.eq(user.id))
+        .filter(challenges_ban::Column::Action.eq(action))
+        .all(db)
+        .await?;
+    let now = Utc::now().naive_utc();
+    let active = bans
+        .iter()
+        .map(|x| x.end.unwrap_or(NaiveDateTime::MAX))
+        .filter(|x| *x > now)
+        .max();
+    Ok(match active {
+        Some(end) if end == NaiveDateTime::MAX => ActiveBan::Permanent,
+        Some(end) => ActiveBan::Temporary(end.and_utc()),
+        None => ActiveBan::NotBanned,
+    })
+}
+
+pub enum ActiveBan {
+    NotBanned,
+    Temporary(DateTime<Utc>),
+    Permanent,
 }
 
 pub async fn can_create(
