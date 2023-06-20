@@ -34,6 +34,8 @@ pub struct CodingChallengeSummary {
     pub solved: bool,
     /// Whether the user has rated this subtask.
     pub rated: bool,
+    /// Whether the subtask is enabled and visible to normal users.
+    pub enabled: bool,
     /// The challenge description. Only available if the user has unlocked the
     /// subtask.
     pub description: Option<String>,
@@ -67,6 +69,8 @@ pub struct CodingChallenge {
     pub solved: bool,
     /// Whether the user has rated this subtask.
     pub rated: bool,
+    /// Whether the subtask is enabled and visible to normal users.
+    pub enabled: bool,
     /// The challenge description.
     pub description: String,
     /// The number of milliseconds the solution may run.
@@ -146,6 +150,8 @@ pub struct UpdateCodingChallengeRequest {
     /// The number of morphcoins a user has to pay to access this subtask.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub fee: PatchValue<u64>,
+    /// Whether the subtask is enabled and visible to normal users.
+    pub enabled: PatchValue<bool>,
     /// The challenge description.
     #[oai(validator(max_length = 16384))]
     pub description: PatchValue<String>,
@@ -249,6 +255,7 @@ impl CodingChallengeSummary {
             unlocked,
             solved,
             rated,
+            enabled: subtask.enabled,
             description: unlocked.then_some(cc.description),
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,
@@ -275,6 +282,7 @@ impl CodingChallenge {
             fee: subtask.fee as _,
             solved,
             rated,
+            enabled: subtask.enabled,
             description: cc.description,
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,

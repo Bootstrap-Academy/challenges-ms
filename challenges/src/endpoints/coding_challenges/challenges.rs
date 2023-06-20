@@ -59,6 +59,8 @@ impl Api {
         solved: Query<Option<bool>>,
         /// Whether to search for rated challenges.
         rated: Query<Option<bool>>,
+        /// Whether to search for enabled subtasks.
+        enabled: Query<Option<bool>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListCodingChallenges::Response<VerifiedUserAuth> {
@@ -78,10 +80,13 @@ impl Api {
                     let unlocked_ = subtasks.get(&id).check_access(&auth.0, &subtask);
                     let solved_ = subtasks.get(&id).is_solved();
                     let rated_ = subtasks.get(&id).is_rated();
-                    (free.unwrap_or(free_) == free_
+                    let enabled_ = subtask.enabled;
+                    ((auth.0.admin || auth.0.id == subtask.creator || subtask.enabled)
+                        && free.unwrap_or(free_) == free_
                         && unlocked.unwrap_or(unlocked_) == unlocked_
                         && solved.unwrap_or(solved_) == solved_
-                        && rated.unwrap_or(rated_) == rated_)
+                        && rated.unwrap_or(rated_) == rated_
+                        && enabled.unwrap_or(enabled_) == enabled_)
                         .then_some(CodingChallengeSummary::from(
                             cc, subtask, unlocked_, solved_, rated_,
                         ))
@@ -102,6 +107,9 @@ impl Api {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetCodingChallenge::subtask_not_found();
         };
+        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+            return GetCodingChallenge::subtask_not_found();
+        }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         if !user_subtask.check_access(&auth.0, &subtask) {
@@ -131,6 +139,9 @@ impl Api {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetExamples::subtask_not_found();
         };
+        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+            return GetExamples::subtask_not_found();
+        }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         if !user_subtask.check_access(&auth.0, &subtask) {
@@ -292,6 +303,7 @@ impl Api {
             xp: Set(data.0.xp as _),
             coins: Set(data.0.coins as _),
             fee: Set(data.0.fee as _),
+            enabled: Set(true),
         }
         .insert(&***db)
         .await?;
@@ -383,6 +395,7 @@ impl Api {
             xp: data.0.xp.map(|x| x as _).update(subtask.xp),
             coins: data.0.coins.map(|x| x as _).update(subtask.coins),
             fee: data.0.fee.map(|x| x as _).update(subtask.fee),
+            enabled: data.0.enabled.update(subtask.enabled),
         }
         .update(&***db)
         .await?;

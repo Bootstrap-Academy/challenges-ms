@@ -289,6 +289,7 @@ pub enum Subtask {
     Xp,
     Coins,
     Fee,
+    Enabled,
 }
 
 #[derive(Iden)]

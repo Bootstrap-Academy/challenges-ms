@@ -29,6 +29,8 @@ pub struct MultipleChoiceQuestionSummary {
     pub solved: bool,
     /// Whether the user has rated this subtask.
     pub rated: bool,
+    /// Whether the subtask is enabled and visible to normal users.
+    pub enabled: bool,
     /// The question text. Only available if the user has unlocked the subtask.
     pub question: Option<String>,
 }
@@ -56,6 +58,8 @@ where
     pub solved: bool,
     /// Whether the user has rated this subtask.
     pub rated: bool,
+    /// Whether the subtask is enabled and visible to normal users.
+    pub enabled: bool,
     /// The question text.
     pub question: String,
     /// The possible answers to the question.
@@ -94,6 +98,8 @@ pub struct UpdateMultipleChoiceQuestionRequest {
     /// The number of morphcoins a user has to pay to access this subtask.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub fee: PatchValue<u64>,
+    /// Whether the subtask is enabled and visible to normal users.
+    pub enabled: PatchValue<bool>,
     /// The question text.
     #[oai(validator(max_length = 4096))]
     pub question: PatchValue<String>,
@@ -145,6 +151,7 @@ impl MultipleChoiceQuestionSummary {
             unlocked,
             solved,
             rated,
+            enabled: subtask.enabled,
             question: unlocked.then_some(mcq.question),
         }
     }
@@ -167,6 +174,7 @@ impl MultipleChoiceQuestion<Answer> {
             fee: subtask.fee as _,
             solved,
             rated,
+            enabled: subtask.enabled,
             question: mcq.question,
             answers: combine_answers(mcq.answers, mcq.correct_answers),
         }
@@ -190,6 +198,7 @@ impl MultipleChoiceQuestion<String> {
             fee: subtask.fee as _,
             solved,
             rated,
+            enabled: subtask.enabled,
             question: mcq.question,
             answers: mcq.answers,
         }

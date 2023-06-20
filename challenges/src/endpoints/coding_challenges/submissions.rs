@@ -57,9 +57,12 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListSubmissions::Response<VerifiedUserAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return ListSubmissions::subtask_not_found();
         };
+        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+            return ListSubmissions::subtask_not_found();
+        }
 
         ListSubmissions::ok(
             cc.find_related(challenges_coding_challenge_submissions::Entity)
@@ -86,9 +89,12 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetSubmission::Response<VerifiedUserAuth> {
-        let Some((cc, _)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return GetSubmission::submission_not_found();
         };
+        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+            return GetSubmission::submission_not_found();
+        }
 
         let Some(submission) = challenges_coding_challenge_submissions::Entity::find_by_id(submission_id.0)
             .filter(challenges_coding_challenge_submissions::Column::SubtaskId.eq(cc.subtask_id))
@@ -121,6 +127,9 @@ impl Api {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return CreateSubmission::subtask_not_found();
         };
+        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+            return CreateSubmission::subtask_not_found();
+        }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         if !user_subtask.check_access(&auth.0, &subtask) {

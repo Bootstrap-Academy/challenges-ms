@@ -9,6 +9,7 @@ pub use super::{
     challenges_course_tasks::Entity as ChallengesCourseTasks,
     challenges_multiple_choice_attempts::Entity as ChallengesMultipleChoiceAttempts,
     challenges_multiple_choice_quizes::Entity as ChallengesMultipleChoiceQuizes,
+    challenges_subtask_reports::Entity as ChallengesSubtaskReports,
     challenges_subtasks::Entity as ChallengesSubtasks, challenges_tasks::Entity as ChallengesTasks,
     challenges_user_subtasks::Entity as ChallengesUserSubtasks,
 };

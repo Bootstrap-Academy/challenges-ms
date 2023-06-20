@@ -44,6 +44,9 @@ impl Api {
         let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
             return TestExample::example_not_found();
         };
+        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+            return TestExample::example_not_found();
+        }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         if !user_subtask.check_access(&auth.0, &subtask) {

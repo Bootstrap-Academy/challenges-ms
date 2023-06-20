@@ -13,6 +13,7 @@ pub struct Model {
     pub xp: i64,
     pub coins: i64,
     pub fee: i64,
+    pub enabled: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -21,6 +22,8 @@ pub enum Relation {
     ChallengesCodingChallenges,
     #[sea_orm(has_many = "super::challenges_multiple_choice_quizes::Entity")]
     ChallengesMultipleChoiceQuizes,
+    #[sea_orm(has_many = "super::challenges_subtask_reports::Entity")]
+    ChallengesSubtaskReports,
     #[sea_orm(
         belongs_to = "super::challenges_tasks::Entity",
         from = "Column::TaskId",
@@ -42,6 +45,12 @@ impl Related<super::challenges_coding_challenges::Entity> for Entity {
 impl Related<super::challenges_multiple_choice_quizes::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::ChallengesMultipleChoiceQuizes.def()
+    }
+}
+
+impl Related<super::challenges_subtask_reports::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ChallengesSubtaskReports.def()
     }
 }
 

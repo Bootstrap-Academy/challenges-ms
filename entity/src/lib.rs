@@ -10,6 +10,7 @@ pub mod challenges_coding_challenges;
 pub mod challenges_course_tasks;
 pub mod challenges_multiple_choice_attempts;
 pub mod challenges_multiple_choice_quizes;
+pub mod challenges_subtask_reports;
 pub mod challenges_subtasks;
 pub mod challenges_tasks;
 pub mod challenges_user_subtasks;

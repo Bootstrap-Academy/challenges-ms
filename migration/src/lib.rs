@@ -18,6 +18,7 @@ mod m20230618_144250_add_fee_to_subtasks;
 mod m20230618_150706_add_unlocked_subtasks;
 mod m20230619_084345_user_subtasks;
 mod m20230620_082405_subtask_feedback;
+mod m20230620_093716_reports;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -36,6 +37,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230618_150706_add_unlocked_subtasks::Migration),
             Box::new(m20230619_084345_user_subtasks::Migration),
             Box::new(m20230620_082405_subtask_feedback::Migration),
+            Box::new(m20230620_093716_reports::Migration),
         ]
     }
 }
