@@ -133,7 +133,7 @@ enum SubmissionResult {
 }
 
 #[derive(Iden)]
-enum Verdict {
+pub enum Verdict {
     #[iden = "challenges_verdict"]
     Type,
     Ok,
@@ -144,4 +144,5 @@ enum Verdict {
     NoOutput,
     CompilationError,
     RuntimeError,
+    PreCheckFailed,
 }

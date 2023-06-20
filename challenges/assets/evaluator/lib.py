@@ -12,7 +12,7 @@ def example(f):
     return f
 
 
-def main(Input, Output):
+def main(Input, Output, prepare=None):
     if sys.argv[1] == "examples":
         print(json.dumps([f"_ex_{x}" for x in range(len(_examples))]))
     elif sys.argv[1] == "generate":
@@ -22,6 +22,22 @@ def main(Input, Output):
         else:
             inp = Input.from_seed(seed)
         print(json.dumps({"input": inp.serialize(), "data": inp.data()}))
+    elif sys.argv[1] == "prepare":
+        with open(0) as f:
+            obj = json.load(f)
+        env = obj["environment"]
+        code = obj["code"]
+        data = obj["data"]
+        if prepare is None:
+            print(json.dumps({"code": code, "reason": ""}))
+            sys.exit()
+        logs = []
+        try:
+            out = prepare(env, code, data, logs.append)
+        except:
+            print(json.dumps({"code": None, "reason": "\n".join(logs)}))
+        else:
+            print(json.dumps({"code": out, "reason": "\n".join(logs)}))
     elif sys.argv[1] == "check":
         with open(0) as f:
             obj = json.load(f)

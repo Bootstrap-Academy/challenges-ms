@@ -21,6 +21,7 @@ mod m20230620_082405_subtask_feedback;
 mod m20230620_093716_reports;
 mod m20230620_153019_dislike_reports;
 mod m20230620_163944_ban;
+mod m20230620_221620_pre_check_failed_verdict;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -42,6 +43,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230620_093716_reports::Migration),
             Box::new(m20230620_153019_dislike_reports::Migration),
             Box::new(m20230620_163944_ban::Migration),
+            Box::new(m20230620_221620_pre_check_failed_verdict::Migration),
         ]
     }
 }

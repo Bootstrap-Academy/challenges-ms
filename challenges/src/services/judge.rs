@@ -96,6 +96,11 @@ impl Judge<'_> {
             .await?
     }
 
+    async fn prepare(&self, seed: &str, data: &PrepareRequest<'_>) -> Result<PrepareResult, Error> {
+        self.run_evaluator(vec!["prepare".into(), seed.into()], Some(data))
+            .await
+    }
+
     async fn check(&self, seed: &str, output: &Output<'_>) -> Result<EvaluatorCheckOutput, Error> {
         self.run_evaluator(vec!["check".into(), seed.into()], Some(output))
             .await
@@ -143,13 +148,35 @@ impl Judge<'_> {
         time_limit: Option<u64>,   // ms
         memory_limit: Option<u64>, // mb
     ) -> Result<CheckResult<RunResult>, Error> {
+        let prepare_result = self
+            .prepare(
+                seed,
+                &PrepareRequest {
+                    environment,
+                    code,
+                    data: &input.data,
+                },
+            )
+            .await?;
+        let code = match prepare_result.code {
+            Some(code) => code,
+            None => {
+                return Ok(CheckResult {
+                    verdict: ChallengesVerdict::PreCheckFailed,
+                    reason: Some(prepare_result.reason),
+                    compile: None,
+                    run: None,
+                })
+            }
+        };
+
         let output = match self
             .sandkasten
             .build_and_run(&BuildRunRequest {
                 build: BuildRequest {
                     environment: environment.into(),
                     main_file: MainFile {
-                        content: code.into(),
+                        content: code,
                         ..Default::default()
                     },
                     ..Default::default()
@@ -257,6 +284,19 @@ pub struct Input {
 pub struct Output<'a> {
     pub output: &'a str,
     pub data: &'a Value,
+}
+
+#[derive(Debug, Serialize)]
+struct PrepareRequest<'a> {
+    environment: &'a str,
+    code: &'a str,
+    data: &'a Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct PrepareResult {
+    code: Option<String>,
+    reason: String,
 }
 
 #[derive(Debug, Deserialize)]

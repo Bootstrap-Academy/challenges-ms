@@ -107,6 +107,8 @@ pub enum ChallengesVerdict {
     NoOutput,
     #[sea_orm(string_value = "ok")]
     Ok,
+    #[sea_orm(string_value = "pre_check_failed")]
+    PreCheckFailed,
     #[sea_orm(string_value = "runtime_error")]
     RuntimeError,
     #[sea_orm(string_value = "time_limit_exceeded")]
