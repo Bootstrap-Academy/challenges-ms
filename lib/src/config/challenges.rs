@@ -17,6 +17,7 @@ pub struct Quizzes {
     pub max_xp: u64,
     pub max_coins: u64,
     pub max_fee: u64,
+    pub ban_days: Vec<u32>,
 }
 
 #[derive(Debug, Deserialize)]

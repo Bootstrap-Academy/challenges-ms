@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use entity::{
-    challenges_subtask_reports, challenges_subtasks, challenges_tasks, challenges_user_subtasks,
-    sea_orm_active_enums::{ChallengesRating, ChallengesReportReason},
+    challenges_ban, challenges_subtask_reports, challenges_subtasks, challenges_tasks,
+    challenges_user_subtasks,
+    sea_orm_active_enums::{ChallengesBanAction, ChallengesRating, ChallengesReportReason},
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -19,13 +20,17 @@ use poem_openapi::{
     OpenApi,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set, Unchanged,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, PaginatorTrait,
+    QueryFilter, Set, Unchanged,
 };
 use uuid::Uuid;
 
 use super::Tags;
 use crate::{
-    schemas::subtasks::{CreateReportRequest, PostFeedbackRequest, Report, UpdateSubtaskRequest},
+    schemas::subtasks::{
+        CreateReportRequest, PostFeedbackRequest, Report, ResolveReportAction,
+        ResolveReportRequest, UpdateSubtaskRequest,
+    },
     services::{
         subtasks::{get_user_subtask, update_user_subtask, UserSubtaskExt},
         tasks::{get_specific_task, Task},
@@ -269,6 +274,70 @@ impl Subtasks {
 
         CreateReport::created(report)
     }
+
+    /// Resolve a subtask report.
+    #[oai(path = "/subtask_reports/:report_id", method = "put")]
+    pub async fn resolve_report(
+        &self,
+        report_id: Path<Uuid>,
+        data: Json<ResolveReportRequest>,
+        db: Data<&DbTxn>,
+        auth: AdminAuth,
+    ) -> ResolveReport::Response<AdminAuth> {
+        let Some((report, Some(subtask))) = challenges_subtask_reports::Entity::find_by_id(report_id.0)
+            .find_also_related(challenges_subtasks::Entity)
+            .one(&***db)
+            .await?
+        else {
+            return ResolveReport::report_not_found();
+        };
+
+        if report.completed_by.is_some() {
+            return ResolveReport::already_resolved();
+        }
+
+        match data.0.action {
+            ResolveReportAction::Revise => {}
+            ResolveReportAction::BlockReporter => {
+                let Some(reporter) = report.user_id else {
+                    return ResolveReport::no_reporter();
+                };
+                ban_user(
+                    &db,
+                    reporter,
+                    ChallengesBanAction::Report,
+                    &self.config.challenges.quizzes.ban_days,
+                )
+                .await?;
+                challenges_subtasks::ActiveModel {
+                    enabled: Set(true),
+                    ..subtask.into()
+                }
+                .update(&***db)
+                .await?;
+            }
+            ResolveReportAction::BlockCreator => {
+                ban_user(
+                    &db,
+                    subtask.creator,
+                    ChallengesBanAction::Create,
+                    &self.config.challenges.quizzes.ban_days,
+                )
+                .await?;
+                subtask.delete(&***db).await?;
+            }
+        }
+
+        challenges_subtask_reports::ActiveModel {
+            completed_by: Set(Some(auth.0.id)),
+            completed_timestamp: Set(Some(Utc::now().naive_utc())),
+            ..report.into()
+        }
+        .update(&***db)
+        .await?;
+
+        ResolveReport::ok()
+    }
 }
 
 response!(UnlockSubtask = {
@@ -311,6 +380,16 @@ response!(CreateReport = {
     SubtaskNotFound(404, error),
     /// The user is not allowed to report this subtask.
     PermissionDenied(403, error),
+});
+
+response!(ResolveReport = {
+    Ok(200),
+    /// Report not found.
+    ReportNotFound(404, error),
+    /// Report has already been resolved.
+    AlreadyResolved(403, error),
+    /// The reporter could not be banned because the report has been generated automatically.
+    NoReporter(403, error),
 });
 
 async fn get_subtask(
@@ -377,4 +456,33 @@ async fn create_report(
     .await?;
 
     Ok((Report::from(report, subtask.task_id), subtask))
+}
+
+async fn ban_user(
+    db: &DatabaseTransaction,
+    user_id: Uuid,
+    action: ChallengesBanAction,
+    ban_days: &[u32],
+) -> Result<challenges_ban::Model, ErrorResponse> {
+    let now = Utc::now().naive_utc();
+
+    let bans = challenges_ban::Entity::find()
+        .filter(challenges_ban::Column::UserId.eq(user_id))
+        .filter(challenges_ban::Column::Action.eq(action))
+        .count(db)
+        .await?;
+
+    let duration = ban_days
+        .get(bans as usize)
+        .map(|&days| Duration::days(days as _));
+
+    Ok(challenges_ban::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        user_id: Set(user_id),
+        start: Set(now),
+        end: Set(duration.map(|duration| now + duration)),
+        action: Set(action),
+    }
+    .insert(db)
+    .await?)
 }

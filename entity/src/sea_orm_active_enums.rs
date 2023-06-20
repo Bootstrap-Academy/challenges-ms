@@ -16,6 +16,31 @@ use sea_orm::entity::prelude::*;
 )]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[oai(rename_all = "SCREAMING_SNAKE_CASE")]
+#[sea_orm(
+    rs_type = "String",
+    db_type = "Enum",
+    enum_name = "challenges_ban_action"
+)]
+pub enum ChallengesBanAction {
+    #[sea_orm(string_value = "create")]
+    Create,
+    #[sea_orm(string_value = "report")]
+    Report,
+}
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    EnumIter,
+    DeriveActiveEnum,
+    Copy,
+    poem_openapi::Enum,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[oai(rename_all = "SCREAMING_SNAKE_CASE")]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "challenges_rating")]
 pub enum ChallengesRating {
     #[sea_orm(string_value = "negative")]

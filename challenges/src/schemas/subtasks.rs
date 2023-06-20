@@ -4,7 +4,7 @@ use entity::{
     sea_orm_active_enums::{ChallengesRating, ChallengesReportReason},
 };
 use poem_ext::patch_value::PatchValue;
-use poem_openapi::Object;
+use poem_openapi::{Enum, Object};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Object)]
@@ -39,6 +39,19 @@ pub struct CreateReportRequest {
     pub reason: ChallengesReportReason,
     #[oai(validator(max_length = 4096))]
     pub comment: String,
+}
+
+#[derive(Debug, Clone, Object)]
+pub struct ResolveReportRequest {
+    pub action: ResolveReportAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+#[oai(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ResolveReportAction {
+    Revise,
+    BlockReporter,
+    BlockCreator,
 }
 
 impl Report {

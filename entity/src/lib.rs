@@ -2,6 +2,7 @@
 
 pub mod prelude;
 
+pub mod challenges_ban;
 pub mod challenges_challenge_categories;
 pub mod challenges_challenges;
 pub mod challenges_coding_challenge_result;
