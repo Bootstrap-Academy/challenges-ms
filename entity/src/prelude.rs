@@ -8,6 +8,8 @@ pub use super::{
     challenges_coding_challenge_submissions::Entity as ChallengesCodingChallengeSubmissions,
     challenges_coding_challenges::Entity as ChallengesCodingChallenges,
     challenges_course_tasks::Entity as ChallengesCourseTasks,
+    challenges_matching_attempts::Entity as ChallengesMatchingAttempts,
+    challenges_matchings::Entity as ChallengesMatchings,
     challenges_multiple_choice_attempts::Entity as ChallengesMultipleChoiceAttempts,
     challenges_multiple_choice_quizes::Entity as ChallengesMultipleChoiceQuizes,
     challenges_question_attempts::Entity as ChallengesQuestionAttempts,

@@ -6,9 +6,10 @@ pub struct ChallengesConfig {
     pub host: String,
     pub port: u16,
     pub server: String,
-    pub quizzes: Quizzes,
+    pub quizzes: Quizzes, // course tasks
     pub multiple_choice_questions: MultipleChoiceQuestions,
     pub questions: Questions,
+    pub matchings: Matchings,
     pub coding_challenges: CodingChallenges,
 }
 
@@ -28,6 +29,11 @@ pub struct MultipleChoiceQuestions {
 
 #[derive(Debug, Deserialize)]
 pub struct Questions {
+    pub timeout_incr: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Matchings {
     pub timeout_incr: u64,
 }
 

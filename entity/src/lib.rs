@@ -9,6 +9,8 @@ pub mod challenges_coding_challenge_result;
 pub mod challenges_coding_challenge_submissions;
 pub mod challenges_coding_challenges;
 pub mod challenges_course_tasks;
+pub mod challenges_matching_attempts;
+pub mod challenges_matchings;
 pub mod challenges_multiple_choice_attempts;
 pub mod challenges_multiple_choice_quizes;
 pub mod challenges_question_attempts;

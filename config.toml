@@ -65,6 +65,9 @@ timeout_incr = 10  # seconds
 [challenges.questions]
 timeout_incr = 10  # seconds
 
+[challenges.matchings]
+timeout_incr = 10  # seconds
+
 [challenges.coding_challenges]
 sandkasten_url = "http://sandkasten"
 max_concurrency = 4
