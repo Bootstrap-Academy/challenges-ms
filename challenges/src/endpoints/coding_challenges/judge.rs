@@ -130,11 +130,7 @@ impl Api {
     /// Return the config of the code execution engine.
     #[oai(path = "/executor/config", method = "get")]
     async fn get_config(&self, _auth: VerifiedUserAuth) -> GetConfig::Response<VerifiedUserAuth> {
-        let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
-        GetConfig::ok(ExecutorConfig {
-            time_limit: (config.run_limits.time - 1) * 1000,
-            memory_limit: config.run_limits.memory,
-        })
+        GetConfig::ok(get_executor_config(&self.judge_cache, &self.sandkasten).await?)
     }
 }
 

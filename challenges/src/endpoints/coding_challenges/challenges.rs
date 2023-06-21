@@ -283,11 +283,11 @@ impl Api {
         }
 
         let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
-        if data.0.time_limit > (config.run_limits.time - 1) * 1000 {
-            return CreateCodingChallenge::time_limit_exceeded((config.run_limits.time - 1) * 1000);
+        if data.0.time_limit > config.time_limit {
+            return CreateCodingChallenge::time_limit_exceeded(config.time_limit);
         }
-        if data.0.memory_limit > config.run_limits.memory {
-            return CreateCodingChallenge::memory_limit_exceeded(config.run_limits.memory);
+        if data.0.memory_limit > config.memory_limit {
+            return CreateCodingChallenge::memory_limit_exceeded(config.memory_limit);
         }
 
         let cc_id = Uuid::new_v4();
@@ -359,11 +359,11 @@ impl Api {
         }
 
         let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
-        if *data.0.time_limit.get_new(&(cc.time_limit as _)) > (config.run_limits.time - 1) * 1000 {
-            return UpdateCodingChallenge::time_limit_exceeded((config.run_limits.time - 1) * 1000);
+        if *data.0.time_limit.get_new(&(cc.time_limit as _)) > config.time_limit {
+            return UpdateCodingChallenge::time_limit_exceeded(config.time_limit);
         }
-        if *data.0.memory_limit.get_new(&(cc.time_limit as _)) > config.run_limits.memory {
-            return UpdateCodingChallenge::memory_limit_exceeded(config.run_limits.memory);
+        if *data.0.memory_limit.get_new(&(cc.memory_limit as _)) > config.memory_limit {
+            return UpdateCodingChallenge::memory_limit_exceeded(config.memory_limit);
         }
 
         if let Err(result) = check_challenge(CheckChallenge {

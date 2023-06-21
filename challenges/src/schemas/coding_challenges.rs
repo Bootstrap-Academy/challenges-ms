@@ -8,7 +8,10 @@ use poem_openapi::{
     types::{ParseFromJSON, ToJSON, Type},
     Object,
 };
-use sandkasten_client::schemas::programs::{ResourceUsage, RunResult};
+use sandkasten_client::schemas::{
+    configuration::PublicConfig,
+    programs::{ResourceUsage, RunResult},
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -356,6 +359,15 @@ impl From<challenges_coding_challenge_result::Model> for CheckResult<RunSummary>
                 value.run_time,
                 value.run_memory,
             ),
+        }
+    }
+}
+
+impl From<PublicConfig> for ExecutorConfig {
+    fn from(value: PublicConfig) -> Self {
+        Self {
+            time_limit: (value.run_limits.time - 1) * 1000,
+            memory_limit: value.run_limits.memory,
         }
     }
 }

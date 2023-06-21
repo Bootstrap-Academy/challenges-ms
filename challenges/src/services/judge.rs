@@ -3,7 +3,6 @@ use fnct::{format::JsonFormatter, key};
 use lib::{Cache, CacheError};
 use sandkasten_client::{
     schemas::{
-        configuration::PublicConfig,
         programs::{
             BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, File, LimitsOpt,
             MainFile, RunRequest, RunResult,
@@ -16,7 +15,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::schemas::coding_challenges::{CheckResult, Example};
+use crate::schemas::coding_challenges::{CheckResult, Example, ExecutorConfig};
 
 pub const EVALUATOR_TEMPLATE: &str = include_str!("../../assets/evaluator/template.py");
 pub const EVALUATOR_LIBRARY: &str = include_str!("../../assets/evaluator/lib.py");
@@ -250,12 +249,13 @@ impl Judge<'_> {
 pub async fn get_executor_config(
     cache: &Cache<JsonFormatter>,
     sandkasten: &SandkastenClient,
-) -> anyhow::Result<PublicConfig> {
+) -> anyhow::Result<ExecutorConfig> {
     Ok(cache
         .cached_result(key!(), &[], None, || async {
             sandkasten.get_config().await
         })
-        .await??)
+        .await??
+        .into())
 }
 
 #[derive(Debug, Error)]
