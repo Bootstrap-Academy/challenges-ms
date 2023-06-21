@@ -25,6 +25,7 @@ mod m20230620_221620_pre_check_failed_verdict;
 mod m20230621_072201_single_choice;
 mod m20230621_074711_questions;
 mod m20230621_120013_fix_foreign_keys;
+mod m20230621_135204_questions_building_blocks;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -50,6 +51,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230621_072201_single_choice::Migration),
             Box::new(m20230621_074711_questions::Migration),
             Box::new(m20230621_120013_fix_foreign_keys::Migration),
+            Box::new(m20230621_135204_questions_building_blocks::Migration),
         ]
     }
 }

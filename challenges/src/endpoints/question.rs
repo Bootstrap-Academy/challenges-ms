@@ -221,6 +221,7 @@ impl Questions {
             ascii_letters: Set(data.0.ascii_letters),
             digits: Set(data.0.digits),
             punctuation: Set(data.0.punctuation),
+            blocks: Set(data.0.blocks),
         }
         .insert(&***db)
         .await?;
@@ -267,6 +268,7 @@ impl Questions {
             ascii_letters: data.0.ascii_letters.update(question.ascii_letters),
             digits: data.0.digits.update(question.digits),
             punctuation: data.0.punctuation.update(question.punctuation),
+            blocks: data.0.blocks.update(question.blocks),
         }
         .update(&***db)
         .await?;

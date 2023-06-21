@@ -14,6 +14,7 @@ pub struct Model {
     pub ascii_letters: bool,
     pub digits: bool,
     pub punctuation: bool,
+    pub blocks: Vec<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

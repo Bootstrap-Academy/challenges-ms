@@ -77,7 +77,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Question {
+pub enum Question {
     #[iden = "challenges_questions"]
     Table,
     SubtaskId,
@@ -87,6 +87,7 @@ enum Question {
     AsciiLetters,
     Digits,
     Punctuation,
+    Blocks,
 }
 
 #[derive(Iden)]

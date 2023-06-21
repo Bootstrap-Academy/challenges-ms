@@ -45,6 +45,9 @@ macro_rules! question {
                 pub digits: bool,
                 /// Whether the answer can contain symbols like +-*/.,:;_
                 pub punctuation: bool,
+                /// The list of "building blocks" that can be used to compose the answer.
+                /// Empty if the answer has to be typed.
+                pub blocks: Vec<String>,
             }
 
             impl $name {
@@ -73,6 +76,7 @@ macro_rules! question {
                         ascii_letters: question.ascii_letters,
                         digits: question.digits,
                         punctuation: question.punctuation,
+                        blocks: question.blocks,
                     }
                 }
             }
@@ -98,8 +102,10 @@ pub struct CreateQuestionRequest {
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub fee: u64,
     /// The question text.
+    #[oai(validator(max_length = 4096))]
     pub question: String,
     /// The possible answers to the question.
+    #[oai(validator(min_items = 1, max_items = 32, max_length = 256))]
     pub answers: Vec<String>,
     /// Whether the answer is case sensitive.
     pub case_sensitive: bool,
@@ -109,6 +115,10 @@ pub struct CreateQuestionRequest {
     pub digits: bool,
     /// Whether the answer can contain puncutation characters
     pub punctuation: bool,
+    /// The list of "building blocks" that can be used to compose the answer.
+    /// Empty if the answer has to be typed.
+    #[oai(validator(max_items = 32, max_length = 256))]
+    pub blocks: Vec<String>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -140,6 +150,10 @@ pub struct UpdateQuestionRequest {
     pub digits: PatchValue<bool>,
     /// Whether the answer can contain puncutation characters
     pub punctuation: PatchValue<bool>,
+    /// The list of "building blocks" that can be used to compose the answer.
+    /// Empty if the answer has to be typed.
+    #[oai(validator(max_items = 32, max_length = 256))]
+    pub blocks: PatchValue<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Object)]
