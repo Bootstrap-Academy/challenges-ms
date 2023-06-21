@@ -11,6 +11,7 @@ pub struct Model {
     pub question: String,
     pub answers: Vec<String>,
     pub correct_answers: i64,
+    pub single_choice: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

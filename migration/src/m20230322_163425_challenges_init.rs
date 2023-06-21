@@ -300,6 +300,7 @@ pub enum MultipleChoice {
     Question,
     Answers,
     CorrectAnswers,
+    SingleChoice,
 }
 
 #[derive(Iden)]

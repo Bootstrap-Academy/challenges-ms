@@ -191,6 +191,10 @@ impl MultipleChoice {
             ActiveBan::Permanent => return CreateQuestion::banned(None),
         }
 
+        if data.0.single_choice && data.0.answers.iter().filter(|x| x.correct).count() != 1 {
+            return CreateQuestion::invalid_single_choice();
+        }
+
         let subtask = challenges_subtasks::ActiveModel {
             id: Set(Uuid::new_v4()),
             task_id: Set(task.id),
@@ -209,6 +213,7 @@ impl MultipleChoice {
             question: Set(data.0.question),
             answers: Set(answers),
             correct_answers: Set(correct),
+            single_choice: Set(data.0.single_choice),
         }
         .insert(&***db)
         .await?;
@@ -238,18 +243,25 @@ impl MultipleChoice {
             return UpdateQuestion::task_not_found();
         };
 
-        let (answers, correct) = if let PatchValue::Set(answers) = data.0.answers {
+        let (answers, correct, cnt) = if let PatchValue::Set(answers) = data.0.answers {
+            let cnt = answers.iter().filter(|x| x.correct).count();
             let (a, c) = split_answers(answers);
-            (Set(a), Set(c))
+            (Set(a), Set(c), cnt)
         } else {
-            (Unchanged(mcq.answers), Unchanged(mcq.correct_answers))
+            let cnt = mcq.correct_answers.count_ones() as _;
+            (Unchanged(mcq.answers), Unchanged(mcq.correct_answers), cnt)
         };
+
+        if *data.0.single_choice.get_new(&mcq.single_choice) && cnt != 1 {
+            return UpdateQuestion::invalid_single_choice();
+        }
 
         let mcq = challenges_multiple_choice_quizes::ActiveModel {
             subtask_id: Unchanged(mcq.subtask_id),
             question: data.0.question.update(mcq.question),
             answers,
             correct_answers: correct,
+            single_choice: data.0.single_choice.update(mcq.single_choice),
         }
         .update(&***db)
         .await?;
@@ -425,6 +437,8 @@ response!(CreateQuestion = {
     CoinLimitExceeded(403, error) => u64,
     /// The max fee limit has been exceeded.
     FeeLimitExceeded(403, error) => u64,
+    /// `single_choice` is set to `true`, but there is not exactly one correct answer.
+    InvalidSingleChoice(400, error),
 });
 
 response!(UpdateQuestion = {
@@ -433,6 +447,8 @@ response!(UpdateQuestion = {
     SubtaskNotFound(404, error),
     /// Task does not exist.
     TaskNotFound(404, error),
+    /// `single_choice` is set to `true`, but there is not exactly one correct answer.
+    InvalidSingleChoice(400, error),
 });
 
 response!(DeleteQuestion = {

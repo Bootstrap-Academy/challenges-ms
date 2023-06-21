@@ -25,7 +25,7 @@ pub enum Tags {
     CourseTasks,
     /// Endpoints for all subtasks
     Subtasks,
-    /// Endpoints for multiple choice subtasks (subtasks)
+    /// Endpoints for single/multiple choice questions (subtasks)
     MultipleChoice,
     /// Endpoints for coding challenges (subtasks)
     CodingChallenges,

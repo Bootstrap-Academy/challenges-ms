@@ -33,6 +33,9 @@ pub struct MultipleChoiceQuestionSummary {
     pub enabled: bool,
     /// The question text. Only available if the user has unlocked the subtask.
     pub question: Option<String>,
+    /// Whether this question is a single choice question (exactly one answer is
+    /// correct).
+    pub single_choice: bool,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -64,6 +67,9 @@ where
     pub question: String,
     /// The possible answers to the question.
     pub answers: Vec<A>,
+    /// Whether this question is a single choice question (exactly one answer is
+    /// correct).
+    pub single_choice: bool,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -74,6 +80,9 @@ pub struct CreateMultipleChoiceQuestionRequest {
     /// The possible answers to the question.
     #[oai(validator(min_items = 1, max_items = 32))]
     pub answers: Vec<Answer>,
+    /// Whether this question is a single choice question (exactly one answer is
+    /// correct).
+    pub single_choice: bool,
     /// The number of xp a user gets for completing this subtask.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub xp: u64,
@@ -106,6 +115,9 @@ pub struct UpdateMultipleChoiceQuestionRequest {
     /// The possible answers to the question.
     #[oai(validator(min_items = 1, max_items = 32))]
     pub answers: PatchValue<Vec<Answer>>,
+    /// Whether this question is a single choice question (exactly one answer is
+    /// correct).
+    pub single_choice: PatchValue<bool>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -153,6 +165,7 @@ impl MultipleChoiceQuestionSummary {
             rated,
             enabled: subtask.enabled,
             question: unlocked.then_some(mcq.question),
+            single_choice: mcq.single_choice,
         }
     }
 }
@@ -177,6 +190,7 @@ impl MultipleChoiceQuestion<Answer> {
             enabled: subtask.enabled,
             question: mcq.question,
             answers: combine_answers(mcq.answers, mcq.correct_answers),
+            single_choice: mcq.single_choice,
         }
     }
 }
@@ -201,6 +215,7 @@ impl MultipleChoiceQuestion<String> {
             enabled: subtask.enabled,
             question: mcq.question,
             answers: mcq.answers,
+            single_choice: mcq.single_choice,
         }
     }
 }
