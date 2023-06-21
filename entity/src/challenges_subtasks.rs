@@ -22,6 +22,8 @@ pub enum Relation {
     ChallengesCodingChallenges,
     #[sea_orm(has_many = "super::challenges_multiple_choice_quizes::Entity")]
     ChallengesMultipleChoiceQuizes,
+    #[sea_orm(has_many = "super::challenges_questions::Entity")]
+    ChallengesQuestions,
     #[sea_orm(has_many = "super::challenges_subtask_reports::Entity")]
     ChallengesSubtaskReports,
     #[sea_orm(
@@ -45,6 +47,12 @@ impl Related<super::challenges_coding_challenges::Entity> for Entity {
 impl Related<super::challenges_multiple_choice_quizes::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::ChallengesMultipleChoiceQuizes.def()
+    }
+}
+
+impl Related<super::challenges_questions::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ChallengesQuestions.def()
     }
 }
 

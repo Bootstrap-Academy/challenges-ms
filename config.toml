@@ -62,6 +62,9 @@ ban_days = [3, 7, 30]
 [challenges.multiple_choice_questions]
 timeout_incr = 10  # seconds
 
+[challenges.questions]
+timeout_incr = 10  # seconds
+
 [challenges.coding_challenges]
 sandkasten_url = "http://sandkasten"
 max_concurrency = 4

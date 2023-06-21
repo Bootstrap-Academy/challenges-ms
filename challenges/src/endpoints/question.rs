@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use entity::{
-    challenges_multiple_choice_attempts, challenges_multiple_choice_quizes, challenges_subtasks,
+    challenges_question_attempts, challenges_questions, challenges_subtasks,
     challenges_user_subtasks, sea_orm_active_enums::ChallengesBanAction,
 };
 use lib::{
@@ -11,7 +11,7 @@ use lib::{
     SharedState,
 };
 use poem::web::Data;
-use poem_ext::{db::DbTxn, patch_value::PatchValue, response, responses::ErrorResponse};
+use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{
     param::{Path, Query},
     payload::Json,
@@ -25,10 +25,9 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::{
-    schemas::multiple_choice::{
-        check_answers, split_answers, Answer, CreateMultipleChoiceQuestionRequest,
-        MultipleChoiceQuestion, MultipleChoiceQuestionSummary, SolveMCQFeedback, SolveMCQRequest,
-        UpdateMultipleChoiceQuestionRequest,
+    schemas::question::{
+        CreateQuestionRequest, Question, QuestionSummary, QuestionWithSolution,
+        SolveQuestionFeedback, SolveQuestionRequest, UpdateQuestionRequest,
     },
     services::{
         subtasks::{
@@ -39,15 +38,15 @@ use crate::{
     },
 };
 
-pub struct MultipleChoice {
+pub struct Questions {
     pub state: Arc<SharedState>,
     pub config: Arc<Config>,
 }
 
-#[OpenApi(tag = "Tags::MultipleChoice")]
-impl MultipleChoice {
-    /// List all multiple choice questions in a task.
-    #[oai(path = "/tasks/:task_id/multiple_choice", method = "get")]
+#[OpenApi(tag = "Tags::Questions")]
+impl Questions {
+    /// List all questions in a task.
+    #[oai(path = "/tasks/:task_id/questions", method = "get")]
     #[allow(clippy::too_many_arguments)]
     async fn list_questions(
         &self,
@@ -64,17 +63,17 @@ impl MultipleChoice {
         enabled: Query<Option<bool>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
-    ) -> ListMCQs::Response<VerifiedUserAuth> {
+    ) -> ListQuestions::Response<VerifiedUserAuth> {
         let subtasks = get_user_subtasks(&db, auth.0.id).await?;
-        ListMCQs::ok(
-            challenges_multiple_choice_quizes::Entity::find()
+        ListQuestions::ok(
+            challenges_questions::Entity::find()
                 .find_also_related(challenges_subtasks::Entity)
                 .filter(challenges_subtasks::Column::TaskId.eq(task_id.0))
                 .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
                 .all(&***db)
                 .await?
                 .into_iter()
-                .filter_map(|(mcq, subtask)| {
+                .filter_map(|(question, subtask)| {
                     let subtask = subtask?;
                     let id = subtask.id;
                     let free_ = subtask.fee <= 0;
@@ -88,46 +87,47 @@ impl MultipleChoice {
                         && solved.unwrap_or(solved_) == solved_
                         && rated.unwrap_or(rated_) == rated_
                         && enabled.unwrap_or(enabled_) == enabled_)
-                        .then_some(MultipleChoiceQuestionSummary::from(
-                            mcq, subtask, unlocked_, solved_, rated_,
+                        .then_some(QuestionSummary::from(
+                            question, subtask, unlocked_, solved_, rated_,
                         ))
                 })
                 .collect(),
         )
     }
 
-    /// Get a multiple choice question by id.
-    #[oai(path = "/tasks/:task_id/multiple_choice/:subtask_id", method = "get")]
+    /// Get a question by id.
+    #[oai(path = "/tasks/:task_id/questions/:subtask_id", method = "get")]
     async fn get_question(
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
-    ) -> GetMCQ::Response<VerifiedUserAuth> {
-        let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
-            return GetMCQ::subtask_not_found();
+    ) -> GetQuestion::Response<VerifiedUserAuth> {
+        let Some((question, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+            return GetQuestion::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
-            return GetMCQ::subtask_not_found();
+            return GetQuestion::subtask_not_found();
         }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         if !user_subtask.check_access(&auth.0, &subtask) {
-            return GetMCQ::no_access();
+            return GetQuestion::no_access();
         }
 
-        GetMCQ::ok(MultipleChoiceQuestion::<String>::from(
-            mcq,
+        GetQuestion::ok(Question::from(
+            question,
             subtask,
+            true,
             user_subtask.is_solved(),
             user_subtask.is_rated(),
         ))
     }
 
-    /// Get a multiple choice question and its solution by id.
+    /// Get a question and its solution by id.
     #[oai(
-        path = "/tasks/:task_id/multiple_choice/:subtask_id/solution",
+        path = "/tasks/:task_id/questions/:subtask_id/solution",
         method = "get"
     )]
     async fn get_question_with_solution(
@@ -136,61 +136,69 @@ impl MultipleChoice {
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
-    ) -> GetMCQWithSolution::Response<VerifiedUserAuth> {
-        let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
-            return GetMCQWithSolution::subtask_not_found();
+    ) -> GetQuestionWithSolution::Response<VerifiedUserAuth> {
+        let Some((question, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+            return GetQuestionWithSolution::subtask_not_found();
         };
 
         if !(auth.0.admin || auth.0.id == subtask.creator) {
-            return GetMCQWithSolution::forbidden();
+            return GetQuestionWithSolution::forbidden();
         }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        GetMCQWithSolution::ok(MultipleChoiceQuestion::<Answer>::from(
-            mcq,
+        GetQuestionWithSolution::ok(QuestionWithSolution::from(
+            question,
             subtask,
+            true,
             user_subtask.is_solved(),
             user_subtask.is_rated(),
         ))
     }
 
-    /// Create a new multiple choice question.
-    #[oai(path = "/tasks/:task_id/multiple_choice", method = "post")]
+    /// Create a new question.
+    #[oai(path = "/tasks/:task_id/questions", method = "post")]
     async fn create_question(
         &self,
         task_id: Path<Uuid>,
-        data: Json<CreateMultipleChoiceQuestionRequest>,
+        data: Json<CreateQuestionRequest>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
-    ) -> CreateMCQ::Response<VerifiedUserAuth> {
+    ) -> CreateQuestion::Response<VerifiedUserAuth> {
         let (task, specific) = match get_task_with_specific(&db, task_id.0).await? {
             Some(task) => task,
-            None => return CreateMCQ::task_not_found(),
+            None => return CreateQuestion::task_not_found(),
         };
         if !can_create(&self.state.services, &self.config, &specific, &auth.0).await? {
-            return CreateMCQ::forbidden();
+            return CreateQuestion::forbidden();
         }
 
         if matches!(specific, Task::CourseTask(_)) && !auth.0.admin {
             if data.0.xp > self.config.challenges.quizzes.max_xp {
-                return CreateMCQ::xp_limit_exceeded(self.config.challenges.quizzes.max_xp);
+                return CreateQuestion::xp_limit_exceeded(self.config.challenges.quizzes.max_xp);
             }
             if data.0.coins > self.config.challenges.quizzes.max_coins {
-                return CreateMCQ::coin_limit_exceeded(self.config.challenges.quizzes.max_coins);
+                return CreateQuestion::coin_limit_exceeded(
+                    self.config.challenges.quizzes.max_coins,
+                );
             }
             if data.0.fee > self.config.challenges.quizzes.max_fee {
-                return CreateMCQ::fee_limit_exceeded(self.config.challenges.quizzes.max_fee);
+                return CreateQuestion::fee_limit_exceeded(self.config.challenges.quizzes.max_fee);
             }
         }
 
         match get_active_ban(&db, &auth.0, ChallengesBanAction::Create).await? {
             ActiveBan::NotBanned => {}
-            ActiveBan::Temporary(end) => return CreateMCQ::banned(Some(end)),
-            ActiveBan::Permanent => return CreateMCQ::banned(None),
+            ActiveBan::Temporary(end) => return CreateQuestion::banned(Some(end)),
+            ActiveBan::Permanent => return CreateQuestion::banned(None),
         }
 
-        if data.0.single_choice && data.0.answers.iter().filter(|x| x.correct).count() != 1 {
-            return CreateMCQ::invalid_single_choice();
+        if !check_answers(
+            &data.0.answers,
+            data.0.ascii_letters,
+            data.0.digits,
+            data.0.punctuation,
+        ) {
+            return CreateQuestion::invalid_char();
         }
 
         let subtask = challenges_subtasks::ActiveModel {
@@ -205,61 +213,60 @@ impl MultipleChoice {
         }
         .insert(&***db)
         .await?;
-        let (answers, correct) = split_answers(data.0.answers);
-        let mcq = challenges_multiple_choice_quizes::ActiveModel {
+        let question = challenges_questions::ActiveModel {
             subtask_id: Set(subtask.id),
             question: Set(data.0.question),
-            answers: Set(answers),
-            correct_answers: Set(correct),
-            single_choice: Set(data.0.single_choice),
+            answers: Set(data.0.answers),
+            case_sensitive: Set(data.0.case_sensitive),
+            ascii_letters: Set(data.0.ascii_letters),
+            digits: Set(data.0.digits),
+            punctuation: Set(data.0.punctuation),
         }
         .insert(&***db)
         .await?;
-        CreateMCQ::ok(MultipleChoiceQuestion::<Answer>::from(
-            mcq, subtask, false, false,
+        CreateQuestion::ok(QuestionWithSolution::from(
+            question, subtask, true, false, false,
         ))
     }
 
     /// Update a multiple choice question.
-    #[oai(path = "/tasks/:task_id/multiple_choice/:subtask_id", method = "patch")]
+    #[oai(path = "/tasks/:task_id/questions/:subtask_id", method = "patch")]
     async fn update_question(
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
-        data: Json<UpdateMultipleChoiceQuestionRequest>,
+        data: Json<UpdateQuestionRequest>,
         db: Data<&DbTxn>,
         auth: AdminAuth,
-    ) -> UpdateMCQ::Response<AdminAuth> {
-        let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
-            return UpdateMCQ::subtask_not_found();
+    ) -> UpdateQuestion::Response<AdminAuth> {
+        let Some((question, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+            return UpdateQuestion::subtask_not_found();
         };
 
         if get_task(&db, *data.0.task_id.get_new(&subtask.task_id))
             .await?
             .is_none()
         {
-            return UpdateMCQ::task_not_found();
+            return UpdateQuestion::task_not_found();
         };
 
-        let (answers, correct, cnt) = if let PatchValue::Set(answers) = data.0.answers {
-            let cnt = answers.iter().filter(|x| x.correct).count();
-            let (a, c) = split_answers(answers);
-            (Set(a), Set(c), cnt)
-        } else {
-            let cnt = mcq.correct_answers.count_ones() as _;
-            (Unchanged(mcq.answers), Unchanged(mcq.correct_answers), cnt)
-        };
-
-        if *data.0.single_choice.get_new(&mcq.single_choice) && cnt != 1 {
-            return UpdateMCQ::invalid_single_choice();
+        if !check_answers(
+            data.0.answers.get_new(&question.answers),
+            *data.0.ascii_letters.get_new(&question.ascii_letters),
+            *data.0.digits.get_new(&question.digits),
+            *data.0.punctuation.get_new(&question.punctuation),
+        ) {
+            return UpdateQuestion::invalid_char();
         }
 
-        let mcq = challenges_multiple_choice_quizes::ActiveModel {
-            subtask_id: Unchanged(mcq.subtask_id),
-            question: data.0.question.update(mcq.question),
-            answers,
-            correct_answers: correct,
-            single_choice: data.0.single_choice.update(mcq.single_choice),
+        let question = challenges_questions::ActiveModel {
+            subtask_id: Unchanged(question.subtask_id),
+            question: data.0.question.update(question.question),
+            answers: data.0.answers.update(question.answers),
+            case_sensitive: data.0.case_sensitive.update(question.case_sensitive),
+            ascii_letters: data.0.ascii_letters.update(question.ascii_letters),
+            digits: data.0.digits.update(question.digits),
+            punctuation: data.0.punctuation.update(question.punctuation),
         }
         .update(&***db)
         .await?;
@@ -277,86 +284,79 @@ impl MultipleChoice {
         .await?;
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        UpdateMCQ::ok(MultipleChoiceQuestion::<Answer>::from(
-            mcq,
+        UpdateQuestion::ok(QuestionWithSolution::from(
+            question,
             subtask,
+            true,
             user_subtask.is_solved(),
             user_subtask.is_rated(),
         ))
     }
 
     /// Delete a multiple choice question.
-    #[oai(
-        path = "/tasks/:task_id/multiple_choice/:subtask_id",
-        method = "delete"
-    )]
+    #[oai(path = "/tasks/:task_id/questions/:subtask_id", method = "delete")]
     async fn delete_question(
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
         _auth: AdminAuth,
-    ) -> DeleteMCQ::Response<AdminAuth> {
+    ) -> DeleteQuestion::Response<AdminAuth> {
         match get_question(&db, task_id.0, subtask_id.0).await? {
             Some((_, subtask)) => {
                 subtask.delete(&***db).await?;
-                DeleteMCQ::ok()
+                DeleteQuestion::ok()
             }
-            None => DeleteMCQ::subtask_not_found(),
+            None => DeleteQuestion::subtask_not_found(),
         }
     }
 
     /// Attempt to solve a multiple choice question.
     #[oai(
-        path = "/tasks/:task_id/multiple_choice/:subtask_id/attempts",
+        path = "/tasks/:task_id/questions/:subtask_id/attempts",
         method = "post"
     )]
     async fn solve_question(
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
-        data: Json<SolveMCQRequest>,
+        data: Json<SolveQuestionRequest>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
-    ) -> SolveMCQ::Response<VerifiedUserAuth> {
-        let Some((mcq, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
-            return SolveMCQ::subtask_not_found();
-        };
+    ) -> SolveQuestion::Response<VerifiedUserAuth> {
+        let Some((question, subtask)) = get_question(&db, task_id.0, subtask_id.0).await? else {
+                return SolveQuestion::subtask_not_found();
+            };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
-            return SolveMCQ::subtask_not_found();
+            return SolveQuestion::subtask_not_found();
         }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         if !user_subtask.check_access(&auth.0, &subtask) {
-            return SolveMCQ::no_access();
+            return SolveQuestion::no_access();
         }
 
-        if data.0.answers.len() != mcq.answers.len() {
-            return SolveMCQ::wrong_length();
-        }
-
-        let previous_attempts = mcq
-            .find_related(challenges_multiple_choice_attempts::Entity)
-            .filter(challenges_multiple_choice_attempts::Column::UserId.eq(auth.0.id))
-            .order_by_desc(challenges_multiple_choice_attempts::Column::Timestamp)
+        let previous_attempts = question
+            .find_related(challenges_question_attempts::Entity)
+            .filter(challenges_question_attempts::Column::UserId.eq(auth.0.id))
+            .order_by_desc(challenges_question_attempts::Column::Timestamp)
             .all(&***db)
             .await?;
         let solved_previously = user_subtask.is_solved();
         if let Some(last_attempt) = previous_attempts.first() {
-            let time_left = self
-                .config
-                .challenges
-                .multiple_choice_questions
-                .timeout_incr as i64
+            let time_left = self.config.challenges.questions.timeout_incr as i64
                 * previous_attempts.len() as i64
                 - (Utc::now().naive_utc() - last_attempt.timestamp).num_seconds();
             if !solved_previously && time_left > 0 {
-                return SolveMCQ::too_many_requests(time_left as u64);
+                return SolveQuestion::too_many_requests(time_left as u64);
             }
         }
 
-        let correct_cnt = check_answers(&data.0.answers, mcq.correct_answers);
-        let solved = correct_cnt == mcq.answers.len();
+        let answer = normalize_answer(&data.0.answer, question.case_sensitive);
+        let solved = question
+            .answers
+            .iter()
+            .any(|ans| normalize_answer(ans, question.case_sensitive) == answer);
 
         if !solved_previously {
             let now = Utc::now().naive_utc();
@@ -383,9 +383,9 @@ impl MultipleChoice {
                 }
             }
 
-            challenges_multiple_choice_attempts::ActiveModel {
+            challenges_question_attempts::ActiveModel {
                 id: Set(Uuid::new_v4()),
-                question_id: Set(mcq.subtask_id),
+                question_id: Set(question.subtask_id),
                 user_id: Set(auth.0.id),
                 timestamp: Set(now),
                 solved: Set(solved),
@@ -394,35 +394,32 @@ impl MultipleChoice {
             .await?;
         }
 
-        SolveMCQ::ok(SolveMCQFeedback {
-            solved,
-            correct: correct_cnt,
-        })
+        SolveQuestion::ok(SolveQuestionFeedback { solved })
     }
 }
 
-response!(ListMCQs = {
-    Ok(200) => Vec<MultipleChoiceQuestionSummary>,
+response!(ListQuestions = {
+    Ok(200) => Vec<QuestionSummary>,
 });
 
-response!(GetMCQ = {
-    Ok(200) => MultipleChoiceQuestion<String>,
+response!(GetQuestion = {
+    Ok(200) => Question,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The user has not unlocked this question.
     NoAccess(403, error),
 });
 
-response!(GetMCQWithSolution = {
-    Ok(200) => MultipleChoiceQuestion<Answer>,
+response!(GetQuestionWithSolution = {
+    Ok(200) => QuestionWithSolution,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The user is not allowed to view the solution to this question.
     Forbidden(403, error),
 });
 
-response!(CreateMCQ = {
-    Ok(201) => MultipleChoiceQuestion<Answer>,
+response!(CreateQuestion = {
+    Ok(201) => QuestionWithSolution,
     /// Task does not exist.
     TaskNotFound(404, error),
     /// The user is not allowed to create questions in this task.
@@ -435,30 +432,28 @@ response!(CreateMCQ = {
     CoinLimitExceeded(403, error) => u64,
     /// The max fee limit has been exceeded.
     FeeLimitExceeded(403, error) => u64,
-    /// `single_choice` is set to `true`, but there is not exactly one correct answer.
-    InvalidSingleChoice(400, error),
+    /// One of `ascii_letters`, `digits` or `punctuation` is set to `false`, but one of the `answers` contains such a character.
+    InvalidChar(400, error),
 });
 
-response!(UpdateMCQ = {
-    Ok(200) => MultipleChoiceQuestion<Answer>,
+response!(UpdateQuestion = {
+    Ok(200) => QuestionWithSolution,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// Task does not exist.
     TaskNotFound(404, error),
-    /// `single_choice` is set to `true`, but there is not exactly one correct answer.
-    InvalidSingleChoice(400, error),
+    /// One of `ascii_letters`, `digits` or `punctuation` is set to `false`, but one of the `answers` contains such a character.
+    InvalidChar(400, error),
 });
 
-response!(DeleteMCQ = {
+response!(DeleteQuestion = {
     Ok(200),
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
 });
 
-response!(SolveMCQ = {
-    Ok(201) => SolveMCQFeedback,
-    /// Wrong number of answers.
-    WrongLength(400, error),
+response!(SolveQuestion = {
+    Ok(201) => SolveQuestionFeedback,
     /// Try again later. `details` contains the number of seconds to wait.
     TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
@@ -471,22 +466,66 @@ async fn get_question(
     db: &DatabaseTransaction,
     task_id: Uuid,
     subtask_id: Uuid,
-) -> Result<
-    Option<(
-        challenges_multiple_choice_quizes::Model,
-        challenges_subtasks::Model,
-    )>,
-    ErrorResponse,
-> {
+) -> Result<Option<(challenges_questions::Model, challenges_subtasks::Model)>, ErrorResponse> {
     Ok(
-        match challenges_multiple_choice_quizes::Entity::find_by_id(subtask_id)
+        match challenges_questions::Entity::find_by_id(subtask_id)
             .find_also_related(challenges_subtasks::Entity)
             .filter(challenges_subtasks::Column::TaskId.eq(task_id))
             .one(db)
             .await?
         {
-            Some((mcq, Some(subtask))) => Some((mcq, subtask)),
+            Some((question, Some(subtask))) => Some((question, subtask)),
             _ => None,
         },
     )
+}
+
+fn check_answers(answers: &[String], ascii_letters: bool, digits: bool, punctuation: bool) -> bool {
+    answers.iter().all(|answer| {
+        answer.chars().all(|c| {
+            (ascii_letters || !c.is_ascii_alphabetic())
+                && (digits || !c.is_ascii_digit())
+                && (punctuation || !c.is_ascii_punctuation())
+        })
+    })
+}
+
+fn normalize_answer(answer: &str, case_sensitive: bool) -> String {
+    let answer = answer.trim();
+    let mut out = String::with_capacity(answer.len());
+    let mut whitespace = false;
+    for c in answer.chars() {
+        if c.is_whitespace() {
+            if !whitespace {
+                out.push(' ');
+            }
+            whitespace = true;
+        } else {
+            whitespace = false;
+            out.push(if case_sensitive {
+                c
+            } else {
+                c.to_ascii_lowercase()
+            })
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_answer() {
+        assert_eq!(normalize_answer("", true), "");
+        assert_eq!(
+            normalize_answer(" This     is my ANSWER!   \n\n \t  42 ", true),
+            "This is my ANSWER! 42"
+        );
+        assert_eq!(
+            normalize_answer(" This     is my ANSWER!   \n\n \t  42 ", false),
+            "this is my answer! 42"
+        );
+    }
 }

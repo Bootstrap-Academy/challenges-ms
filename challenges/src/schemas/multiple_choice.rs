@@ -130,14 +130,14 @@ pub struct Answer {
 }
 
 #[derive(Debug, Clone, Object)]
-pub struct SolveQuestionRequest {
+pub struct SolveMCQRequest {
     /// For each possible answer exactly one boolean (`true` for "answer is
     /// correct" or `false` for "answer is incorrect").
     pub answers: Vec<bool>,
 }
 
 #[derive(Debug, Clone, Object)]
-pub struct SolveQuestionFeedback {
+pub struct SolveMCQFeedback {
     /// Whether the user has successfully solved the question.
     pub solved: bool,
     /// The number of answers that were marked correctly.
