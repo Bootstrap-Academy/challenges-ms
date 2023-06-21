@@ -26,7 +26,7 @@ pub enum Relation {
         from = "Column::SubtaskId",
         to = "super::challenges_subtasks::Column::Id",
         on_update = "NoAction",
-        on_delete = "NoAction"
+        on_delete = "Cascade"
     )]
     ChallengesSubtasks,
 }

@@ -24,6 +24,7 @@ mod m20230620_163944_ban;
 mod m20230620_221620_pre_check_failed_verdict;
 mod m20230621_072201_single_choice;
 mod m20230621_074711_questions;
+mod m20230621_120013_fix_foreign_keys;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -48,6 +49,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230620_221620_pre_check_failed_verdict::Migration),
             Box::new(m20230621_072201_single_choice::Migration),
             Box::new(m20230621_074711_questions::Migration),
+            Box::new(m20230621_120013_fix_foreign_keys::Migration),
         ]
     }
 }
