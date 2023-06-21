@@ -128,9 +128,6 @@ impl Api {
     }
 
     /// Return the config of the code execution engine.
-    ///
-    /// The keys represent the environment ids and the values contain additional
-    /// information about the environments.
     #[oai(path = "/executor/config", method = "get")]
     async fn get_config(&self, _auth: VerifiedUserAuth) -> GetConfig::Response<VerifiedUserAuth> {
         let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
