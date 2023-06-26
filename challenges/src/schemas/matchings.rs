@@ -79,12 +79,14 @@ matching! {
 
 #[derive(Debug, Clone, Object)]
 pub struct CreateMatchingRequest {
-    /// The number of xp a user gets for completing this subtask.
+    /// The number of xp a user gets for completing this subtask. Omit to use
+    /// the configured default value.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub xp: u64,
-    /// The number of morphcoins a user gets for completing this subtask.
+    pub xp: Option<u64>,
+    /// The number of morphcoins a user gets for completing this subtask. Omit
+    /// to use the configured default value.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub coins: u64,
+    pub coins: Option<u64>,
     /// The number of morphcoins a user has to pay to access this subtask.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub fee: u64,

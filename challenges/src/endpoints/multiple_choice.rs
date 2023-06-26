@@ -171,11 +171,16 @@ impl MultipleChoice {
             return CreateMCQ::forbidden();
         }
 
+        let xp = data.0.xp.unwrap_or(self.config.challenges.quizzes.max_xp);
+        let coins = data
+            .0
+            .coins
+            .unwrap_or(self.config.challenges.quizzes.max_coins);
         if matches!(specific, Task::CourseTask(_)) && !auth.0.admin {
-            if data.0.xp > self.config.challenges.quizzes.max_xp {
+            if xp > self.config.challenges.quizzes.max_xp {
                 return CreateMCQ::xp_limit_exceeded(self.config.challenges.quizzes.max_xp);
             }
-            if data.0.coins > self.config.challenges.quizzes.max_coins {
+            if coins > self.config.challenges.quizzes.max_coins {
                 return CreateMCQ::coin_limit_exceeded(self.config.challenges.quizzes.max_coins);
             }
             if data.0.fee > self.config.challenges.quizzes.max_fee {
@@ -202,8 +207,8 @@ impl MultipleChoice {
             task_id: Set(task.id),
             creator: Set(auth.0.id),
             creation_timestamp: Set(Utc::now().naive_utc()),
-            xp: Set(data.0.xp as _),
-            coins: Set(data.0.coins as _),
+            xp: Set(xp as _),
+            coins: Set(coins as _),
             fee: Set(data.0.fee as _),
             enabled: Set(true),
         }
