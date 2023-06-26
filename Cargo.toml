@@ -29,7 +29,7 @@ redis = { version = "0.23.0", default-features = false, features = ["tokio-comp"
 reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls", "json"] }
 sea-orm = { version = "0.11.3", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "postgres-array"] }
 serde = { version = "1.0.164", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.97", default-features = false }
+serde_json = { version = "1.0.99", default-features = false }
 sha2 = { version = "0.10.7", default-features = false }
 thiserror = { version = "1.0.40", default-features = false }
 tokio = { version = "1.28.2", default-features = false, features = ["macros", "rt-multi-thread"] }
