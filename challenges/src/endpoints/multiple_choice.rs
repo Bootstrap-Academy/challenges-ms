@@ -189,8 +189,12 @@ impl MultipleChoice {
             ActiveBan::Permanent => return CreateMCQ::banned(None),
         }
 
-        if data.0.single_choice && data.0.answers.iter().filter(|x| x.correct).count() != 1 {
+        let correct_cnt = data.0.answers.iter().filter(|x| x.correct).count();
+        if data.0.single_choice && correct_cnt != 1 {
             return CreateMCQ::invalid_single_choice();
+        }
+        if correct_cnt == 0 {
+            return CreateMCQ::invalid_multiple_choice();
         }
 
         let subtask = challenges_subtasks::ActiveModel {
@@ -252,6 +256,9 @@ impl MultipleChoice {
 
         if *data.0.single_choice.get_new(&mcq.single_choice) && cnt != 1 {
             return UpdateMCQ::invalid_single_choice();
+        }
+        if cnt == 0 {
+            return UpdateMCQ::invalid_multiple_choice();
         }
 
         let mcq = challenges_multiple_choice_quizes::ActiveModel {
@@ -437,6 +444,8 @@ response!(CreateMCQ = {
     FeeLimitExceeded(403, error) => u64,
     /// `single_choice` is set to `true`, but there is not exactly one correct answer.
     InvalidSingleChoice(400, error),
+    /// There is no correct answer.
+    InvalidMultipleChoice(400, error),
 });
 
 response!(UpdateMCQ = {
@@ -447,6 +456,8 @@ response!(UpdateMCQ = {
     TaskNotFound(404, error),
     /// `single_choice` is set to `true`, but there is not exactly one correct answer.
     InvalidSingleChoice(400, error),
+    /// There is no correct answer.
+    InvalidMultipleChoice(400, error),
 });
 
 response!(DeleteMCQ = {
