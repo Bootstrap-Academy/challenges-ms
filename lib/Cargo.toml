@@ -9,7 +9,7 @@ config = { workspace = true }
 fnct = { workspace = true }
 hmac = { workspace = true }
 jwt = { workspace = true }
-paste = { version = "1.0.12", default-features = false }
+paste = { version = "1.0.13", default-features = false }
 poem = { workspace = true }
 poem-ext= { workspace = true }
 poem-openapi = { workspace = true }
