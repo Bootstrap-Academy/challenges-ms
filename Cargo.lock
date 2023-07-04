@@ -275,7 +275,7 @@ dependencies = [
  "chrono",
  "entity",
  "fnct",
- "itertools 0.10.5",
+ "itertools 0.11.0",
  "key-rwlock",
  "lib",
  "poem",
