@@ -54,6 +54,19 @@ pub enum ResolveReportAction {
     BlockCreator,
 }
 
+#[derive(Debug, Clone, Object)]
+pub struct SubtasksUserConfig {
+    /// The minimum level a normal user needs to have in each skill related to a
+    /// task to be able to create subtasks in it.
+    pub min_level: u32,
+    /// The maximum `xp` value for subtasks created by normal users
+    pub max_xp: u64,
+    /// The maximum `coins` value for subtasks created by normal users
+    pub max_coins: u64,
+    /// The maximum `fee` value for subtasks created by normal users
+    pub max_fee: u64,
+}
+
 impl Report {
     pub fn from(report: challenges_subtask_reports::Model, task_id: Uuid) -> Self {
         Self {

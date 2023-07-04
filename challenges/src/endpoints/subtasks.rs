@@ -29,7 +29,7 @@ use super::Tags;
 use crate::{
     schemas::subtasks::{
         CreateReportRequest, PostFeedbackRequest, Report, ResolveReportAction,
-        ResolveReportRequest, UpdateSubtaskRequest,
+        ResolveReportRequest, SubtasksUserConfig, UpdateSubtaskRequest,
     },
     services::{
         subtasks::{
@@ -46,6 +46,21 @@ pub struct Subtasks {
 
 #[OpenApi(tag = "Tags::Subtasks")]
 impl Subtasks {
+    /// Return the configuration values that are relevant for normal users
+    /// creating subtasks.
+    #[oai(path = "/subtasks/user_config", method = "get")]
+    pub async fn get_user_config(
+        &self,
+        _auth: VerifiedUserAuth,
+    ) -> GetUserConfig::Response<VerifiedUserAuth> {
+        GetUserConfig::ok(SubtasksUserConfig {
+            min_level: self.config.challenges.quizzes.min_level,
+            max_xp: self.config.challenges.quizzes.max_xp,
+            max_coins: self.config.challenges.quizzes.max_coins,
+            max_fee: self.config.challenges.quizzes.max_fee,
+        })
+    }
+
     /// Unlock a subtask by paying its fee.
     #[oai(path = "/tasks/:task_id/subtasks/:subtask_id/access", method = "post")]
     pub async fn unlock_subtask(
@@ -347,6 +362,10 @@ impl Subtasks {
         ResolveReport::ok()
     }
 }
+
+response!(GetUserConfig = {
+    Ok(200) => SubtasksUserConfig,
+});
 
 response!(UnlockSubtask = {
     /// The user already has access to this subtask.
