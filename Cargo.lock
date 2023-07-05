@@ -1886,9 +1886,9 @@ checksum = "f91339c0467de62360649f8d3e185ca8de4224ff281f66000de5eb2a77a79041"
 
 [[package]]
 name = "sandkasten-client"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "157a7c006ebc0127c9b3948dda5982938f3aa3ef27f236fd1b306f7fdd174926"
+checksum = "16c684e75c861acaa820cb2bfc27e7e13b646906dd250bd7bf0f27bead2438d0"
 dependencies = [
  "poem-openapi",
  "reqwest",
