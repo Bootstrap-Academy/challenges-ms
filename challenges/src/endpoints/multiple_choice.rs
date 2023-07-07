@@ -57,6 +57,8 @@ impl MultipleChoice {
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
+        /// Filter by creator.
+        creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListMCQs::Response<VerifiedUserAuth> {
@@ -71,6 +73,7 @@ impl MultipleChoice {
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
+                    creator: creator.0,
                 },
                 MultipleChoiceQuestionSummary::from,
             )

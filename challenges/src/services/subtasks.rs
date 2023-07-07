@@ -14,7 +14,7 @@ use lib::{
 };
 use poem_ext::responses::ErrorResponse;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
     QueryFilter, QueryOrder, Related, Set, Unchanged,
 };
 use thiserror::Error;
@@ -268,6 +268,7 @@ pub struct QuerySubtasksFilter {
     pub solved: Option<bool>,
     pub rated: Option<bool>,
     pub enabled: Option<bool>,
+    pub creator: Option<Uuid>,
 }
 
 pub async fn query_subtasks<E, T>(
@@ -281,27 +282,40 @@ where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
 {
     let subtasks = get_user_subtasks(db, user.id).await?;
-    Ok(E::find()
+    let mut query = E::find()
         .find_also_related(challenges_subtasks::Entity)
-        .filter(challenges_subtasks::Column::TaskId.eq(task_id))
+        .filter(challenges_subtasks::Column::TaskId.eq(task_id));
+    if !user.admin {
+        query = query.filter(
+            Condition::any()
+                .add(challenges_subtasks::Column::Creator.eq(user.id))
+                .add(challenges_subtasks::Column::Enabled.eq(true)),
+        );
+    }
+    if let Some(free) = filter.free {
+        let col = challenges_subtasks::Column::Fee;
+        query = query.filter(if free { col.lt(1) } else { col.gt(0) });
+    }
+    if let Some(enabled) = filter.enabled {
+        query = query.filter(challenges_subtasks::Column::Enabled.eq(enabled));
+    }
+    if let Some(creator) = filter.creator {
+        query = query.filter(challenges_subtasks::Column::Creator.eq(creator));
+    }
+    Ok(query
         .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
         .all(db)
         .await?
         .into_iter()
         .filter_map(|(specific, subtask)| {
             let subtask = subtask?;
-            let id = subtask.id;
-            let free = subtask.fee <= 0;
-            let unlocked = subtasks.get(&id).check_access(user, &subtask);
-            let solved = subtasks.get(&id).is_solved();
-            let rated = subtasks.get(&id).is_rated();
-            let enabled = subtask.enabled;
-            ((user.admin || user.id == subtask.creator || subtask.enabled)
-                && filter.free.unwrap_or(free) == free
-                && filter.unlocked.unwrap_or(unlocked) == unlocked
+            let user_subtask = subtasks.get(&subtask.id);
+            let unlocked = user_subtask.check_access(user, &subtask);
+            let solved = user_subtask.is_solved();
+            let rated = user_subtask.is_rated();
+            (filter.unlocked.unwrap_or(unlocked) == unlocked
                 && filter.solved.unwrap_or(solved) == solved
-                && filter.rated.unwrap_or(rated) == rated
-                && filter.enabled.unwrap_or(enabled) == enabled)
+                && filter.rated.unwrap_or(rated) == rated)
                 .then_some(map(
                     specific,
                     Subtask::from(subtask, unlocked, solved, rated),

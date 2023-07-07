@@ -53,6 +53,8 @@ impl Matchings {
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
+        /// Filter by creator.
+        creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListMatchings::Response<VerifiedUserAuth> {
@@ -67,6 +69,7 @@ impl Matchings {
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
+                    creator: creator.0,
                 },
                 MatchingSummary::from,
             )

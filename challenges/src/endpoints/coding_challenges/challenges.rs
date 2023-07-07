@@ -16,7 +16,7 @@ use poem_openapi::{
     OpenApi,
 };
 use sandkasten_client::SandkastenClient;
-use sea_orm::{ActiveModelTrait, ModelTrait, Set, Unchanged};
+use sea_orm::{ActiveModelTrait, Set, Unchanged};
 use tracing::error;
 use uuid::Uuid;
 
@@ -30,9 +30,8 @@ use crate::{
     services::{
         judge::{self, get_executor_config, Judge},
         subtasks::{
-            create_subtask, get_subtask, query_subtask, query_subtask_admin, query_subtasks,
-            update_subtask, CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter,
-            UpdateSubtaskError,
+            create_subtask, query_subtask, query_subtask_admin, query_subtasks, update_subtask,
+            CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError,
         },
     },
 };
@@ -62,6 +61,8 @@ impl Api {
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
+        /// Filter by creator.
+        creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListCodingChallenges::Response<VerifiedUserAuth> {
@@ -76,6 +77,7 @@ impl Api {
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
+                    creator: creator.0,
                 },
                 CodingChallengeSummary::from,
             )
