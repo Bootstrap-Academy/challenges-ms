@@ -235,29 +235,6 @@ impl MultipleChoice {
         UpdateMCQ::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask))
     }
 
-    /// Delete a multiple choice question.
-    #[oai(
-        path = "/tasks/:task_id/multiple_choice/:subtask_id",
-        method = "delete"
-    )]
-    async fn delete_question(
-        &self,
-        task_id: Path<Uuid>,
-        subtask_id: Path<Uuid>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> DeleteMCQ::Response<AdminAuth> {
-        match get_subtask::<challenges_multiple_choice_quizes::Entity>(&db, task_id.0, subtask_id.0)
-            .await?
-        {
-            Some((_, subtask)) => {
-                subtask.delete(&***db).await?;
-                DeleteMCQ::ok()
-            }
-            None => DeleteMCQ::subtask_not_found(),
-        }
-    }
-
     /// Attempt to solve a multiple choice question.
     #[oai(
         path = "/tasks/:task_id/multiple_choice/:subtask_id/attempts",
@@ -403,12 +380,6 @@ response!(UpdateMCQ = {
     InvalidSingleChoice(400, error),
     /// There is no correct answer.
     InvalidMultipleChoice(400, error),
-});
-
-response!(DeleteMCQ = {
-    Ok(200),
-    /// Subtask does not exist.
-    SubtaskNotFound(404, error),
 });
 
 response!(SolveMCQ = {

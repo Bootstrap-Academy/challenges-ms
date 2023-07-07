@@ -378,29 +378,6 @@ impl Api {
 
         UpdateCodingChallenge::ok(CodingChallenge::from(cc, subtask))
     }
-
-    /// Delete a coding challenge.
-    #[oai(
-        path = "/tasks/:task_id/coding_challenges/:subtask_id",
-        method = "delete"
-    )]
-    async fn delete_challenge(
-        &self,
-        task_id: Path<Uuid>,
-        subtask_id: Path<Uuid>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> DeleteCodingChallenge::Response<AdminAuth> {
-        match get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0)
-            .await?
-        {
-            Some((_, subtask)) => {
-                subtask.delete(&***db).await?;
-                DeleteCodingChallenge::ok()
-            }
-            None => DeleteCodingChallenge::subtask_not_found(),
-        }
-    }
 }
 
 response!(ListCodingChallenges = {
@@ -475,12 +452,6 @@ response!(UpdateCodingChallenge = {
     /// Memory limit exceeded
     MemoryLimitExceeded(403, error) => u64,
     .._CheckError::Response,
-});
-
-response!(DeleteCodingChallenge = {
-    Ok(200),
-    /// Subtask does not exist.
-    SubtaskNotFound(404, error),
 });
 
 impl Api {

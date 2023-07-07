@@ -232,24 +232,6 @@ impl Questions {
         UpdateQuestion::ok(QuestionWithSolution::from(question, subtask))
     }
 
-    /// Delete a multiple choice question.
-    #[oai(path = "/tasks/:task_id/questions/:subtask_id", method = "delete")]
-    async fn delete_question(
-        &self,
-        task_id: Path<Uuid>,
-        subtask_id: Path<Uuid>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> DeleteQuestion::Response<AdminAuth> {
-        match get_subtask::<challenges_questions::Entity>(&db, task_id.0, subtask_id.0).await? {
-            Some((_, subtask)) => {
-                subtask.delete(&***db).await?;
-                DeleteQuestion::ok()
-            }
-            None => DeleteQuestion::subtask_not_found(),
-        }
-    }
-
     /// Attempt to solve a multiple choice question.
     #[oai(
         path = "/tasks/:task_id/questions/:subtask_id/attempts",
@@ -383,12 +365,6 @@ response!(UpdateQuestion = {
     TaskNotFound(404, error),
     /// One of `ascii_letters`, `digits` or `punctuation` is set to `false`, but one of the `answers` contains such a character.
     InvalidChar(400, error),
-});
-
-response!(DeleteQuestion = {
-    Ok(200),
-    /// Subtask does not exist.
-    SubtaskNotFound(404, error),
 });
 
 response!(SolveQuestion = {

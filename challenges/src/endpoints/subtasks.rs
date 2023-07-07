@@ -153,6 +153,31 @@ impl Subtasks {
         UpdateSubtask::ok()
     }
 
+    /// Delete a subtask.
+    #[oai(path = "/tasks/:task_id/subtasks/:subtask_id", method = "delete")]
+    async fn delete_question(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> DeleteSubtask::Response<VerifiedUserAuth> {
+        let Some(subtask) = challenges_subtasks::Entity::find_by_id(subtask_id.0)
+            .filter(challenges_subtasks::Column::TaskId.eq(task_id.0))
+            .one(&***db)
+            .await?
+        else {
+            return DeleteSubtask::subtask_not_found();
+        };
+
+        if !(auth.0.admin || auth.0.id == subtask.creator) {
+            return DeleteSubtask::forbidden();
+        }
+
+        subtask.delete(&***db).await?;
+        DeleteSubtask::ok()
+    }
+
     /// Submit feedback for a subtask after solving it.
     #[oai(
         path = "/tasks/:task_id/subtasks/:subtask_id/feedback",
@@ -386,6 +411,14 @@ response!(UpdateSubtask = {
     PermissionDenied(403, error),
     /// The max fee limit has been exceeded.
     FeeLimitExceeded(403, error) => u64,
+});
+
+response!(DeleteSubtask = {
+    Ok(200),
+    /// Subtask does not exist.
+    SubtaskNotFound(404, error),
+    /// The user is not allowed to delete this subtask.
+    Forbidden(403, error),
 });
 
 response!(PostFeedback = {

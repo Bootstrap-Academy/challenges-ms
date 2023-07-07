@@ -244,24 +244,6 @@ impl Matchings {
         UpdateMatching::ok(MatchingWithSolution::from(matching, subtask))
     }
 
-    /// Delete a multiple choice matching.
-    #[oai(path = "/tasks/:task_id/matchings/:subtask_id", method = "delete")]
-    async fn delete_matching(
-        &self,
-        task_id: Path<Uuid>,
-        subtask_id: Path<Uuid>,
-        db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> DeleteMatching::Response<AdminAuth> {
-        match get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? {
-            Some((_, subtask)) => {
-                subtask.delete(&***db).await?;
-                DeleteMatching::ok()
-            }
-            None => DeleteMatching::subtask_not_found(),
-        }
-    }
-
     /// Attempt to solve a multiple choice matching.
     #[oai(
         path = "/tasks/:task_id/matchings/:subtask_id/attempts",
@@ -414,12 +396,6 @@ response!(UpdateMatching = {
     InvalidIndex(400, error) => u8,
     /// One or more entries in the right list have no match in the left list.
     RightEntriesNotMatched(400, error) => HashSet<u8>,
-});
-
-response!(DeleteMatching = {
-    Ok(200),
-    /// Subtask does not exist.
-    SubtaskNotFound(404, error),
 });
 
 response!(SolveMatching = {
