@@ -53,7 +53,8 @@ pub fn get_api(
         Subtasks {
             state: Arc::clone(&state),
             config: Arc::clone(&config),
-        },
+        }
+        .get_api(),
         MultipleChoice {
             state: Arc::clone(&state),
             config: Arc::clone(&config),
