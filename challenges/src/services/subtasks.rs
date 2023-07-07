@@ -12,18 +12,19 @@ use lib::{
         shop::AddCoinsError, skills::AddSkillProgressError, ServiceError, ServiceResult, Services,
     },
 };
+use poem_ext::responses::ErrorResponse;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, QueryOrder, Related, Unchanged,
+    QueryFilter, QueryOrder, Related, Set, Unchanged,
 };
 use thiserror::Error;
 use uuid::Uuid;
 
 use super::{
     course_tasks::get_skills_of_course,
-    tasks::{get_specific_task, Task},
+    tasks::{get_specific_task, get_task_with_specific, Task},
 };
-use crate::schemas::subtasks::Subtask;
+use crate::schemas::subtasks::{CreateSubtaskRequest, Subtask};
 
 pub async fn send_task_rewards(
     services: &Services,
@@ -399,4 +400,71 @@ where
             _ => None,
         },
     )
+}
+
+pub async fn create_subtask(
+    db: &DatabaseTransaction,
+    services: &Services,
+    config: &Config,
+    user: &User,
+    task_id: Uuid,
+    data: CreateSubtaskRequest,
+) -> Result<Result<Subtask, CreateSubtaskError>, ErrorResponse> {
+    let (task, specific) = match get_task_with_specific(db, task_id).await? {
+        Some(task) => task,
+        None => return Ok(Err(CreateSubtaskError::TaskNotFound)),
+    };
+    if !can_create(services, config, &specific, user).await? {
+        return Ok(Err(CreateSubtaskError::Forbidden));
+    }
+
+    let xp = data.xp.unwrap_or(config.challenges.quizzes.max_xp);
+    let coins = data.coins.unwrap_or(config.challenges.quizzes.max_coins);
+    if matches!(specific, Task::CourseTask(_)) && !user.admin {
+        if xp > config.challenges.quizzes.max_xp {
+            return Ok(Err(CreateSubtaskError::XpLimitExceeded(
+                config.challenges.quizzes.max_xp,
+            )));
+        }
+        if coins > config.challenges.quizzes.max_coins {
+            return Ok(Err(CreateSubtaskError::CoinLimitExceeded(
+                config.challenges.quizzes.max_coins,
+            )));
+        }
+        if data.fee > config.challenges.quizzes.max_fee {
+            return Ok(Err(CreateSubtaskError::FeeLimitExceeded(
+                config.challenges.quizzes.max_fee,
+            )));
+        }
+    }
+
+    match get_active_ban(db, user, ChallengesBanAction::Create).await? {
+        ActiveBan::NotBanned => {}
+        ActiveBan::Temporary(end) => return Ok(Err(CreateSubtaskError::Banned(Some(end)))),
+        ActiveBan::Permanent => return Ok(Err(CreateSubtaskError::Banned(None))),
+    }
+
+    let subtask = challenges_subtasks::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        task_id: Set(task.id),
+        creator: Set(user.id),
+        creation_timestamp: Set(Utc::now().naive_utc()),
+        xp: Set(xp as _),
+        coins: Set(coins as _),
+        fee: Set(data.fee as _),
+        enabled: Set(true),
+    }
+    .insert(db)
+    .await?;
+
+    Ok(Ok(Subtask::from(subtask, true, false, false)))
+}
+
+pub enum CreateSubtaskError {
+    TaskNotFound,
+    Forbidden,
+    Banned(Option<DateTime<Utc>>),
+    XpLimitExceeded(u64),
+    CoinLimitExceeded(u64),
+    FeeLimitExceeded(u64),
 }

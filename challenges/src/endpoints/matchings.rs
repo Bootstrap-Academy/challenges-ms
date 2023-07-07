@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use chrono::{DateTime, Utc};
 use entity::{
     challenges_matching_attempts, challenges_matchings, challenges_subtasks,
-    challenges_user_subtasks, sea_orm_active_enums::ChallengesBanAction,
+    challenges_user_subtasks,
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -31,11 +31,11 @@ use crate::{
     },
     services::{
         subtasks::{
-            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtask,
-            query_subtask_admin, query_subtasks, send_task_rewards, update_user_subtask, ActiveBan,
+            create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+            query_subtasks, send_task_rewards, update_user_subtask, CreateSubtaskError,
             QuerySubtaskError, QuerySubtasksFilter, UserSubtaskExt,
         },
-        tasks::{get_task, get_task_with_specific, Task},
+        tasks::get_task,
     },
 };
 
@@ -143,43 +143,30 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> CreateMatching::Response<VerifiedUserAuth> {
-        let (task, specific) = match get_task_with_specific(&db, task_id.0).await? {
-            Some(task) => task,
-            None => return CreateMatching::task_not_found(),
+        let subtask = match create_subtask(
+            &db,
+            &self.state.services,
+            &self.config,
+            &auth.0,
+            task_id.0,
+            data.0.subtask,
+        )
+        .await?
+        {
+            Ok(subtask) => subtask,
+            Err(CreateSubtaskError::TaskNotFound) => return CreateMatching::task_not_found(),
+            Err(CreateSubtaskError::Forbidden) => return CreateMatching::forbidden(),
+            Err(CreateSubtaskError::Banned(until)) => return CreateMatching::banned(until),
+            Err(CreateSubtaskError::XpLimitExceeded(x)) => {
+                return CreateMatching::xp_limit_exceeded(x)
+            }
+            Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
+                return CreateMatching::coin_limit_exceeded(x)
+            }
+            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
+                return CreateMatching::fee_limit_exceeded(x)
+            }
         };
-        if !can_create(&self.state.services, &self.config, &specific, &auth.0).await? {
-            return CreateMatching::forbidden();
-        }
-
-        let xp = data
-            .0
-            .subtask
-            .xp
-            .unwrap_or(self.config.challenges.quizzes.max_xp);
-        let coins = data
-            .0
-            .subtask
-            .coins
-            .unwrap_or(self.config.challenges.quizzes.max_coins);
-        if matches!(specific, Task::CourseTask(_)) && !auth.0.admin {
-            if xp > self.config.challenges.quizzes.max_xp {
-                return CreateMatching::xp_limit_exceeded(self.config.challenges.quizzes.max_xp);
-            }
-            if coins > self.config.challenges.quizzes.max_coins {
-                return CreateMatching::coin_limit_exceeded(
-                    self.config.challenges.quizzes.max_coins,
-                );
-            }
-            if data.0.subtask.fee > self.config.challenges.quizzes.max_fee {
-                return CreateMatching::fee_limit_exceeded(self.config.challenges.quizzes.max_fee);
-            }
-        }
-
-        match get_active_ban(&db, &auth.0, ChallengesBanAction::Create).await? {
-            ActiveBan::NotBanned => {}
-            ActiveBan::Temporary(end) => return CreateMatching::banned(Some(end)),
-            ActiveBan::Permanent => return CreateMatching::banned(None),
-        }
 
         match check_matching(&data.0.left, &data.0.right, &data.0.solution) {
             Ok(()) => {}
@@ -195,18 +182,6 @@ impl Matchings {
             }
         }
 
-        let subtask = challenges_subtasks::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            task_id: Set(task.id),
-            creator: Set(auth.0.id),
-            creation_timestamp: Set(Utc::now().naive_utc()),
-            xp: Set(xp as _),
-            coins: Set(coins as _),
-            fee: Set(data.0.subtask.fee as _),
-            enabled: Set(true),
-        }
-        .insert(&***db)
-        .await?;
         let matching = challenges_matchings::ActiveModel {
             subtask_id: Set(subtask.id),
             left: Set(data.0.left),
@@ -215,10 +190,7 @@ impl Matchings {
         }
         .insert(&***db)
         .await?;
-        CreateMatching::ok(MatchingWithSolution::from(
-            matching,
-            Subtask::from(subtask, true, false, false),
-        ))
+        CreateMatching::ok(MatchingWithSolution::from(matching, subtask))
     }
 
     /// Update a multiple choice matching.

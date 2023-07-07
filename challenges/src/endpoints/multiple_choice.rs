@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use entity::{
     challenges_multiple_choice_attempts, challenges_multiple_choice_quizes, challenges_subtasks,
-    challenges_user_subtasks, sea_orm_active_enums::ChallengesBanAction,
+    challenges_user_subtasks,
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -32,11 +32,11 @@ use crate::{
     },
     services::{
         subtasks::{
-            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtask,
-            query_subtask_admin, query_subtasks, send_task_rewards, update_user_subtask, ActiveBan,
+            create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+            query_subtasks, send_task_rewards, update_user_subtask, CreateSubtaskError,
             QuerySubtaskError, QuerySubtasksFilter, UserSubtaskExt,
         },
-        tasks::{get_task, get_task_with_specific, Task},
+        tasks::get_task,
     },
 };
 
@@ -144,41 +144,28 @@ impl MultipleChoice {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> CreateMCQ::Response<VerifiedUserAuth> {
-        let (task, specific) = match get_task_with_specific(&db, task_id.0).await? {
-            Some(task) => task,
-            None => return CreateMCQ::task_not_found(),
+        let subtask = match create_subtask(
+            &db,
+            &self.state.services,
+            &self.config,
+            &auth.0,
+            task_id.0,
+            data.0.subtask,
+        )
+        .await?
+        {
+            Ok(subtask) => subtask,
+            Err(CreateSubtaskError::TaskNotFound) => return CreateMCQ::task_not_found(),
+            Err(CreateSubtaskError::Forbidden) => return CreateMCQ::forbidden(),
+            Err(CreateSubtaskError::Banned(until)) => return CreateMCQ::banned(until),
+            Err(CreateSubtaskError::XpLimitExceeded(x)) => return CreateMCQ::xp_limit_exceeded(x),
+            Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
+                return CreateMCQ::coin_limit_exceeded(x)
+            }
+            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
+                return CreateMCQ::fee_limit_exceeded(x)
+            }
         };
-        if !can_create(&self.state.services, &self.config, &specific, &auth.0).await? {
-            return CreateMCQ::forbidden();
-        }
-
-        let xp = data
-            .0
-            .subtask
-            .xp
-            .unwrap_or(self.config.challenges.quizzes.max_xp);
-        let coins = data
-            .0
-            .subtask
-            .coins
-            .unwrap_or(self.config.challenges.quizzes.max_coins);
-        if matches!(specific, Task::CourseTask(_)) && !auth.0.admin {
-            if xp > self.config.challenges.quizzes.max_xp {
-                return CreateMCQ::xp_limit_exceeded(self.config.challenges.quizzes.max_xp);
-            }
-            if coins > self.config.challenges.quizzes.max_coins {
-                return CreateMCQ::coin_limit_exceeded(self.config.challenges.quizzes.max_coins);
-            }
-            if data.0.subtask.fee > self.config.challenges.quizzes.max_fee {
-                return CreateMCQ::fee_limit_exceeded(self.config.challenges.quizzes.max_fee);
-            }
-        }
-
-        match get_active_ban(&db, &auth.0, ChallengesBanAction::Create).await? {
-            ActiveBan::NotBanned => {}
-            ActiveBan::Temporary(end) => return CreateMCQ::banned(Some(end)),
-            ActiveBan::Permanent => return CreateMCQ::banned(None),
-        }
 
         let correct_cnt = data.0.answers.iter().filter(|x| x.correct).count();
         if data.0.single_choice && correct_cnt != 1 {
@@ -188,18 +175,6 @@ impl MultipleChoice {
             return CreateMCQ::invalid_multiple_choice();
         }
 
-        let subtask = challenges_subtasks::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            task_id: Set(task.id),
-            creator: Set(auth.0.id),
-            creation_timestamp: Set(Utc::now().naive_utc()),
-            xp: Set(xp as _),
-            coins: Set(coins as _),
-            fee: Set(data.0.subtask.fee as _),
-            enabled: Set(true),
-        }
-        .insert(&***db)
-        .await?;
         let (answers, correct) = split_answers(data.0.answers);
         let mcq = challenges_multiple_choice_quizes::ActiveModel {
             subtask_id: Set(subtask.id),
@@ -210,10 +185,7 @@ impl MultipleChoice {
         }
         .insert(&***db)
         .await?;
-        CreateMCQ::ok(MultipleChoiceQuestion::<Answer>::from(
-            mcq,
-            Subtask::from(subtask, true, false, false),
-        ))
+        CreateMCQ::ok(MultipleChoiceQuestion::<Answer>::from(mcq, subtask))
     }
 
     /// Update a multiple choice question.

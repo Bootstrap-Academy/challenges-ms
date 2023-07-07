@@ -1,21 +1,18 @@
 use entity::{challenges_challenges, challenges_course_tasks, challenges_tasks};
-use poem_ext::responses::ErrorResponse;
 use sea_orm::{DatabaseTransaction, DbErr, EntityTrait, ModelTrait};
 use uuid::Uuid;
 
 pub async fn get_task(
     db: &DatabaseTransaction,
     task_id: Uuid,
-) -> Result<Option<challenges_tasks::Model>, ErrorResponse> {
-    Ok(challenges_tasks::Entity::find_by_id(task_id)
-        .one(db)
-        .await?)
+) -> Result<Option<challenges_tasks::Model>, DbErr> {
+    challenges_tasks::Entity::find_by_id(task_id).one(db).await
 }
 
 pub async fn get_task_with_specific(
     db: &DatabaseTransaction,
     task_id: Uuid,
-) -> Result<Option<(challenges_tasks::Model, Task)>, ErrorResponse> {
+) -> Result<Option<(challenges_tasks::Model, Task)>, DbErr> {
     Ok(
         match challenges_tasks::Entity::find_by_id(task_id)
             .one(db)

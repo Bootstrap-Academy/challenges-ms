@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use entity::{
-    challenges_coding_challenges, challenges_subtasks, sea_orm_active_enums::ChallengesBanAction,
-};
+use entity::{challenges_coding_challenges, challenges_subtasks};
 use fnct::format::JsonFormatter;
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -35,11 +33,11 @@ use crate::{
     services::{
         judge::{self, get_executor_config, Judge},
         subtasks::{
-            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtask,
-            query_subtask_admin, query_subtasks, ActiveBan, QuerySubtaskError, QuerySubtasksFilter,
+            create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+            query_subtasks, CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter,
             UserSubtaskExt,
         },
-        tasks::{get_task, get_task_with_specific, Task},
+        tasks::get_task,
     },
 };
 
@@ -244,47 +242,32 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> CreateCodingChallenge::Response<VerifiedUserAuth> {
-        let (task, specific) = match get_task_with_specific(&db, task_id.0).await? {
-            Some(task) => task,
-            None => return CreateCodingChallenge::task_not_found(),
+        let subtask = match create_subtask(
+            &db,
+            &self.state.services,
+            &self.config,
+            &auth.0,
+            task_id.0,
+            data.0.subtask,
+        )
+        .await?
+        {
+            Ok(subtask) => subtask,
+            Err(CreateSubtaskError::TaskNotFound) => {
+                return CreateCodingChallenge::task_not_found()
+            }
+            Err(CreateSubtaskError::Forbidden) => return CreateCodingChallenge::forbidden(),
+            Err(CreateSubtaskError::Banned(until)) => return CreateCodingChallenge::banned(until),
+            Err(CreateSubtaskError::XpLimitExceeded(x)) => {
+                return CreateCodingChallenge::xp_limit_exceeded(x)
+            }
+            Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
+                return CreateCodingChallenge::coin_limit_exceeded(x)
+            }
+            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
+                return CreateCodingChallenge::fee_limit_exceeded(x)
+            }
         };
-        if !can_create(&self.state.services, &self.config, &specific, &auth.0).await? {
-            return CreateCodingChallenge::forbidden();
-        }
-
-        let xp = data
-            .0
-            .subtask
-            .xp
-            .unwrap_or(self.config.challenges.quizzes.max_xp);
-        let coins = data
-            .0
-            .subtask
-            .coins
-            .unwrap_or(self.config.challenges.quizzes.max_coins);
-        if matches!(specific, Task::CourseTask(_)) && !auth.0.admin {
-            if xp > self.config.challenges.quizzes.max_xp {
-                return CreateCodingChallenge::xp_limit_exceeded(
-                    self.config.challenges.quizzes.max_xp,
-                );
-            }
-            if coins > self.config.challenges.quizzes.max_coins {
-                return CreateCodingChallenge::coin_limit_exceeded(
-                    self.config.challenges.quizzes.max_coins,
-                );
-            }
-            if data.0.subtask.fee > self.config.challenges.quizzes.max_fee {
-                return CreateCodingChallenge::fee_limit_exceeded(
-                    self.config.challenges.quizzes.max_fee,
-                );
-            }
-        }
-
-        match get_active_ban(&db, &auth.0, ChallengesBanAction::Create).await? {
-            ActiveBan::NotBanned => {}
-            ActiveBan::Temporary(end) => return CreateCodingChallenge::banned(Some(end)),
-            ActiveBan::Permanent => return CreateCodingChallenge::banned(None),
-        }
 
         let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
         if data.0.time_limit > config.time_limit {
@@ -310,18 +293,6 @@ impl Api {
             return Ok(_CheckError::Response::from(result).into());
         }
 
-        let subtask = challenges_subtasks::ActiveModel {
-            id: Set(cc_id),
-            task_id: Set(task.id),
-            creator: Set(auth.0.id),
-            creation_timestamp: Set(Utc::now().naive_utc()),
-            xp: Set(xp as _),
-            coins: Set(coins as _),
-            fee: Set(data.0.subtask.fee as _),
-            enabled: Set(true),
-        }
-        .insert(&***db)
-        .await?;
         let cc = challenges_coding_challenges::ActiveModel {
             subtask_id: Set(subtask.id),
             time_limit: Set(data.0.time_limit as _),
@@ -335,10 +306,7 @@ impl Api {
         }
         .insert(&***db)
         .await?;
-        CreateCodingChallenge::ok(CodingChallenge::from(
-            cc,
-            Subtask::from(subtask, true, false, false),
-        ))
+        CreateCodingChallenge::ok(CodingChallenge::from(cc, subtask))
     }
 
     /// Update a coding challenge.
