@@ -22,9 +22,9 @@ use uuid::Uuid;
 
 use super::{
     course_tasks::get_skills_of_course,
-    tasks::{get_specific_task, get_task_with_specific, Task},
+    tasks::{get_specific_task, get_task, get_task_with_specific, Task},
 };
-use crate::schemas::subtasks::{CreateSubtaskRequest, Subtask};
+use crate::schemas::subtasks::{CreateSubtaskRequest, Subtask, UpdateSubtaskRequest};
 
 pub async fn send_task_rewards(
     services: &Services,
@@ -321,7 +321,7 @@ where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
 {
-    let Some((mcq, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
+    let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
         return Ok(Err(QuerySubtaskError::NotFound));
     };
     if !user.admin && user.id != subtask.creator && !subtask.enabled {
@@ -334,7 +334,7 @@ where
     }
 
     Ok(Ok(map(
-        mcq,
+        specific,
         Subtask::from(
             subtask,
             true,
@@ -355,7 +355,7 @@ where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
 {
-    let Some((mcq, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
+    let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
         return Ok(Err(QuerySubtaskError::NotFound));
     };
 
@@ -365,7 +365,7 @@ where
 
     let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
     Ok(Ok(map(
-        mcq,
+        specific,
         Subtask::from(
             subtask,
             true,
@@ -467,4 +467,56 @@ pub enum CreateSubtaskError {
     XpLimitExceeded(u64),
     CoinLimitExceeded(u64),
     FeeLimitExceeded(u64),
+}
+
+pub async fn update_subtask<E>(
+    db: &DatabaseTransaction,
+    user: &User,
+    task_id: Uuid,
+    subtask_id: Uuid,
+    data: UpdateSubtaskRequest,
+) -> Result<Result<(E::Model, Subtask), UpdateSubtaskError>, DbErr>
+where
+    E: EntityTrait + Related<challenges_subtasks::Entity>,
+    E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
+{
+    let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
+        return Ok(Err(UpdateSubtaskError::SubtaskNotFound));
+    };
+
+    if get_task(db, *data.task_id.get_new(&subtask.task_id))
+        .await?
+        .is_none()
+    {
+        return Ok(Err(UpdateSubtaskError::TaskNotFound));
+    };
+
+    let subtask = challenges_subtasks::ActiveModel {
+        id: Unchanged(subtask.id),
+        task_id: data.task_id.update(subtask.task_id),
+        creator: Unchanged(subtask.creator),
+        creation_timestamp: Unchanged(subtask.creation_timestamp),
+        xp: data.xp.map(|x| x as _).update(subtask.xp),
+        coins: data.coins.map(|x| x as _).update(subtask.coins),
+        fee: data.fee.map(|x| x as _).update(subtask.fee),
+        enabled: data.enabled.update(subtask.enabled),
+    }
+    .update(db)
+    .await?;
+
+    let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
+    Ok(Ok((
+        specific,
+        Subtask::from(
+            subtask,
+            true,
+            user_subtask.is_solved(),
+            user_subtask.is_rated(),
+        ),
+    )))
+}
+
+pub enum UpdateSubtaskError {
+    SubtaskNotFound,
+    TaskNotFound,
 }

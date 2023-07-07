@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use entity::{
-    challenges_question_attempts, challenges_questions, challenges_subtasks,
-    challenges_user_subtasks,
-};
+use entity::{challenges_question_attempts, challenges_questions, challenges_user_subtasks};
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
     config::Config,
@@ -22,20 +19,14 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::{
-    schemas::{
-        question::{
-            CreateQuestionRequest, Question, QuestionSummary, QuestionWithSolution,
-            SolveQuestionFeedback, SolveQuestionRequest, UpdateQuestionRequest,
-        },
-        subtasks::Subtask,
+    schemas::question::{
+        CreateQuestionRequest, Question, QuestionSummary, QuestionWithSolution,
+        SolveQuestionFeedback, SolveQuestionRequest, UpdateQuestionRequest,
     },
-    services::{
-        subtasks::{
-            create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
-            query_subtasks, send_task_rewards, update_user_subtask, CreateSubtaskError,
-            QuerySubtaskError, QuerySubtasksFilter, UserSubtaskExt,
-        },
-        tasks::get_task,
+    services::subtasks::{
+        create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+        query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
+        QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
     },
 };
 
@@ -202,15 +193,18 @@ impl Questions {
         db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> UpdateQuestion::Response<AdminAuth> {
-        let Some((question, subtask)) = get_subtask::<challenges_questions::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return UpdateQuestion::subtask_not_found();
-        };
-
-        if get_task(&db, *data.0.subtask.task_id.get_new(&subtask.task_id))
-            .await?
-            .is_none()
+        let (question, subtask) = match update_subtask::<challenges_questions::Entity>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            data.0.subtask,
+        )
+        .await?
         {
-            return UpdateQuestion::task_not_found();
+            Ok(x) => x,
+            Err(UpdateSubtaskError::SubtaskNotFound) => return UpdateQuestion::subtask_not_found(),
+            Err(UpdateSubtaskError::TaskNotFound) => return UpdateQuestion::task_not_found(),
         };
 
         if !check_answers(
@@ -234,29 +228,8 @@ impl Questions {
         }
         .update(&***db)
         .await?;
-        let subtask = challenges_subtasks::ActiveModel {
-            id: Unchanged(subtask.id),
-            task_id: data.0.subtask.task_id.update(subtask.task_id),
-            creator: Unchanged(subtask.creator),
-            creation_timestamp: Unchanged(subtask.creation_timestamp),
-            xp: data.0.subtask.xp.map(|x| x as _).update(subtask.xp),
-            coins: data.0.subtask.coins.map(|x| x as _).update(subtask.coins),
-            fee: data.0.subtask.fee.map(|x| x as _).update(subtask.fee),
-            enabled: data.0.subtask.enabled.update(subtask.enabled),
-        }
-        .update(&***db)
-        .await?;
 
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        UpdateQuestion::ok(QuestionWithSolution::from(
-            question,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
+        UpdateQuestion::ok(QuestionWithSolution::from(question, subtask))
     }
 
     /// Delete a multiple choice question.

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use entity::{challenges_coding_challenges, challenges_subtasks};
+use entity::challenges_coding_challenges;
 use fnct::format::JsonFormatter;
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -23,21 +23,17 @@ use uuid::Uuid;
 use super::{_CheckError, check_challenge, CheckChallenge};
 use crate::{
     endpoints::Tags,
-    schemas::{
-        coding_challenges::{
-            CodingChallenge, CodingChallengeSummary, CreateCodingChallengeRequest, Example,
-            SubmissionContent, UpdateCodingChallengeRequest,
-        },
-        subtasks::Subtask,
+    schemas::coding_challenges::{
+        CodingChallenge, CodingChallengeSummary, CreateCodingChallengeRequest, Example,
+        SubmissionContent, UpdateCodingChallengeRequest,
     },
     services::{
         judge::{self, get_executor_config, Judge},
         subtasks::{
-            create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
-            query_subtasks, CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter,
-            UserSubtaskExt,
+            create_subtask, get_subtask, query_subtask, query_subtask_admin, query_subtasks,
+            update_subtask, CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter,
+            UpdateSubtaskError,
         },
-        tasks::get_task,
     },
 };
 
@@ -322,16 +318,23 @@ impl Api {
         db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> UpdateCodingChallenge::Response<AdminAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return UpdateCodingChallenge::subtask_not_found();
-        };
-
-        if get_task(&db, *data.0.subtask.task_id.get_new(&subtask.task_id))
-            .await?
-            .is_none()
+        let (cc, subtask) = match update_subtask::<challenges_coding_challenges::Entity>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            data.0.subtask,
+        )
+        .await?
         {
-            return UpdateCodingChallenge::task_not_found();
-        }
+            Ok(x) => x,
+            Err(UpdateSubtaskError::SubtaskNotFound) => {
+                return UpdateCodingChallenge::subtask_not_found()
+            }
+            Err(UpdateSubtaskError::TaskNotFound) => {
+                return UpdateCodingChallenge::task_not_found()
+            }
+        };
 
         let config = get_executor_config(&self.judge_cache, &self.sandkasten).await?;
         if *data.0.time_limit.get_new(&(cc.time_limit as _)) > config.time_limit {
@@ -373,29 +376,7 @@ impl Api {
         .update(&***db)
         .await?;
 
-        let subtask = challenges_subtasks::ActiveModel {
-            id: Unchanged(subtask.id),
-            task_id: data.0.subtask.task_id.update(subtask.task_id),
-            creator: Unchanged(subtask.creator),
-            creation_timestamp: Unchanged(subtask.creation_timestamp),
-            xp: data.0.subtask.xp.map(|x| x as _).update(subtask.xp),
-            coins: data.0.subtask.coins.map(|x| x as _).update(subtask.coins),
-            fee: data.0.subtask.fee.map(|x| x as _).update(subtask.fee),
-            enabled: data.0.subtask.enabled.update(subtask.enabled),
-        }
-        .update(&***db)
-        .await?;
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        UpdateCodingChallenge::ok(CodingChallenge::from(
-            cc,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
+        UpdateCodingChallenge::ok(CodingChallenge::from(cc, subtask))
     }
 
     /// Delete a coding challenge.
