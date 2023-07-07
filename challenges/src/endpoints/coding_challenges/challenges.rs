@@ -18,24 +18,25 @@ use poem_openapi::{
     OpenApi,
 };
 use sandkasten_client::SandkastenClient;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, QueryOrder, Set, Unchanged,
-};
+use sea_orm::{ActiveModelTrait, ModelTrait, Set, Unchanged};
 use tracing::error;
 use uuid::Uuid;
 
-use super::{_CheckError, check_challenge, get_challenge, CheckChallenge};
+use super::{_CheckError, check_challenge, CheckChallenge};
 use crate::{
     endpoints::Tags,
-    schemas::coding_challenges::{
-        CodingChallenge, CodingChallengeSummary, CreateCodingChallengeRequest, Example,
-        SubmissionContent, UpdateCodingChallengeRequest,
+    schemas::{
+        coding_challenges::{
+            CodingChallenge, CodingChallengeSummary, CreateCodingChallengeRequest, Example,
+            SubmissionContent, UpdateCodingChallengeRequest,
+        },
+        subtasks::Subtask,
     },
     services::{
         judge::{self, get_executor_config, Judge},
         subtasks::{
-            can_create, get_active_ban, get_user_subtask, get_user_subtasks, ActiveBan,
-            UserSubtaskExt,
+            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtasks, ActiveBan,
+            QuerySubtasksFilter, UserSubtaskExt,
         },
         tasks::{get_task, get_task_with_specific, Task},
     },
@@ -69,34 +70,21 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListCodingChallenges::Response<VerifiedUserAuth> {
-        let subtasks = get_user_subtasks(&db, auth.0.id).await?;
         ListCodingChallenges::ok(
-            challenges_coding_challenges::Entity::find()
-                .find_also_related(challenges_subtasks::Entity)
-                .filter(challenges_subtasks::Column::TaskId.eq(task_id.0))
-                .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
-                .all(&***db)
-                .await?
-                .into_iter()
-                .filter_map(|(cc, subtask)| {
-                    let subtask = subtask?;
-                    let id = subtask.id;
-                    let free_ = subtask.fee <= 0;
-                    let unlocked_ = subtasks.get(&id).check_access(&auth.0, &subtask);
-                    let solved_ = subtasks.get(&id).is_solved();
-                    let rated_ = subtasks.get(&id).is_rated();
-                    let enabled_ = subtask.enabled;
-                    ((auth.0.admin || auth.0.id == subtask.creator || subtask.enabled)
-                        && free.unwrap_or(free_) == free_
-                        && unlocked.unwrap_or(unlocked_) == unlocked_
-                        && solved.unwrap_or(solved_) == solved_
-                        && rated.unwrap_or(rated_) == rated_
-                        && enabled.unwrap_or(enabled_) == enabled_)
-                        .then_some(CodingChallengeSummary::from(
-                            cc, subtask, unlocked_, solved_, rated_,
-                        ))
-                })
-                .collect(),
+            query_subtasks::<challenges_coding_challenges::Entity, _>(
+                &db,
+                &auth.0,
+                task_id.0,
+                QuerySubtasksFilter {
+                    free: free.0,
+                    unlocked: unlocked.0,
+                    solved: solved.0,
+                    rated: rated.0,
+                    enabled: enabled.0,
+                },
+                CodingChallengeSummary::from,
+            )
+            .await?,
         )
     }
 
@@ -109,7 +97,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetCodingChallenge::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return GetCodingChallenge::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
@@ -123,9 +111,12 @@ impl Api {
 
         GetCodingChallenge::ok(CodingChallenge::from(
             cc,
-            subtask,
-            user_subtask.is_solved(),
-            user_subtask.is_rated(),
+            Subtask::from(
+                subtask,
+                true,
+                user_subtask.is_solved(),
+                user_subtask.is_rated(),
+            ),
         ))
     }
 
@@ -141,7 +132,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetExamples::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return GetExamples::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
@@ -204,7 +195,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetEvaluator::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return GetEvaluator::subtask_not_found();
         };
 
@@ -227,7 +218,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetSolution::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return GetSolution::subtask_not_found();
         };
 
@@ -258,9 +249,14 @@ impl Api {
             return CreateCodingChallenge::forbidden();
         }
 
-        let xp = data.0.xp.unwrap_or(self.config.challenges.quizzes.max_xp);
+        let xp = data
+            .0
+            .subtask
+            .xp
+            .unwrap_or(self.config.challenges.quizzes.max_xp);
         let coins = data
             .0
+            .subtask
             .coins
             .unwrap_or(self.config.challenges.quizzes.max_coins);
         if matches!(specific, Task::CourseTask(_)) && !auth.0.admin {
@@ -274,7 +270,7 @@ impl Api {
                     self.config.challenges.quizzes.max_coins,
                 );
             }
-            if data.0.fee > self.config.challenges.quizzes.max_fee {
+            if data.0.subtask.fee > self.config.challenges.quizzes.max_fee {
                 return CreateCodingChallenge::fee_limit_exceeded(
                     self.config.challenges.quizzes.max_fee,
                 );
@@ -318,7 +314,7 @@ impl Api {
             creation_timestamp: Set(Utc::now().naive_utc()),
             xp: Set(xp as _),
             coins: Set(coins as _),
-            fee: Set(data.0.fee as _),
+            fee: Set(data.0.subtask.fee as _),
             enabled: Set(true),
         }
         .insert(&***db)
@@ -336,7 +332,10 @@ impl Api {
         }
         .insert(&***db)
         .await?;
-        CreateCodingChallenge::ok(CodingChallenge::from(cc, subtask, false, false))
+        CreateCodingChallenge::ok(CodingChallenge::from(
+            cc,
+            Subtask::from(subtask, true, false, false),
+        ))
     }
 
     /// Update a coding challenge.
@@ -352,11 +351,11 @@ impl Api {
         db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> UpdateCodingChallenge::Response<AdminAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return UpdateCodingChallenge::subtask_not_found();
         };
 
-        if get_task(&db, *data.0.task_id.get_new(&subtask.task_id))
+        if get_task(&db, *data.0.subtask.task_id.get_new(&subtask.task_id))
             .await?
             .is_none()
         {
@@ -405,13 +404,13 @@ impl Api {
 
         let subtask = challenges_subtasks::ActiveModel {
             id: Unchanged(subtask.id),
-            task_id: data.0.task_id.update(subtask.task_id),
+            task_id: data.0.subtask.task_id.update(subtask.task_id),
             creator: Unchanged(subtask.creator),
             creation_timestamp: Unchanged(subtask.creation_timestamp),
-            xp: data.0.xp.map(|x| x as _).update(subtask.xp),
-            coins: data.0.coins.map(|x| x as _).update(subtask.coins),
-            fee: data.0.fee.map(|x| x as _).update(subtask.fee),
-            enabled: data.0.enabled.update(subtask.enabled),
+            xp: data.0.subtask.xp.map(|x| x as _).update(subtask.xp),
+            coins: data.0.subtask.coins.map(|x| x as _).update(subtask.coins),
+            fee: data.0.subtask.fee.map(|x| x as _).update(subtask.fee),
+            enabled: data.0.subtask.enabled.update(subtask.enabled),
         }
         .update(&***db)
         .await?;
@@ -419,9 +418,12 @@ impl Api {
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         UpdateCodingChallenge::ok(CodingChallenge::from(
             cc,
-            subtask,
-            user_subtask.is_solved(),
-            user_subtask.is_rated(),
+            Subtask::from(
+                subtask,
+                true,
+                user_subtask.is_solved(),
+                user_subtask.is_rated(),
+            ),
         ))
     }
 
@@ -437,7 +439,9 @@ impl Api {
         db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteCodingChallenge::Response<AdminAuth> {
-        match get_challenge(&db, task_id.0, subtask_id.0).await? {
+        match get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0)
+            .await?
+        {
             Some((_, subtask)) => {
                 subtask.delete(&***db).await?;
                 DeleteCodingChallenge::ok()

@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
-use entity::{challenges_coding_challenges, challenges_subtasks};
 use fnct::format::JsonFormatter;
 use lib::{config::Config, Cache, SharedState};
-use poem_ext::{response, responses::ErrorResponse};
+use poem_ext::response;
 use poem_openapi::{Object, OpenApi};
 use sandkasten_client::{
     schemas::programs::{BuildRunResult, RunResult},
     SandkastenClient,
 };
-use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter};
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
@@ -54,30 +52,6 @@ impl CodingChallenges {
             },
         )
     }
-}
-
-async fn get_challenge(
-    db: &DatabaseTransaction,
-    task_id: Uuid,
-    subtask_id: Uuid,
-) -> Result<
-    Option<(
-        challenges_coding_challenges::Model,
-        challenges_subtasks::Model,
-    )>,
-    ErrorResponse,
-> {
-    Ok(
-        match challenges_coding_challenges::Entity::find_by_id(subtask_id)
-            .find_also_related(challenges_subtasks::Entity)
-            .filter(challenges_subtasks::Column::TaskId.eq(task_id))
-            .one(db)
-            .await?
-        {
-            Some((cc, Some(subtask))) => Some((cc, subtask)),
-            _ => None,
-        },
-    )
 }
 
 async fn check_challenge(

@@ -11,28 +11,28 @@ use lib::{
     SharedState,
 };
 use poem::web::Data;
-use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
+use poem_ext::{db::DbTxn, response};
 use poem_openapi::{
     param::{Path, Query},
     payload::Json,
     OpenApi,
 };
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
-    QueryOrder, Set, Unchanged,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, ModelTrait, QueryFilter, QueryOrder, Set, Unchanged};
 use uuid::Uuid;
 
 use super::Tags;
 use crate::{
-    schemas::matchings::{
-        CreateMatchingRequest, Matching, MatchingSummary, MatchingWithSolution,
-        SolveMatchingFeedback, SolveMatchingRequest, UpdateMatchingRequest,
+    schemas::{
+        matchings::{
+            CreateMatchingRequest, Matching, MatchingSummary, MatchingWithSolution,
+            SolveMatchingFeedback, SolveMatchingRequest, UpdateMatchingRequest,
+        },
+        subtasks::Subtask,
     },
     services::{
         subtasks::{
-            can_create, get_active_ban, get_user_subtask, get_user_subtasks, send_task_rewards,
-            update_user_subtask, ActiveBan, UserSubtaskExt,
+            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtasks,
+            send_task_rewards, update_user_subtask, ActiveBan, QuerySubtasksFilter, UserSubtaskExt,
         },
         tasks::{get_task, get_task_with_specific, Task},
     },
@@ -64,34 +64,21 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListMatchings::Response<VerifiedUserAuth> {
-        let subtasks = get_user_subtasks(&db, auth.0.id).await?;
         ListMatchings::ok(
-            challenges_matchings::Entity::find()
-                .find_also_related(challenges_subtasks::Entity)
-                .filter(challenges_subtasks::Column::TaskId.eq(task_id.0))
-                .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
-                .all(&***db)
-                .await?
-                .into_iter()
-                .filter_map(|(matching, subtask)| {
-                    let subtask = subtask?;
-                    let id = subtask.id;
-                    let free_ = subtask.fee <= 0;
-                    let unlocked_ = subtasks.get(&id).check_access(&auth.0, &subtask);
-                    let solved_ = subtasks.get(&id).is_solved();
-                    let rated_ = subtasks.get(&id).is_rated();
-                    let enabled_ = subtask.enabled;
-                    ((auth.0.admin || auth.0.id == subtask.creator || subtask.enabled)
-                        && free.unwrap_or(free_) == free_
-                        && unlocked.unwrap_or(unlocked_) == unlocked_
-                        && solved.unwrap_or(solved_) == solved_
-                        && rated.unwrap_or(rated_) == rated_
-                        && enabled.unwrap_or(enabled_) == enabled_)
-                        .then_some(MatchingSummary::from(
-                            matching, subtask, unlocked_, solved_, rated_,
-                        ))
-                })
-                .collect(),
+            query_subtasks::<challenges_matchings::Entity, _>(
+                &db,
+                &auth.0,
+                task_id.0,
+                QuerySubtasksFilter {
+                    free: free.0,
+                    unlocked: unlocked.0,
+                    solved: solved.0,
+                    rated: rated.0,
+                    enabled: enabled.0,
+                },
+                MatchingSummary::from,
+            )
+            .await?,
         )
     }
 
@@ -104,7 +91,7 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetMatching::Response<VerifiedUserAuth> {
-        let Some((matching, subtask)) = get_matching(&db, task_id.0, subtask_id.0).await? else {
+        let Some((matching, subtask)) = get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return GetMatching::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
@@ -118,10 +105,12 @@ impl Matchings {
 
         GetMatching::ok(Matching::from(
             matching,
-            subtask,
-            true,
-            user_subtask.is_solved(),
-            user_subtask.is_rated(),
+            Subtask::from(
+                subtask,
+                true,
+                user_subtask.is_solved(),
+                user_subtask.is_rated(),
+            ),
         ))
     }
 
@@ -137,7 +126,7 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetMatchingWithSolution::Response<VerifiedUserAuth> {
-        let Some((matching, subtask)) = get_matching(&db, task_id.0, subtask_id.0).await? else {
+        let Some((matching, subtask)) = get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return GetMatchingWithSolution::subtask_not_found();
         };
 
@@ -148,10 +137,12 @@ impl Matchings {
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         GetMatchingWithSolution::ok(MatchingWithSolution::from(
             matching,
-            subtask,
-            true,
-            user_subtask.is_solved(),
-            user_subtask.is_rated(),
+            Subtask::from(
+                subtask,
+                true,
+                user_subtask.is_solved(),
+                user_subtask.is_rated(),
+            ),
         ))
     }
 
@@ -172,9 +163,14 @@ impl Matchings {
             return CreateMatching::forbidden();
         }
 
-        let xp = data.0.xp.unwrap_or(self.config.challenges.quizzes.max_xp);
+        let xp = data
+            .0
+            .subtask
+            .xp
+            .unwrap_or(self.config.challenges.quizzes.max_xp);
         let coins = data
             .0
+            .subtask
             .coins
             .unwrap_or(self.config.challenges.quizzes.max_coins);
         if matches!(specific, Task::CourseTask(_)) && !auth.0.admin {
@@ -186,7 +182,7 @@ impl Matchings {
                     self.config.challenges.quizzes.max_coins,
                 );
             }
-            if data.0.fee > self.config.challenges.quizzes.max_fee {
+            if data.0.subtask.fee > self.config.challenges.quizzes.max_fee {
                 return CreateMatching::fee_limit_exceeded(self.config.challenges.quizzes.max_fee);
             }
         }
@@ -218,7 +214,7 @@ impl Matchings {
             creation_timestamp: Set(Utc::now().naive_utc()),
             xp: Set(xp as _),
             coins: Set(coins as _),
-            fee: Set(data.0.fee as _),
+            fee: Set(data.0.subtask.fee as _),
             enabled: Set(true),
         }
         .insert(&***db)
@@ -232,7 +228,8 @@ impl Matchings {
         .insert(&***db)
         .await?;
         CreateMatching::ok(MatchingWithSolution::from(
-            matching, subtask, true, false, false,
+            matching,
+            Subtask::from(subtask, true, false, false),
         ))
     }
 
@@ -246,11 +243,11 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> UpdateMatching::Response<AdminAuth> {
-        let Some((matching, subtask)) = get_matching(&db, task_id.0, subtask_id.0).await? else {
+        let Some((matching, subtask)) = get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return UpdateMatching::subtask_not_found();
         };
 
-        if get_task(&db, *data.0.task_id.get_new(&subtask.task_id))
+        if get_task(&db, *data.0.subtask.task_id.get_new(&subtask.task_id))
             .await?
             .is_none()
         {
@@ -291,13 +288,13 @@ impl Matchings {
         .await?;
         let subtask = challenges_subtasks::ActiveModel {
             id: Unchanged(subtask.id),
-            task_id: data.0.task_id.update(subtask.task_id),
+            task_id: data.0.subtask.task_id.update(subtask.task_id),
             creator: Unchanged(subtask.creator),
             creation_timestamp: Unchanged(subtask.creation_timestamp),
-            xp: data.0.xp.map(|x| x as _).update(subtask.xp),
-            coins: data.0.coins.map(|x| x as _).update(subtask.coins),
-            fee: data.0.fee.map(|x| x as _).update(subtask.fee),
-            enabled: data.0.enabled.update(subtask.enabled),
+            xp: data.0.subtask.xp.map(|x| x as _).update(subtask.xp),
+            coins: data.0.subtask.coins.map(|x| x as _).update(subtask.coins),
+            fee: data.0.subtask.fee.map(|x| x as _).update(subtask.fee),
+            enabled: data.0.subtask.enabled.update(subtask.enabled),
         }
         .update(&***db)
         .await?;
@@ -305,10 +302,12 @@ impl Matchings {
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
         UpdateMatching::ok(MatchingWithSolution::from(
             matching,
-            subtask,
-            true,
-            user_subtask.is_solved(),
-            user_subtask.is_rated(),
+            Subtask::from(
+                subtask,
+                true,
+                user_subtask.is_solved(),
+                user_subtask.is_rated(),
+            ),
         ))
     }
 
@@ -321,7 +320,7 @@ impl Matchings {
         db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteMatching::Response<AdminAuth> {
-        match get_matching(&db, task_id.0, subtask_id.0).await? {
+        match get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? {
             Some((_, subtask)) => {
                 subtask.delete(&***db).await?;
                 DeleteMatching::ok()
@@ -343,7 +342,7 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> SolveMatching::Response<VerifiedUserAuth> {
-        let Some((matching, subtask)) = get_matching(&db, task_id.0, subtask_id.0).await? else {
+        let Some((matching, subtask)) = get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? else {
                 return SolveMatching::subtask_not_found();
             };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
@@ -501,24 +500,6 @@ response!(SolveMatching = {
     /// The solution list does not contain the same number of entries as the left and right lists.
     SolutionDifferentLength(400, error),
 });
-
-async fn get_matching(
-    db: &DatabaseTransaction,
-    task_id: Uuid,
-    subtask_id: Uuid,
-) -> Result<Option<(challenges_matchings::Model, challenges_subtasks::Model)>, ErrorResponse> {
-    Ok(
-        match challenges_matchings::Entity::find_by_id(subtask_id)
-            .find_also_related(challenges_subtasks::Entity)
-            .filter(challenges_subtasks::Column::TaskId.eq(task_id))
-            .one(db)
-            .await?
-        {
-            Some((matching, Some(subtask))) => Some((matching, subtask)),
-            _ => None,
-        },
-    )
-}
 
 fn check_matching(
     left: &[String],

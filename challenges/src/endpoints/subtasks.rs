@@ -29,7 +29,7 @@ use super::Tags;
 use crate::{
     schemas::subtasks::{
         CreateReportRequest, PostFeedbackRequest, Report, ResolveReportAction,
-        ResolveReportRequest, SubtasksUserConfig, UpdateSubtaskRequest,
+        ResolveReportRequest, SubtasksUserConfig, UserUpdateSubtaskRequest,
     },
     services::{
         subtasks::{
@@ -116,7 +116,7 @@ impl Subtasks {
         &self,
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
-        data: Json<UpdateSubtaskRequest>,
+        data: Json<UserUpdateSubtaskRequest>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> UpdateSubtask::Response {

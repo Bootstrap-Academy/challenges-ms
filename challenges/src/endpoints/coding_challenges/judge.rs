@@ -1,3 +1,4 @@
+use entity::challenges_coding_challenges;
 use fnct::{format::JsonFormatter, key};
 use lib::{auth::VerifiedUserAuth, Cache};
 use poem::web::Data;
@@ -10,13 +11,12 @@ use sandkasten_client::{
 use tracing::error;
 use uuid::Uuid;
 
-use super::get_challenge;
 use crate::{
     endpoints::Tags,
     schemas::coding_challenges::{CheckResult, ExecutorConfig, SubmissionContent},
     services::{
         judge::{self, get_executor_config, Judge},
-        subtasks::{get_user_subtask, UserSubtaskExt},
+        subtasks::{get_subtask, get_user_subtask, UserSubtaskExt},
     },
 };
 
@@ -41,7 +41,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> TestExample::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return TestExample::example_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {

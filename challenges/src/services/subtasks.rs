@@ -14,7 +14,7 @@ use lib::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, Unchanged,
+    QueryFilter, QueryOrder, Related, Unchanged,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -23,6 +23,7 @@ use super::{
     course_tasks::get_skills_of_course,
     tasks::{get_specific_task, Task},
 };
+use crate::schemas::subtasks::Subtask;
 
 pub async fn send_task_rewards(
     services: &Services,
@@ -258,4 +259,74 @@ pub enum CheckPermissionsError {
     ServiceError(#[from] ServiceError),
     #[error("database error: {0}")]
     DbErr(#[from] DbErr),
+}
+
+pub struct QuerySubtasksFilter {
+    pub free: Option<bool>,
+    pub unlocked: Option<bool>,
+    pub solved: Option<bool>,
+    pub rated: Option<bool>,
+    pub enabled: Option<bool>,
+}
+
+pub async fn query_subtasks<E, T>(
+    db: &DatabaseTransaction,
+    user: &User,
+    task_id: Uuid,
+    filter: QuerySubtasksFilter,
+    map: impl Fn(E::Model, Subtask) -> T,
+) -> Result<Vec<T>, DbErr>
+where
+    E: EntityTrait + Related<challenges_subtasks::Entity>,
+{
+    let subtasks = get_user_subtasks(db, user.id).await?;
+    Ok(E::find()
+        .find_also_related(challenges_subtasks::Entity)
+        .filter(challenges_subtasks::Column::TaskId.eq(task_id))
+        .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
+        .all(db)
+        .await?
+        .into_iter()
+        .filter_map(|(specific, subtask)| {
+            let subtask = subtask?;
+            let id = subtask.id;
+            let free = subtask.fee <= 0;
+            let unlocked = subtasks.get(&id).check_access(user, &subtask);
+            let solved = subtasks.get(&id).is_solved();
+            let rated = subtasks.get(&id).is_rated();
+            let enabled = subtask.enabled;
+            ((user.admin || user.id == subtask.creator || subtask.enabled)
+                && filter.free.unwrap_or(free) == free
+                && filter.unlocked.unwrap_or(unlocked) == unlocked
+                && filter.solved.unwrap_or(solved) == solved
+                && filter.rated.unwrap_or(rated) == rated
+                && filter.enabled.unwrap_or(enabled) == enabled)
+                .then_some(map(
+                    specific,
+                    Subtask::from(subtask, unlocked, solved, rated),
+                ))
+        })
+        .collect())
+}
+
+pub async fn get_subtask<E>(
+    db: &DatabaseTransaction,
+    task_id: Uuid,
+    subtask_id: Uuid,
+) -> Result<Option<(E::Model, challenges_subtasks::Model)>, DbErr>
+where
+    E: EntityTrait + Related<challenges_subtasks::Entity>,
+    E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
+{
+    Ok(
+        match E::find_by_id(subtask_id)
+            .find_also_related(challenges_subtasks::Entity)
+            .filter(challenges_subtasks::Column::TaskId.eq(task_id))
+            .one(db)
+            .await?
+        {
+            Some((specific, Some(subtask))) => Some((specific, subtask)),
+            _ => None,
+        },
+    )
 }

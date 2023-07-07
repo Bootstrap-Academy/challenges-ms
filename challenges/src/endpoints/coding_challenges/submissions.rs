@@ -22,15 +22,15 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
-use super::{check_challenge, get_challenge, CheckChallenge, CheckError, CheckTestcaseError};
+use super::{check_challenge, CheckChallenge, CheckError, CheckTestcaseError};
 use crate::{
     endpoints::Tags,
     schemas::coding_challenges::{Submission, SubmissionContent},
     services::{
         judge::{self, Judge},
         subtasks::{
-            get_user_subtask, send_task_rewards, update_user_subtask, SendTaskRewardsError,
-            UserSubtaskExt,
+            get_subtask, get_user_subtask, send_task_rewards, update_user_subtask,
+            SendTaskRewardsError, UserSubtaskExt,
         },
     },
 };
@@ -57,7 +57,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListSubmissions::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return ListSubmissions::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
@@ -89,7 +89,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetSubmission::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return GetSubmission::submission_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
@@ -124,7 +124,7 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> CreateSubmission::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_challenge(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
             return CreateSubmission::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {

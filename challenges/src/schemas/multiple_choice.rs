@@ -1,36 +1,16 @@
-use chrono::{DateTime, Utc};
-use entity::{challenges_multiple_choice_quizes, challenges_subtasks};
+use entity::challenges_multiple_choice_quizes;
 use poem_ext::patch_value::PatchValue;
 use poem_openapi::{
     types::{ParseFromJSON, ToJSON, Type},
     Object,
 };
-use uuid::Uuid;
+
+use super::subtasks::{CreateSubtaskRequest, Subtask, UpdateSubtaskRequest};
 
 #[derive(Debug, Clone, Object)]
 pub struct MultipleChoiceQuestionSummary {
-    /// The unique identifier of the subtask.
-    pub id: Uuid,
-    /// The parent task.
-    pub task_id: Uuid,
-    /// The creator of the subtask
-    pub creator: Uuid,
-    /// The creation timestamp of the subtask
-    pub creation_timestamp: DateTime<Utc>,
-    /// The number of xp a user gets for completing this subtask.
-    pub xp: u64,
-    /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: u64,
-    /// The number of morphcoins a user has to pay to access this subtask.
-    pub fee: u64,
-    /// Whether the user has unlocked this subtask.
-    pub unlocked: bool,
-    /// Whether the user has completed this subtask.
-    pub solved: bool,
-    /// Whether the user has rated this subtask.
-    pub rated: bool,
-    /// Whether the subtask is enabled and visible to normal users.
-    pub enabled: bool,
+    #[oai(flatten)]
+    pub subtask: Subtask,
     /// The question text. Only available if the user has unlocked the subtask.
     pub question: Option<String>,
     /// Whether this question is a single choice question (exactly one answer is
@@ -43,26 +23,8 @@ pub struct MultipleChoiceQuestion<A>
 where
     A: Send + Sync + Type + ToJSON + ParseFromJSON,
 {
-    /// The unique identifier of the subtask.
-    pub id: Uuid,
-    /// The parent task.
-    pub task_id: Uuid,
-    /// The creator of the subtask
-    pub creator: Uuid,
-    /// The creation timestamp of the subtask
-    pub creation_timestamp: DateTime<Utc>,
-    /// The number of xp a user gets for completing this subtask.
-    pub xp: u64,
-    /// The number of morphcoins a user gets for completing this subtask.
-    pub coins: u64,
-    /// The number of morphcoins a user has to pay to access this subtask.
-    pub fee: u64,
-    /// Whether the user has completed this subtask.
-    pub solved: bool,
-    /// Whether the user has rated this subtask.
-    pub rated: bool,
-    /// Whether the subtask is enabled and visible to normal users.
-    pub enabled: bool,
+    #[oai(flatten)]
+    pub subtask: Subtask,
     /// The question text.
     pub question: String,
     /// The possible answers to the question.
@@ -74,6 +36,8 @@ where
 
 #[derive(Debug, Clone, Object)]
 pub struct CreateMultipleChoiceQuestionRequest {
+    #[oai(flatten)]
+    pub subtask: CreateSubtaskRequest,
     /// The question text.
     #[oai(validator(max_length = 4096))]
     pub question: String,
@@ -83,34 +47,12 @@ pub struct CreateMultipleChoiceQuestionRequest {
     /// Whether this question is a single choice question (exactly one answer is
     /// correct).
     pub single_choice: bool,
-    /// The number of xp a user gets for completing this subtask. Omit to use
-    /// the configured default value.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub xp: Option<u64>,
-    /// The number of morphcoins a user gets for completing this subtask. Omit
-    /// to use the configured default value.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub coins: Option<u64>,
-    /// The number of morphcoins a user has to pay to access this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub fee: u64,
 }
 
 #[derive(Debug, Clone, Object)]
 pub struct UpdateMultipleChoiceQuestionRequest {
-    /// The parent task.
-    pub task_id: PatchValue<Uuid>,
-    /// The number of xp a user gets for completing this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub xp: PatchValue<u64>,
-    /// The number of morphcoins a user gets for completing this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub coins: PatchValue<u64>,
-    /// The number of morphcoins a user has to pay to access this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub fee: PatchValue<u64>,
-    /// Whether the subtask is enabled and visible to normal users.
-    pub enabled: PatchValue<bool>,
+    #[oai(flatten)]
+    pub subtask: UpdateSubtaskRequest,
     /// The question text.
     #[oai(validator(max_length = 4096))]
     pub question: PatchValue<String>,
@@ -147,77 +89,33 @@ pub struct SolveMCQFeedback {
 }
 
 impl MultipleChoiceQuestionSummary {
-    pub fn from(
-        mcq: challenges_multiple_choice_quizes::Model,
-        subtask: challenges_subtasks::Model,
-        unlocked: bool,
-        solved: bool,
-        rated: bool,
-    ) -> Self {
+    pub fn from(mcq: challenges_multiple_choice_quizes::Model, subtask: Subtask) -> Self {
         Self {
-            id: subtask.id,
-            task_id: subtask.task_id,
-            creator: subtask.creator,
-            creation_timestamp: subtask.creation_timestamp.and_utc(),
-            xp: subtask.xp as _,
-            coins: subtask.coins as _,
-            fee: subtask.fee as _,
-            unlocked,
-            solved,
-            rated,
-            enabled: subtask.enabled,
-            question: unlocked.then_some(mcq.question),
+            question: subtask.unlocked.then_some(mcq.question),
             single_choice: mcq.single_choice,
+            subtask,
         }
     }
 }
 
 impl MultipleChoiceQuestion<Answer> {
-    pub fn from(
-        mcq: challenges_multiple_choice_quizes::Model,
-        subtask: challenges_subtasks::Model,
-        solved: bool,
-        rated: bool,
-    ) -> Self {
+    pub fn from(mcq: challenges_multiple_choice_quizes::Model, subtask: Subtask) -> Self {
         Self {
-            id: subtask.id,
-            task_id: subtask.task_id,
-            creator: subtask.creator,
-            creation_timestamp: subtask.creation_timestamp.and_utc(),
-            xp: subtask.xp as _,
-            coins: subtask.coins as _,
-            fee: subtask.fee as _,
-            solved,
-            rated,
-            enabled: subtask.enabled,
             question: mcq.question,
             answers: combine_answers(mcq.answers, mcq.correct_answers),
             single_choice: mcq.single_choice,
+            subtask,
         }
     }
 }
 
 impl MultipleChoiceQuestion<String> {
-    pub fn from(
-        mcq: challenges_multiple_choice_quizes::Model,
-        subtask: challenges_subtasks::Model,
-        solved: bool,
-        rated: bool,
-    ) -> Self {
+    pub fn from(mcq: challenges_multiple_choice_quizes::Model, subtask: Subtask) -> Self {
         Self {
-            id: subtask.id,
-            task_id: subtask.task_id,
-            creator: subtask.creator,
-            creation_timestamp: subtask.creation_timestamp.and_utc(),
-            xp: subtask.xp as _,
-            coins: subtask.coins as _,
-            fee: subtask.fee as _,
-            solved,
-            rated,
-            enabled: subtask.enabled,
             question: mcq.question,
             answers: mcq.answers,
             single_choice: mcq.single_choice,
+            subtask,
         }
     }
 }
