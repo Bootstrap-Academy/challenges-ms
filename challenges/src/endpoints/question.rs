@@ -31,8 +31,9 @@ use crate::{
     },
     services::{
         subtasks::{
-            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtasks,
-            send_task_rewards, update_user_subtask, ActiveBan, QuerySubtasksFilter, UserSubtaskExt,
+            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtask,
+            query_subtask_admin, query_subtasks, send_task_rewards, update_user_subtask, ActiveBan,
+            QuerySubtaskError, QuerySubtasksFilter, UserSubtaskExt,
         },
         tasks::{get_task, get_task_with_specific, Task},
     },
@@ -91,27 +92,19 @@ impl Questions {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetQuestion::Response<VerifiedUserAuth> {
-        let Some((question, subtask)) = get_subtask::<challenges_questions::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetQuestion::subtask_not_found();
-        };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
-            return GetQuestion::subtask_not_found();
+        match query_subtask::<challenges_questions::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            Question::from,
+        )
+        .await?
+        {
+            Ok(mcq) => GetQuestion::ok(mcq),
+            Err(QuerySubtaskError::NotFound) => GetQuestion::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetQuestion::no_access(),
         }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return GetQuestion::no_access();
-        }
-
-        GetQuestion::ok(Question::from(
-            question,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
     }
 
     /// Get a question and its solution by id.
@@ -126,24 +119,19 @@ impl Questions {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetQuestionWithSolution::Response<VerifiedUserAuth> {
-        let Some((question, subtask)) = get_subtask::<challenges_questions::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetQuestionWithSolution::subtask_not_found();
-        };
-
-        if !(auth.0.admin || auth.0.id == subtask.creator) {
-            return GetQuestionWithSolution::forbidden();
+        match query_subtask_admin::<challenges_questions::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            QuestionWithSolution::from,
+        )
+        .await?
+        {
+            Ok(matching) => GetQuestionWithSolution::ok(matching),
+            Err(QuerySubtaskError::NotFound) => GetQuestionWithSolution::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetQuestionWithSolution::forbidden(),
         }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        GetQuestionWithSolution::ok(QuestionWithSolution::from(
-            question,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
     }
 
     /// Create a new question.

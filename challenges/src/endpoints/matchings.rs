@@ -31,8 +31,9 @@ use crate::{
     },
     services::{
         subtasks::{
-            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtasks,
-            send_task_rewards, update_user_subtask, ActiveBan, QuerySubtasksFilter, UserSubtaskExt,
+            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtask,
+            query_subtask_admin, query_subtasks, send_task_rewards, update_user_subtask, ActiveBan,
+            QuerySubtaskError, QuerySubtasksFilter, UserSubtaskExt,
         },
         tasks::{get_task, get_task_with_specific, Task},
     },
@@ -91,27 +92,19 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetMatching::Response<VerifiedUserAuth> {
-        let Some((matching, subtask)) = get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetMatching::subtask_not_found();
-        };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
-            return GetMatching::subtask_not_found();
+        match query_subtask::<challenges_matchings::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            Matching::from,
+        )
+        .await?
+        {
+            Ok(matching) => GetMatching::ok(matching),
+            Err(QuerySubtaskError::NotFound) => GetMatching::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetMatching::no_access(),
         }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return GetMatching::no_access();
-        }
-
-        GetMatching::ok(Matching::from(
-            matching,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
     }
 
     /// Get a matching and its solution by id.
@@ -126,24 +119,19 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetMatchingWithSolution::Response<VerifiedUserAuth> {
-        let Some((matching, subtask)) = get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetMatchingWithSolution::subtask_not_found();
-        };
-
-        if !(auth.0.admin || auth.0.id == subtask.creator) {
-            return GetMatchingWithSolution::forbidden();
+        match query_subtask_admin::<challenges_matchings::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            MatchingWithSolution::from,
+        )
+        .await?
+        {
+            Ok(matching) => GetMatchingWithSolution::ok(matching),
+            Err(QuerySubtaskError::NotFound) => GetMatchingWithSolution::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetMatchingWithSolution::forbidden(),
         }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        GetMatchingWithSolution::ok(MatchingWithSolution::from(
-            matching,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
     }
 
     /// Create a new matching.

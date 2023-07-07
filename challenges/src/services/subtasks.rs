@@ -309,6 +309,76 @@ where
         .collect())
 }
 
+pub async fn query_subtask<E, T>(
+    db: &DatabaseTransaction,
+    user: &User,
+    task_id: Uuid,
+    subtask_id: Uuid,
+    map: impl Fn(E::Model, Subtask) -> T,
+) -> Result<Result<T, QuerySubtaskError>, DbErr>
+where
+    E: EntityTrait + Related<challenges_subtasks::Entity>,
+    E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
+{
+    let Some((mcq, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
+        return Ok(Err(QuerySubtaskError::NotFound));
+    };
+    if !user.admin && user.id != subtask.creator && !subtask.enabled {
+        return Ok(Err(QuerySubtaskError::NotFound));
+    }
+
+    let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
+    if !user_subtask.check_access(user, &subtask) {
+        return Ok(Err(QuerySubtaskError::NoAccess));
+    }
+
+    Ok(Ok(map(
+        mcq,
+        Subtask::from(
+            subtask,
+            true,
+            user_subtask.is_solved(),
+            user_subtask.is_rated(),
+        ),
+    )))
+}
+
+pub async fn query_subtask_admin<E, T>(
+    db: &DatabaseTransaction,
+    user: &User,
+    task_id: Uuid,
+    subtask_id: Uuid,
+    map: impl Fn(E::Model, Subtask) -> T,
+) -> Result<Result<T, QuerySubtaskError>, DbErr>
+where
+    E: EntityTrait + Related<challenges_subtasks::Entity>,
+    E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
+{
+    let Some((mcq, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
+        return Ok(Err(QuerySubtaskError::NotFound));
+    };
+
+    if !(user.admin || user.id == subtask.creator) {
+        return Ok(Err(QuerySubtaskError::NoAccess));
+    }
+
+    let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
+    Ok(Ok(map(
+        mcq,
+        Subtask::from(
+            subtask,
+            true,
+            user_subtask.is_solved(),
+            user_subtask.is_rated(),
+        ),
+    )))
+}
+
+pub enum QuerySubtaskError {
+    NotFound,
+    NoAccess,
+}
+
 pub async fn get_subtask<E>(
     db: &DatabaseTransaction,
     task_id: Uuid,

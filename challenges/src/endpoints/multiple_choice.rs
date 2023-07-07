@@ -32,8 +32,9 @@ use crate::{
     },
     services::{
         subtasks::{
-            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtasks,
-            send_task_rewards, update_user_subtask, ActiveBan, QuerySubtasksFilter, UserSubtaskExt,
+            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtask,
+            query_subtask_admin, query_subtasks, send_task_rewards, update_user_subtask, ActiveBan,
+            QuerySubtaskError, QuerySubtasksFilter, UserSubtaskExt,
         },
         tasks::{get_task, get_task_with_specific, Task},
     },
@@ -92,27 +93,19 @@ impl MultipleChoice {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetMCQ::Response<VerifiedUserAuth> {
-        let Some((mcq, subtask)) = get_subtask::<challenges_multiple_choice_quizes::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetMCQ::subtask_not_found();
-        };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
-            return GetMCQ::subtask_not_found();
+        match query_subtask::<challenges_multiple_choice_quizes::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            MultipleChoiceQuestion::<String>::from,
+        )
+        .await?
+        {
+            Ok(mcq) => GetMCQ::ok(mcq),
+            Err(QuerySubtaskError::NotFound) => GetMCQ::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetMCQ::no_access(),
         }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return GetMCQ::no_access();
-        }
-
-        GetMCQ::ok(MultipleChoiceQuestion::<String>::from(
-            mcq,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
     }
 
     /// Get a multiple choice question and its solution by id.
@@ -127,24 +120,19 @@ impl MultipleChoice {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetMCQWithSolution::Response<VerifiedUserAuth> {
-        let Some((mcq, subtask)) = get_subtask::<challenges_multiple_choice_quizes::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetMCQWithSolution::subtask_not_found();
-        };
-
-        if !(auth.0.admin || auth.0.id == subtask.creator) {
-            return GetMCQWithSolution::forbidden();
+        match query_subtask_admin::<challenges_multiple_choice_quizes::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            MultipleChoiceQuestion::<Answer>::from,
+        )
+        .await?
+        {
+            Ok(mcq) => GetMCQWithSolution::ok(mcq),
+            Err(QuerySubtaskError::NotFound) => GetMCQWithSolution::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetMCQWithSolution::forbidden(),
         }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        GetMCQWithSolution::ok(MultipleChoiceQuestion::<Answer>::from(
-            mcq,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
     }
 
     /// Create a new multiple choice question.

@@ -35,8 +35,9 @@ use crate::{
     services::{
         judge::{self, get_executor_config, Judge},
         subtasks::{
-            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtasks, ActiveBan,
-            QuerySubtasksFilter, UserSubtaskExt,
+            can_create, get_active_ban, get_subtask, get_user_subtask, query_subtask,
+            query_subtask_admin, query_subtasks, ActiveBan, QuerySubtaskError, QuerySubtasksFilter,
+            UserSubtaskExt,
         },
         tasks::{get_task, get_task_with_specific, Task},
     },
@@ -97,27 +98,19 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetCodingChallenge::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetCodingChallenge::subtask_not_found();
-        };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
-            return GetCodingChallenge::subtask_not_found();
+        match query_subtask::<challenges_coding_challenges::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            CodingChallenge::from,
+        )
+        .await?
+        {
+            Ok(x) => GetCodingChallenge::ok(x),
+            Err(QuerySubtaskError::NotFound) => GetCodingChallenge::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetCodingChallenge::no_access(),
         }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return GetCodingChallenge::no_access();
-        }
-
-        GetCodingChallenge::ok(CodingChallenge::from(
-            cc,
-            Subtask::from(
-                subtask,
-                true,
-                user_subtask.is_solved(),
-                user_subtask.is_rated(),
-            ),
-        ))
     }
 
     /// Get the examples of a coding challenge by id.
@@ -132,17 +125,19 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetExamples::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetExamples::subtask_not_found();
+        let cc = match query_subtask::<challenges_coding_challenges::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            |cc, _| cc,
+        )
+        .await?
+        {
+            Ok(cc) => cc,
+            Err(QuerySubtaskError::NotFound) => return GetExamples::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => return GetExamples::no_access(),
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
-            return GetExamples::subtask_not_found();
-        }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return GetExamples::no_access();
-        }
 
         let judge = self.get_judge(&cc.evaluator);
 
@@ -195,14 +190,18 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetEvaluator::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetEvaluator::subtask_not_found();
-        };
-
-        if auth.0.admin || auth.0.id == subtask.creator {
-            GetEvaluator::ok(cc.evaluator)
-        } else {
-            GetEvaluator::forbidden()
+        match query_subtask_admin::<challenges_coding_challenges::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            |cc, _| cc,
+        )
+        .await?
+        {
+            Ok(cc) => GetEvaluator::ok(cc.evaluator),
+            Err(QuerySubtaskError::NotFound) => GetEvaluator::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetEvaluator::forbidden(),
         }
     }
 
@@ -218,17 +217,21 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetSolution::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
-            return GetSolution::subtask_not_found();
-        };
-
-        if auth.0.admin || auth.0.id == subtask.creator {
-            GetSolution::ok(SubmissionContent {
+        match query_subtask_admin::<challenges_coding_challenges::Entity, _>(
+            &db,
+            &auth.0,
+            task_id.0,
+            subtask_id.0,
+            |cc, _| cc,
+        )
+        .await?
+        {
+            Ok(cc) => GetSolution::ok(SubmissionContent {
                 environment: cc.solution_environment,
                 code: cc.solution_code,
-            })
-        } else {
-            GetSolution::forbidden()
+            }),
+            Err(QuerySubtaskError::NotFound) => GetSolution::subtask_not_found(),
+            Err(QuerySubtaskError::NoAccess) => GetSolution::forbidden(),
         }
     }
 
