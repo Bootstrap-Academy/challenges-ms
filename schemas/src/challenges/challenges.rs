@@ -15,6 +15,12 @@ pub struct Category {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "error", content = "details", rename_all = "snake_case")]
+pub enum GetCategoryError {
+    NotFound,
+}
+
 #[derive(Debug, Clone, Object, Serialize)]
 pub struct CreateCategoryRequest {
     /// The title of the category
@@ -25,7 +31,7 @@ pub struct CreateCategoryRequest {
     pub description: String,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Serialize)]
 pub struct UpdateCategoryRequest {
     /// The title of the category
     #[oai(validator(max_length = 256))]
@@ -37,11 +43,17 @@ pub struct UpdateCategoryRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "error", content = "details", rename_all = "snake_case")]
+pub enum UpdateCategoryError {
+    NotFound,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "error", content = "details", rename_all = "snake_case")]
 pub enum DeleteCategoryError {
     NotFound,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Deserialize)]
 pub struct Challenge {
     /// The unique identifier of the challenge
     pub id: Uuid,
@@ -59,7 +71,13 @@ pub struct Challenge {
     pub skills: Vec<String>,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "error", content = "details", rename_all = "snake_case")]
+pub enum GetChallengeError {
+    ChallengeNotFound,
+}
+
+#[derive(Debug, Clone, Object, Serialize)]
 pub struct CreateChallengeRequest {
     /// The title of the challenge
     #[oai(validator(max_length = 256))]
@@ -72,7 +90,14 @@ pub struct CreateChallengeRequest {
     pub skills: Vec<String>,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "error", content = "details", rename_all = "snake_case")]
+pub enum CreateChallengeError {
+    CategoryNotFound,
+    SkillsNotFound(Vec<String>),
+}
+
+#[derive(Debug, Clone, Object, Serialize)]
 pub struct UpdateChallengeRequest {
     /// The category of the challenge
     pub category: PatchValue<Uuid>,
@@ -85,6 +110,20 @@ pub struct UpdateChallengeRequest {
     /// The skills of the challenge
     #[oai(validator(max_items = 8, unique_items = true))]
     pub skills: PatchValue<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "error", content = "details", rename_all = "snake_case")]
+pub enum UpdateChallengeError {
+    ChallengeNotFound,
+    CategoryNotFound,
+    SkillsNotFound(Vec<String>),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "error", content = "details", rename_all = "snake_case")]
+pub enum DeleteChallengeError {
+    ChallengeNotFound,
 }
 
 impl From<challenges_challenge_categories::Model> for Category {
