@@ -4,5 +4,6 @@
 !migration
 !entity
 !lib
-!jobs
+!schemas
+!client
 !challenges
