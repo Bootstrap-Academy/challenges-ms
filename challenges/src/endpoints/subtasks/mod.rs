@@ -5,7 +5,11 @@ use entity::{challenges_subtasks, challenges_tasks, challenges_user_subtasks};
 use lib::{auth::VerifiedUserAuth, config::Config, services::shop::AddCoinsError, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
-use poem_openapi::{param::Path, payload::Json, OpenApi};
+use poem_openapi::{
+    param::{Path, Query},
+    payload::Json,
+    OpenApi,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter, Set,
     Unchanged,
@@ -14,9 +18,12 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::{
-    schemas::subtasks::UserUpdateSubtaskRequest,
+    schemas::subtasks::{Subtask, UserUpdateSubtaskRequest},
     services::{
-        subtasks::{get_user_subtask, update_user_subtask, UserSubtaskExt},
+        subtasks::{
+            get_user_subtask, query_subtasks_only, update_user_subtask, QuerySubtasksFilter,
+            UserSubtaskExt,
+        },
         tasks::{get_specific_task, Task},
     },
 };
@@ -48,6 +55,45 @@ impl Subtasks {
 
 #[OpenApi(tag = "Tags::Subtasks")]
 impl Subtasks {
+    /// List all subtasks across all parent tasks.
+    #[allow(clippy::too_many_arguments)]
+    #[oai(path = "/subtasks", method = "get")]
+    pub async fn list_subtasks(
+        &self,
+        task_id: Query<Option<Uuid>>,
+        /// Whether to search for free coding challenges.
+        free: Query<Option<bool>>,
+        /// Whether to search for unlocked coding challenges.
+        unlocked: Query<Option<bool>>,
+        /// Whether to search for solved challenges.
+        solved: Query<Option<bool>>,
+        /// Whether to search for rated challenges.
+        rated: Query<Option<bool>>,
+        /// Whether to search for enabled subtasks.
+        enabled: Query<Option<bool>>,
+        /// Filter by creator.
+        creator: Query<Option<Uuid>>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> ListSubtasks::Response<VerifiedUserAuth> {
+        ListSubtasks::ok(
+            query_subtasks_only(
+                &db,
+                &auth.0,
+                task_id.0,
+                QuerySubtasksFilter {
+                    free: free.0,
+                    unlocked: unlocked.0,
+                    solved: solved.0,
+                    rated: rated.0,
+                    enabled: enabled.0,
+                    creator: creator.0,
+                },
+            )
+            .await?,
+        )
+    }
+
     /// Unlock a subtask by paying its fee.
     #[oai(path = "/tasks/:task_id/subtasks/:subtask_id/access", method = "post")]
     pub async fn unlock_subtask(
@@ -127,6 +173,7 @@ impl Subtasks {
         challenges_subtasks::ActiveModel {
             id: Unchanged(subtask.id),
             task_id: Unchanged(subtask.task_id),
+            ty: Unchanged(subtask.ty),
             creator: Unchanged(subtask.creator),
             creation_timestamp: Unchanged(subtask.creation_timestamp),
             xp: Unchanged(subtask.xp),
@@ -165,6 +212,10 @@ impl Subtasks {
         DeleteSubtask::ok()
     }
 }
+
+response!(ListSubtasks = {
+    Ok(200) => Vec<Subtask>,
+});
 
 response!(UnlockSubtask = {
     /// The user already has access to this subtask.

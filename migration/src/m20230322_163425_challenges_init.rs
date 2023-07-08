@@ -284,6 +284,8 @@ pub enum Subtask {
     Table,
     Id,
     TaskId,
+    #[iden = "ty"]
+    Type,
     Creator,
     CreationTimestamp,
     Xp,

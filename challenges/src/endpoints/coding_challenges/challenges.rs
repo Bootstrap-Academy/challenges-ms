@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use entity::challenges_coding_challenges;
+use entity::{challenges_coding_challenges, sea_orm_active_enums::ChallengesSubtaskType};
 use fnct::format::JsonFormatter;
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -247,6 +247,7 @@ impl Api {
             &auth.0,
             task_id.0,
             data.0.subtask,
+            ChallengesSubtaskType::CodingChallenge,
         )
         .await?
         {

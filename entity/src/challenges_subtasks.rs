@@ -2,6 +2,8 @@
 
 use sea_orm::entity::prelude::*;
 
+use super::sea_orm_active_enums::ChallengesSubtaskType;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "challenges_subtasks")]
 pub struct Model {
@@ -14,6 +16,7 @@ pub struct Model {
     pub coins: i64,
     pub fee: i64,
     pub enabled: bool,
+    pub ty: ChallengesSubtaskType,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

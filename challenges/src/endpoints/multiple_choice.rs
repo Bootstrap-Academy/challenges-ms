@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use entity::{
     challenges_multiple_choice_attempts, challenges_multiple_choice_quizes,
-    challenges_user_subtasks,
+    challenges_user_subtasks, sea_orm_active_enums::ChallengesSubtaskType,
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -148,6 +148,7 @@ impl MultipleChoice {
             &auth.0,
             task_id.0,
             data.0.subtask,
+            ChallengesSubtaskType::MultipleChoiceQuestion,
         )
         .await?
         {

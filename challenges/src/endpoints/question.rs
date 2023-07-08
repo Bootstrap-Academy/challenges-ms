@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use entity::{challenges_question_attempts, challenges_questions, challenges_user_subtasks};
+use entity::{
+    challenges_question_attempts, challenges_questions, challenges_user_subtasks,
+    sea_orm_active_enums::ChallengesSubtaskType,
+};
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
     config::Config,
@@ -144,6 +147,7 @@ impl Questions {
             &auth.0,
             task_id.0,
             data.0.subtask,
+            ChallengesSubtaskType::Question,
         )
         .await?
         {

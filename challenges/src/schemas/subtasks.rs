@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use entity::{
     challenges_subtask_reports, challenges_subtasks,
-    sea_orm_active_enums::{ChallengesRating, ChallengesReportReason},
+    sea_orm_active_enums::{ChallengesRating, ChallengesReportReason, ChallengesSubtaskType},
 };
 use poem_ext::patch_value::PatchValue;
 use poem_openapi::{Enum, Object};
@@ -13,6 +13,9 @@ pub struct Subtask {
     pub id: Uuid,
     /// The parent task.
     pub task_id: Uuid,
+    /// The type of the subtask.
+    #[oai(rename = "type")]
+    pub ty: ChallengesSubtaskType,
     /// The creator of the subtask
     pub creator: Uuid,
     /// The creation timestamp of the subtask
@@ -152,6 +155,7 @@ impl Subtask {
         Self {
             id: subtask.id,
             task_id: subtask.task_id,
+            ty: subtask.ty,
             creator: subtask.creator,
             creation_timestamp: subtask.creation_timestamp.and_utc(),
             xp: subtask.xp as _,

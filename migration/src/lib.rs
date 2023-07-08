@@ -27,6 +27,7 @@ mod m20230621_074711_questions;
 mod m20230621_120013_fix_foreign_keys;
 mod m20230621_135204_questions_building_blocks;
 mod m20230621_141228_matchings;
+mod m20230707_200516_subtask_type;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -54,6 +55,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230621_120013_fix_foreign_keys::Migration),
             Box::new(m20230621_135204_questions_building_blocks::Migration),
             Box::new(m20230621_141228_matchings::Migration),
+            Box::new(m20230707_200516_subtask_type::Migration),
         ]
     }
 }

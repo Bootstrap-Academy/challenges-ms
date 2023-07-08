@@ -95,6 +95,35 @@ pub enum ChallengesReportReason {
 )]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[oai(rename_all = "SCREAMING_SNAKE_CASE")]
+#[sea_orm(
+    rs_type = "String",
+    db_type = "Enum",
+    enum_name = "challenges_subtask_type"
+)]
+pub enum ChallengesSubtaskType {
+    #[sea_orm(string_value = "coding_challenge")]
+    CodingChallenge,
+    #[sea_orm(string_value = "matching")]
+    Matching,
+    #[sea_orm(string_value = "multiple_choice_question")]
+    MultipleChoiceQuestion,
+    #[sea_orm(string_value = "question")]
+    Question,
+}
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    EnumIter,
+    DeriveActiveEnum,
+    Copy,
+    poem_openapi::Enum,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[oai(rename_all = "SCREAMING_SNAKE_CASE")]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "challenges_verdict")]
 pub enum ChallengesVerdict {
     #[sea_orm(string_value = "compilation_error")]

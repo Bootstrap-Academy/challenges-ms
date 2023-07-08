@@ -82,7 +82,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Matching {
+pub enum Matching {
     #[iden = "challenges_matchings"]
     Table,
     SubtaskId,

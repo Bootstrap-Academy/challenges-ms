@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use entity::{
     challenges_ban, challenges_subtasks, challenges_tasks, challenges_user_subtasks,
-    sea_orm_active_enums::ChallengesBanAction,
+    sea_orm_active_enums::{ChallengesBanAction, ChallengesSubtaskType},
 };
 use lib::{
     auth::User,
@@ -271,6 +271,25 @@ pub struct QuerySubtasksFilter {
     pub creator: Option<Uuid>,
 }
 
+pub async fn query_subtasks_only(
+    db: &DatabaseTransaction,
+    user: &User,
+    task_id: Option<Uuid>,
+    filter: QuerySubtasksFilter,
+) -> Result<Vec<Subtask>, DbErr> {
+    let user_subtasks = get_user_subtasks(db, user.id).await?;
+    let mut query = challenges_subtasks::Entity::find();
+    if let Some(task_id) = task_id {
+        query = query.filter(challenges_subtasks::Column::TaskId.eq(task_id));
+    }
+    Ok(prepare_query(query, &filter, user)
+        .all(db)
+        .await?
+        .into_iter()
+        .filter_map(|subtask| subtasks_filter_map(subtask, user, &filter, &user_subtasks))
+        .collect())
+}
+
 pub async fn query_subtasks<E, T>(
     db: &DatabaseTransaction,
     user: &User,
@@ -281,10 +300,28 @@ pub async fn query_subtasks<E, T>(
 where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
 {
-    let subtasks = get_user_subtasks(db, user.id).await?;
-    let mut query = E::find()
-        .find_also_related(challenges_subtasks::Entity)
-        .filter(challenges_subtasks::Column::TaskId.eq(task_id));
+    let user_subtasks = get_user_subtasks(db, user.id).await?;
+    Ok(prepare_query(
+        E::find()
+            .find_also_related(challenges_subtasks::Entity)
+            .filter(challenges_subtasks::Column::TaskId.eq(task_id)),
+        &filter,
+        user,
+    )
+    .all(db)
+    .await?
+    .into_iter()
+    .filter_map(|(specific, subtask)| {
+        let subtask = subtasks_filter_map(subtask?, user, &filter, &user_subtasks)?;
+        Some(map(specific, subtask))
+    })
+    .collect())
+}
+
+fn prepare_query<Q>(mut query: Q, filter: &QuerySubtasksFilter, user: &User) -> Q
+where
+    Q: QueryFilter + QueryOrder,
+{
     if !user.admin {
         query = query.filter(
             Condition::any()
@@ -302,26 +339,23 @@ where
     if let Some(creator) = filter.creator {
         query = query.filter(challenges_subtasks::Column::Creator.eq(creator));
     }
-    Ok(query
-        .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
-        .all(db)
-        .await?
-        .into_iter()
-        .filter_map(|(specific, subtask)| {
-            let subtask = subtask?;
-            let user_subtask = subtasks.get(&subtask.id);
-            let unlocked = user_subtask.check_access(user, &subtask);
-            let solved = user_subtask.is_solved();
-            let rated = user_subtask.is_rated();
-            (filter.unlocked.unwrap_or(unlocked) == unlocked
-                && filter.solved.unwrap_or(solved) == solved
-                && filter.rated.unwrap_or(rated) == rated)
-                .then_some(map(
-                    specific,
-                    Subtask::from(subtask, unlocked, solved, rated),
-                ))
-        })
-        .collect())
+    query.order_by_asc(challenges_subtasks::Column::CreationTimestamp)
+}
+
+fn subtasks_filter_map(
+    subtask: challenges_subtasks::Model,
+    user: &User,
+    filter: &QuerySubtasksFilter,
+    user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
+) -> Option<Subtask> {
+    let user_subtask = user_subtasks.get(&subtask.id);
+    let unlocked = user_subtask.check_access(user, &subtask);
+    let solved = user_subtask.is_solved();
+    let rated = user_subtask.is_rated();
+    (filter.unlocked.unwrap_or(unlocked) == unlocked
+        && filter.solved.unwrap_or(solved) == solved
+        && filter.rated.unwrap_or(rated) == rated)
+        .then_some(Subtask::from(subtask, unlocked, solved, rated))
 }
 
 pub async fn query_subtask<E, T>(
@@ -423,6 +457,7 @@ pub async fn create_subtask(
     user: &User,
     task_id: Uuid,
     data: CreateSubtaskRequest,
+    ty: ChallengesSubtaskType,
 ) -> Result<Result<Subtask, CreateSubtaskError>, ErrorResponse> {
     let (task, specific) = match get_task_with_specific(db, task_id).await? {
         Some(task) => task,
@@ -461,6 +496,7 @@ pub async fn create_subtask(
     let subtask = challenges_subtasks::ActiveModel {
         id: Set(Uuid::new_v4()),
         task_id: Set(task.id),
+        ty: Set(ty),
         creator: Set(user.id),
         creation_timestamp: Set(Utc::now().naive_utc()),
         xp: Set(xp as _),
@@ -508,6 +544,7 @@ where
     let subtask = challenges_subtasks::ActiveModel {
         id: Unchanged(subtask.id),
         task_id: data.task_id.update(subtask.task_id),
+        ty: Unchanged(subtask.ty),
         creator: Unchanged(subtask.creator),
         creation_timestamp: Unchanged(subtask.creation_timestamp),
         xp: data.xp.map(|x| x as _).update(subtask.xp),
