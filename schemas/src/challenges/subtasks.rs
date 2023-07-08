@@ -5,6 +5,7 @@ use entity::{
 };
 use poem_ext::patch_value::PatchValue;
 use poem_openapi::{Enum, Object};
+use serde::Deserialize;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Object)]
@@ -115,7 +116,7 @@ pub enum ResolveReportAction {
     BlockCreator,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Deserialize)]
 pub struct SubtasksUserConfig {
     /// The minimum level a normal user needs to have in each skill related to a
     /// task to be able to create subtasks in it.

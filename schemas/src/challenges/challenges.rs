@@ -2,9 +2,10 @@ use chrono::{DateTime, Utc};
 use entity::{challenges_challenge_categories, challenges_challenges, challenges_tasks};
 use poem_ext::patch_value::PatchValue;
 use poem_openapi::Object;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Deserialize)]
 pub struct Category {
     /// The unique identifier of the category
     pub id: Uuid,
@@ -14,7 +15,7 @@ pub struct Category {
     pub description: String,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Serialize)]
 pub struct CreateCategoryRequest {
     /// The title of the category
     #[oai(validator(max_length = 256))]
@@ -32,6 +33,12 @@ pub struct UpdateCategoryRequest {
     /// The description of the category
     #[oai(validator(max_length = 4096))]
     pub description: PatchValue<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "error", content = "details", rename_all = "snake_case")]
+pub enum DeleteCategoryError {
+    NotFound,
 }
 
 #[derive(Debug, Clone, Object)]
