@@ -8,12 +8,12 @@ use sandkasten_client::{
     schemas::{environments::ListEnvironmentsResponse, programs::RunResult},
     SandkastenClient,
 };
+use schemas::challenges::coding_challenges::{CheckResult, ExecutorConfig, SubmissionContent};
 use tracing::error;
 use uuid::Uuid;
 
 use crate::{
     endpoints::Tags,
-    schemas::coding_challenges::{CheckResult, ExecutorConfig, SubmissionContent},
     services::{
         judge::{self, get_executor_config, Judge},
         subtasks::{get_subtask, get_user_subtask, UserSubtaskExt},

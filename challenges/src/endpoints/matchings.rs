@@ -17,20 +17,18 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
+use schemas::challenges::matchings::{
+    CreateMatchingRequest, Matching, MatchingSummary, MatchingWithSolution, SolveMatchingFeedback,
+    SolveMatchingRequest, UpdateMatchingRequest,
+};
 use sea_orm::{ActiveModelTrait, ColumnTrait, ModelTrait, QueryFilter, QueryOrder, Set, Unchanged};
 use uuid::Uuid;
 
 use super::Tags;
-use crate::{
-    schemas::matchings::{
-        CreateMatchingRequest, Matching, MatchingSummary, MatchingWithSolution,
-        SolveMatchingFeedback, SolveMatchingRequest, UpdateMatchingRequest,
-    },
-    services::subtasks::{
-        create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
-        query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
-        QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
-    },
+use crate::services::subtasks::{
+    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
+    QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
 };
 
 pub struct Matchings {

@@ -16,6 +16,9 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
+use schemas::challenges::subtasks::{
+    CreateReportRequest, Report, ResolveReportAction, ResolveReportRequest,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, PaginatorTrait,
     QueryFilter, Set,
@@ -25,7 +28,6 @@ use uuid::Uuid;
 use super::get_subtask;
 use crate::{
     endpoints::Tags,
-    schemas::subtasks::{CreateReportRequest, Report, ResolveReportAction, ResolveReportRequest},
     services::subtasks::{
         get_active_ban, get_user_subtask, update_user_subtask, ActiveBan, UserSubtaskExt,
     },

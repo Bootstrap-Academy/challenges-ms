@@ -14,6 +14,10 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
+use schemas::challenges::challenges::{
+    Category, Challenge, CreateCategoryRequest, CreateChallengeRequest, UpdateCategoryRequest,
+    UpdateChallengeRequest,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
     QueryOrder, Set, Unchanged,
@@ -21,10 +25,6 @@ use sea_orm::{
 use uuid::Uuid;
 
 use super::Tags;
-use crate::schemas::challenges::{
-    Category, Challenge, CreateCategoryRequest, CreateChallengeRequest, UpdateCategoryRequest,
-    UpdateChallengeRequest,
-};
 
 pub struct Challenges {
     pub state: Arc<SharedState>,

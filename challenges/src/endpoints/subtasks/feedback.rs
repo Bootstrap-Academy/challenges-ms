@@ -9,13 +9,13 @@ use lib::{auth::VerifiedUserAuth, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
+use schemas::challenges::subtasks::PostFeedbackRequest;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
 use super::{get_subtask, reports::create_report};
 use crate::{
     endpoints::Tags,
-    schemas::subtasks::PostFeedbackRequest,
     services::subtasks::{get_user_subtask, update_user_subtask, UserSubtaskExt},
 };
 

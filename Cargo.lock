@@ -283,6 +283,7 @@ dependencies = [
  "poem-openapi",
  "redis",
  "sandkasten-client",
+ "schemas",
  "sea-orm",
  "serde",
  "serde_json",
@@ -1896,6 +1897,19 @@ dependencies = [
  "serde_json",
  "thiserror",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "schemas"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "entity",
+ "poem-ext",
+ "poem-openapi",
+ "sandkasten-client",
+ "serde",
  "uuid",
 ]
 

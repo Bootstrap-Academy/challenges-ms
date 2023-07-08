@@ -10,6 +10,7 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
+use schemas::challenges::subtasks::{Subtask, UserUpdateSubtaskRequest};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter, Set,
     Unchanged,
@@ -17,15 +18,12 @@ use sea_orm::{
 use uuid::Uuid;
 
 use super::Tags;
-use crate::{
-    schemas::subtasks::{Subtask, UserUpdateSubtaskRequest},
-    services::{
-        subtasks::{
-            get_user_subtask, query_subtasks_only, update_user_subtask, QuerySubtasksFilter,
-            UserSubtaskExt,
-        },
-        tasks::{get_specific_task, Task},
+use crate::services::{
+    subtasks::{
+        get_user_subtask, query_subtasks_only, update_user_subtask, QuerySubtasksFilter,
+        UserSubtaskExt,
     },
+    tasks::{get_specific_task, Task},
 };
 
 mod config;

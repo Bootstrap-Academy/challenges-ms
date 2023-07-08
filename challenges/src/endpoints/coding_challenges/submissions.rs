@@ -13,6 +13,7 @@ use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sandkasten_client::{schemas::environments::Environment, SandkastenClient};
+use schemas::challenges::coding_challenges::{Submission, SubmissionContent};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
     QueryFilter, Set, TransactionTrait, Unchanged,
@@ -25,7 +26,6 @@ use uuid::Uuid;
 use super::{check_challenge, CheckChallenge, CheckError, CheckTestcaseError};
 use crate::{
     endpoints::Tags,
-    schemas::coding_challenges::{Submission, SubmissionContent},
     services::{
         judge::{self, Judge},
         subtasks::{

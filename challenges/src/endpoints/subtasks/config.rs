@@ -3,8 +3,9 @@ use std::sync::Arc;
 use lib::{auth::VerifiedUserAuth, config::Config};
 use poem_ext::response;
 use poem_openapi::OpenApi;
+use schemas::challenges::subtasks::SubtasksUserConfig;
 
-use crate::{endpoints::Tags, schemas::subtasks::SubtasksUserConfig};
+use crate::endpoints::Tags;
 
 pub struct Api {
     pub config: Arc<Config>,

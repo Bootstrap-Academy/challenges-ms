@@ -13,6 +13,7 @@ use lib::{
     },
 };
 use poem_ext::responses::ErrorResponse;
+use schemas::challenges::subtasks::{CreateSubtaskRequest, Subtask, UpdateSubtaskRequest};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
     QueryFilter, QueryOrder, Related, Set, Unchanged,
@@ -24,7 +25,6 @@ use super::{
     course_tasks::get_skills_of_course,
     tasks::{get_specific_task, get_task, get_task_with_specific, Task},
 };
-use crate::schemas::subtasks::{CreateSubtaskRequest, Subtask, UpdateSubtaskRequest};
 
 pub async fn send_task_rewards(
     services: &Services,

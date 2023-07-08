@@ -8,13 +8,11 @@ use sandkasten_client::{
     schemas::programs::{BuildRunResult, RunResult},
     SandkastenClient,
 };
+use schemas::challenges::coding_challenges::CheckResult;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
-use crate::{
-    schemas::coding_challenges::CheckResult,
-    services::judge::{Error as JudgeError, Judge},
-};
+use crate::services::judge::{Error as JudgeError, Judge};
 
 mod assets;
 mod challenges;

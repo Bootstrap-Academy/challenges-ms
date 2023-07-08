@@ -10,16 +10,14 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
+use schemas::challenges::course_tasks::{CourseTask, CreateCourseTaskRequest};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, EntityTrait, QueryFilter, Set,
 };
 use uuid::Uuid;
 
 use super::Tags;
-use crate::{
-    schemas::course_tasks::{CourseTask, CreateCourseTaskRequest},
-    services::subtasks::can_create_for_course,
-};
+use crate::services::subtasks::can_create_for_course;
 
 pub struct CourseTasks {
     pub state: Arc<SharedState>,

@@ -17,21 +17,19 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
+use schemas::challenges::multiple_choice::{
+    check_answers, split_answers, Answer, CreateMultipleChoiceQuestionRequest,
+    MultipleChoiceQuestion, MultipleChoiceQuestionSummary, SolveMCQFeedback, SolveMCQRequest,
+    UpdateMultipleChoiceQuestionRequest,
+};
 use sea_orm::{ActiveModelTrait, ColumnTrait, ModelTrait, QueryFilter, QueryOrder, Set, Unchanged};
 use uuid::Uuid;
 
 use super::Tags;
-use crate::{
-    schemas::multiple_choice::{
-        check_answers, split_answers, Answer, CreateMultipleChoiceQuestionRequest,
-        MultipleChoiceQuestion, MultipleChoiceQuestionSummary, SolveMCQFeedback, SolveMCQRequest,
-        UpdateMultipleChoiceQuestionRequest,
-    },
-    services::subtasks::{
-        create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
-        query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
-        QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
-    },
+use crate::services::subtasks::{
+    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
+    QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
 };
 
 pub struct MultipleChoice {

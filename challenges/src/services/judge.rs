@@ -11,11 +11,10 @@ use sandkasten_client::{
     },
     Error as SandkastenError, SandkastenClient,
 };
+use schemas::challenges::coding_challenges::{CheckResult, Example, ExecutorConfig};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
-
-use crate::schemas::coding_challenges::{CheckResult, Example, ExecutorConfig};
 
 pub const EVALUATOR_TEMPLATE: &str = include_str!("../../assets/evaluator/template.py");
 pub const EVALUATOR_LIBRARY: &str = include_str!("../../assets/evaluator/lib.py");

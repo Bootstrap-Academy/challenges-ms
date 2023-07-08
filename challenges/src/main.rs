@@ -15,7 +15,6 @@ use tracing::{info, warn};
 use crate::endpoints::get_api;
 
 mod endpoints;
-mod schemas;
 mod services;
 
 #[tokio::main]

@@ -16,6 +16,10 @@ use poem_openapi::{
     OpenApi,
 };
 use sandkasten_client::SandkastenClient;
+use schemas::challenges::coding_challenges::{
+    CodingChallenge, CodingChallengeSummary, CreateCodingChallengeRequest, Example,
+    SubmissionContent, UpdateCodingChallengeRequest,
+};
 use sea_orm::{ActiveModelTrait, Set, Unchanged};
 use tracing::error;
 use uuid::Uuid;
@@ -23,10 +27,6 @@ use uuid::Uuid;
 use super::{_CheckError, check_challenge, CheckChallenge};
 use crate::{
     endpoints::Tags,
-    schemas::coding_challenges::{
-        CodingChallenge, CodingChallengeSummary, CreateCodingChallengeRequest, Example,
-        SubmissionContent, UpdateCodingChallengeRequest,
-    },
     services::{
         judge::{self, get_executor_config, Judge},
         subtasks::{
