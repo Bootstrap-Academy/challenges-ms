@@ -21,7 +21,7 @@ use schemas::challenges::subtasks::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, PaginatorTrait,
-    QueryFilter, Set,
+    QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use uuid::Uuid;
 
@@ -43,13 +43,20 @@ impl Api {
     #[oai(path = "/subtask_reports", method = "get")]
     pub async fn list_reports(
         &self,
+        /// Maximum number of reports to return
+        limit: Query<Option<u64>>,
+        /// Pagination offset
+        offset: Query<Option<u64>>,
         /// Whether to search for completed reports.
         completed: Query<Option<bool>>,
         db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> ListReports::Response<AdminAuth> {
         let mut query = challenges_subtask_reports::Entity::find()
-            .find_also_related(challenges_subtasks::Entity);
+            .find_also_related(challenges_subtasks::Entity)
+            .order_by_desc(challenges_subtask_reports::Column::Timestamp)
+            .limit(limit.0)
+            .offset(offset.0);
         if let Some(completed) = completed.0 {
             let col = challenges_subtask_reports::Column::CompletedBy;
             query = query.filter(match completed {
