@@ -85,6 +85,7 @@ pub struct Report {
     pub id: Uuid,
     pub task_id: Uuid,
     pub subtask_id: Uuid,
+    pub subtask_type: ChallengesSubtaskType,
     pub user_id: Option<Uuid>,
     pub timestamp: DateTime<Utc>,
     pub reason: ChallengesReportReason,
@@ -130,11 +131,15 @@ pub struct SubtasksUserConfig {
 }
 
 impl Report {
-    pub fn from(report: challenges_subtask_reports::Model, task_id: Uuid) -> Self {
+    pub fn from(
+        report: challenges_subtask_reports::Model,
+        subtask: &challenges_subtasks::Model,
+    ) -> Self {
         Self {
             id: report.id,
-            task_id,
+            task_id: subtask.task_id,
             subtask_id: report.subtask_id,
+            subtask_type: subtask.ty,
             user_id: report.user_id,
             timestamp: report.timestamp.and_utc(),
             reason: report.reason,

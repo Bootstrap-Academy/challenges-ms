@@ -62,7 +62,7 @@ impl Api {
                 .all(&***db)
                 .await?
                 .into_iter()
-                .filter_map(|(report, subtask)| Some(Report::from(report, subtask?.task_id)))
+                .filter_map(|(report, subtask)| Some(Report::from(report, &subtask?)))
                 .collect(),
         )
     }
@@ -241,7 +241,7 @@ pub(super) async fn create_report(
     .update(db)
     .await?;
 
-    Ok((Report::from(report, subtask.task_id), subtask))
+    Ok((Report::from(report, &subtask), subtask))
 }
 
 async fn ban_user(
