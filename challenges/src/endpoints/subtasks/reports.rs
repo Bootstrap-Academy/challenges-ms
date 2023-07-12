@@ -134,8 +134,8 @@ impl Api {
             return ResolveReport::already_resolved();
         }
 
-        match data.0.action {
-            ResolveReportAction::Revise => {}
+        let subtask_deleted = match data.0.action {
+            ResolveReportAction::Revise => false,
             ResolveReportAction::BlockReporter => {
                 let Some(reporter) = report.user_id else {
                     return ResolveReport::no_reporter();
@@ -153,6 +153,7 @@ impl Api {
                 }
                 .update(&***db)
                 .await?;
+                false
             }
             ResolveReportAction::BlockCreator => {
                 ban_user(
@@ -163,16 +164,19 @@ impl Api {
                 )
                 .await?;
                 subtask.delete(&***db).await?;
+                true
             }
-        }
+        };
 
-        challenges_subtask_reports::ActiveModel {
-            completed_by: Set(Some(auth.0.id)),
-            completed_timestamp: Set(Some(Utc::now().naive_utc())),
-            ..report.into()
+        if !subtask_deleted {
+            challenges_subtask_reports::ActiveModel {
+                completed_by: Set(Some(auth.0.id)),
+                completed_timestamp: Set(Some(Utc::now().naive_utc())),
+                ..report.into()
+            }
+            .update(&***db)
+            .await?;
         }
-        .update(&***db)
-        .await?;
 
         ResolveReport::ok()
     }
