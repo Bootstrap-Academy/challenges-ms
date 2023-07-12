@@ -262,9 +262,11 @@ impl Matchings {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> SolveMatching::Response<VerifiedUserAuth> {
-        let Some((matching, subtask)) = get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await? else {
-                return SolveMatching::subtask_not_found();
-            };
+        let Some((matching, subtask)) =
+            get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await?
+        else {
+            return SolveMatching::subtask_not_found();
+        };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
             return SolveMatching::subtask_not_found();
         }

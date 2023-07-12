@@ -57,7 +57,10 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListSubmissions::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) =
+            get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0)
+                .await?
+        else {
             return ListSubmissions::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
@@ -89,18 +92,24 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetSubmission::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) =
+            get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0)
+                .await?
+        else {
             return GetSubmission::submission_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
             return GetSubmission::submission_not_found();
         }
 
-        let Some(submission) = challenges_coding_challenge_submissions::Entity::find_by_id(submission_id.0)
-            .filter(challenges_coding_challenge_submissions::Column::SubtaskId.eq(cc.subtask_id))
-            .filter(challenges_coding_challenge_submissions::Column::Creator.eq(auth.0.id))
-            .one(&***db)
-            .await?
+        let Some(submission) =
+            challenges_coding_challenge_submissions::Entity::find_by_id(submission_id.0)
+                .filter(
+                    challenges_coding_challenge_submissions::Column::SubtaskId.eq(cc.subtask_id),
+                )
+                .filter(challenges_coding_challenge_submissions::Column::Creator.eq(auth.0.id))
+                .one(&***db)
+                .await?
         else {
             return GetSubmission::submission_not_found();
         };
@@ -124,7 +133,10 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> CreateSubmission::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) =
+            get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0)
+                .await?
+        else {
             return CreateSubmission::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {

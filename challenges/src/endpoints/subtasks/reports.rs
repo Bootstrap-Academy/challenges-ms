@@ -122,10 +122,11 @@ impl Api {
         db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> ResolveReport::Response<AdminAuth> {
-        let Some((report, Some(subtask))) = challenges_subtask_reports::Entity::find_by_id(report_id.0)
-            .find_also_related(challenges_subtasks::Entity)
-            .one(&***db)
-            .await?
+        let Some((report, Some(subtask))) =
+            challenges_subtask_reports::Entity::find_by_id(report_id.0)
+                .find_also_related(challenges_subtasks::Entity)
+                .one(&***db)
+                .await?
         else {
             return ResolveReport::report_not_found();
         };

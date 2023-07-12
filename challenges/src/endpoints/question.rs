@@ -250,9 +250,11 @@ impl Questions {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> SolveQuestion::Response<VerifiedUserAuth> {
-        let Some((question, subtask)) = get_subtask::<challenges_questions::Entity>(&db, task_id.0, subtask_id.0).await? else {
-                return SolveQuestion::subtask_not_found();
-            };
+        let Some((question, subtask)) =
+            get_subtask::<challenges_questions::Entity>(&db, task_id.0, subtask_id.0).await?
+        else {
+            return SolveQuestion::subtask_not_found();
+        };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
             return SolveQuestion::subtask_not_found();
         }

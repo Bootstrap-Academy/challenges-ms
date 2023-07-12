@@ -41,7 +41,10 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> TestExample::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) = get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0).await? else {
+        let Some((cc, subtask)) =
+            get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0)
+                .await?
+        else {
             return TestExample::example_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {

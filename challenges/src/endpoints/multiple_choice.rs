@@ -250,7 +250,10 @@ impl MultipleChoice {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> SolveMCQ::Response<VerifiedUserAuth> {
-        let Some((mcq, subtask)) = get_subtask::<challenges_multiple_choice_quizes::Entity>(&db, task_id.0, subtask_id.0).await? else {
+        let Some((mcq, subtask)) =
+            get_subtask::<challenges_multiple_choice_quizes::Entity>(&db, task_id.0, subtask_id.0)
+                .await?
+        else {
             return SolveMCQ::subtask_not_found();
         };
         if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
