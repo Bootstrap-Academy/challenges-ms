@@ -145,6 +145,8 @@ impl Api {
                     reporter,
                     ChallengesBanAction::Report,
                     &self.config.challenges.quizzes.ban_days,
+                    auth.0.id,
+                    format!("Bad report ({}): {}", report.id, report.comment),
                 )
                 .await?;
                 challenges_subtasks::ActiveModel {
@@ -161,6 +163,8 @@ impl Api {
                     subtask.creator,
                     ChallengesBanAction::Create,
                     &self.config.challenges.quizzes.ban_days,
+                    auth.0.id,
+                    format!("Bad subtask: {}", report.comment),
                 )
                 .await?;
                 subtask.delete(&***db).await?;
@@ -260,6 +264,8 @@ async fn ban_user(
     user_id: Uuid,
     action: ChallengesBanAction,
     ban_days: &[u32],
+    creator: Uuid,
+    reason: String,
 ) -> Result<challenges_ban::Model, ErrorResponse> {
     let now = Utc::now().naive_utc();
 
@@ -279,6 +285,8 @@ async fn ban_user(
         start: Set(now),
         end: Set(duration.map(|duration| now + duration)),
         action: Set(action),
+        creator: Set(creator),
+        reason: Set(reason),
     }
     .insert(db)
     .await?)

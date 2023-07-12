@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
 use entity::{
-    challenges_subtask_reports, challenges_subtasks,
-    sea_orm_active_enums::{ChallengesRating, ChallengesReportReason, ChallengesSubtaskType},
+    challenges_ban, challenges_subtask_reports, challenges_subtasks,
+    sea_orm_active_enums::{
+        ChallengesBanAction, ChallengesRating, ChallengesReportReason, ChallengesSubtaskType,
+    },
 };
 use poem_ext::patch_value::PatchValue;
 use poem_openapi::{Enum, Object};
@@ -130,6 +132,57 @@ pub struct SubtasksUserConfig {
     pub max_fee: u64,
 }
 
+#[derive(Debug, Clone, Object)]
+pub struct Ban {
+    /// The unique identifier of the ban.
+    pub id: Uuid,
+    /// The unique identifier of the user who is banned.
+    pub user_id: Uuid,
+    /// The unique identifier of the admin who banned the user.
+    pub creator: Uuid,
+    /// The start timestamp of the ban.
+    pub start: DateTime<Utc>,
+    /// The end timestamp of the ban. Null if this is a permanent ban.
+    pub end: Option<DateTime<Utc>>,
+    /// Whether the ban is currently active.
+    pub active: bool,
+    /// The action the user is not allowed to perform due to this ban.
+    pub action: ChallengesBanAction,
+    /// The reason why the user has been banned.
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Object)]
+pub struct CreateBanRequest {
+    /// The unique identifier of the user who is banned.
+    pub user_id: Uuid,
+    /// The start timestamp of the ban. Defaults to the current timestamp.
+    pub start: Option<DateTime<Utc>>,
+    /// The end timestamp of the ban. Null if this is a permanent ban.
+    pub end: Option<DateTime<Utc>>,
+    /// The action the user is not allowed to perform due to this ban.
+    pub action: ChallengesBanAction,
+    /// The reason why the user has been banned.
+    #[oai(validator(max_length = 4096))]
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Object)]
+pub struct UpdateBanRequest {
+    /// The start timestamp of the ban.
+    pub start: PatchValue<DateTime<Utc>>,
+    /// The end timestamp of the ban.
+    pub end: PatchValue<Option<DateTime<Utc>>>,
+    /// Set to `true` to make this ban permanent, overriding `end`.
+    #[oai(default)]
+    pub permanent: bool,
+    /// The action the user is not allowed to perform due to this ban.
+    pub action: PatchValue<ChallengesBanAction>,
+    /// The reason why the user has been banned.
+    #[oai(validator(max_length = 4096))]
+    pub reason: PatchValue<String>,
+}
+
 impl Report {
     pub fn from(
         report: challenges_subtask_reports::Model,
@@ -171,6 +224,23 @@ impl Subtask {
             solved,
             rated,
             enabled: subtask.enabled,
+        }
+    }
+}
+
+impl From<challenges_ban::Model> for Ban {
+    fn from(value: challenges_ban::Model) -> Self {
+        let now = Utc::now().naive_utc();
+        Self {
+            id: value.id,
+            user_id: value.user_id,
+            creator: value.creator,
+            start: value.start.and_utc(),
+            end: value.end.map(|ts| ts.and_utc()),
+            active: value.start <= now
+                && (value.end.is_none() || value.end.is_some_and(|end| now < end)),
+            action: value.action,
+            reason: value.reason,
         }
     }
 }

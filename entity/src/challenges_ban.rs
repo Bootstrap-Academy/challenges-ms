@@ -13,6 +13,9 @@ pub struct Model {
     pub start: DateTime,
     pub end: Option<DateTime>,
     pub action: ChallengesBanAction,
+    pub creator: Uuid,
+    #[sea_orm(column_type = "Text")]
+    pub reason: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

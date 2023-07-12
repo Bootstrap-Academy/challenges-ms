@@ -26,6 +26,7 @@ use crate::services::{
     tasks::{get_specific_task, Task},
 };
 
+mod bans;
 mod config;
 mod feedback;
 mod reports;
@@ -39,6 +40,7 @@ pub struct Subtasks {
 impl Subtasks {
     pub fn get_api(self) -> impl OpenApi {
         (
+            bans::Api,
             config::Api {
                 config: Arc::clone(&self.config),
             },

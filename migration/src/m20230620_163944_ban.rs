@@ -49,7 +49,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Ban {
+pub enum Ban {
     #[iden = "challenges_ban"]
     Table,
     Id,
@@ -57,6 +57,8 @@ enum Ban {
     Start,
     End,
     Action,
+    Creator,
+    Reason,
 }
 
 #[derive(Iden)]
