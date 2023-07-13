@@ -47,23 +47,14 @@ impl Api {
         limit: Query<Option<u64>>,
         /// Pagination offset
         offset: Query<Option<u64>>,
-        /// Whether to search for completed reports.
-        completed: Query<Option<bool>>,
         db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> ListReports::Response<AdminAuth> {
-        let mut query = challenges_subtask_reports::Entity::find()
+        let query = challenges_subtask_reports::Entity::find()
             .find_also_related(challenges_subtasks::Entity)
             .order_by_desc(challenges_subtask_reports::Column::Timestamp)
             .limit(limit.0)
             .offset(offset.0);
-        if let Some(completed) = completed.0 {
-            let col = challenges_subtask_reports::Column::CompletedBy;
-            query = query.filter(match completed {
-                true => col.is_not_null(),
-                false => col.is_null(),
-            });
-        }
         ListReports::ok(
             query
                 .all(&***db)
@@ -131,10 +122,6 @@ impl Api {
             return ResolveReport::report_not_found();
         };
 
-        if report.completed_by.is_some() {
-            return ResolveReport::already_resolved();
-        }
-
         let subtask_deleted = match data.0.action {
             ResolveReportAction::Revise => false,
             ResolveReportAction::BlockReporter => {
@@ -174,13 +161,7 @@ impl Api {
         };
 
         if !subtask_deleted {
-            challenges_subtask_reports::ActiveModel {
-                completed_by: Set(Some(auth.0.id)),
-                completed_timestamp: Set(Some(Utc::now().naive_utc())),
-                ..report.into()
-            }
-            .update(&***db)
-            .await?;
+            report.delete(&***db).await?;
         }
 
         ResolveReport::ok()
@@ -206,8 +187,6 @@ response!(ResolveReport = {
     Ok(200),
     /// Report not found.
     ReportNotFound(404, error),
-    /// Report has already been resolved.
-    AlreadyResolved(403, error),
     /// The reporter could not be banned because the report has been generated automatically.
     NoReporter(403, error),
 });
@@ -244,8 +223,6 @@ pub(super) async fn create_report(
         timestamp: Set(now),
         reason: Set(reason),
         comment: Set(comment),
-        completed_by: Set(None),
-        completed_timestamp: Set(None),
     }
     .insert(db)
     .await?;

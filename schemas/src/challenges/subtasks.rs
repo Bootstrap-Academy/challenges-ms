@@ -92,9 +92,6 @@ pub struct Report {
     pub timestamp: DateTime<Utc>,
     pub reason: ChallengesReportReason,
     pub comment: String,
-    pub completed: bool,
-    pub completed_by: Option<Uuid>,
-    pub completed_timestamp: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -197,9 +194,6 @@ impl Report {
             timestamp: report.timestamp.and_utc(),
             reason: report.reason,
             comment: report.comment,
-            completed: report.completed_by.is_some(),
-            completed_by: report.completed_by,
-            completed_timestamp: report.completed_timestamp.map(|x| x.and_utc()),
         }
     }
 }

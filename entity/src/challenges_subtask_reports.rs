@@ -15,8 +15,6 @@ pub struct Model {
     pub reason: ChallengesReportReason,
     #[sea_orm(column_type = "Text")]
     pub comment: String,
-    pub completed_by: Option<Uuid>,
-    pub completed_timestamp: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
