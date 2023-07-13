@@ -1,6 +1,6 @@
 use chrono::Utc;
 use entity::{challenges_ban, sea_orm_active_enums::ChallengesBanAction};
-use lib::auth::AdminAuth;
+use lib::auth::{AdminAuth, VerifiedUserAuth};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, patch_value::PatchValue, response};
 use poem_openapi::{
@@ -22,16 +22,23 @@ pub struct Api;
 #[OpenApi(tag = "Tags::Subtasks")]
 impl Api {
     /// Return a list of all bans.
+    ///
+    /// Normal users are allowed to query their own bans by setting `user_id` to
+    /// their own user id.
     #[oai(path = "/bans", method = "get")]
     pub async fn list_bans(
         &self,
-        user_id: Query<Option<String>>,
-        creator: Query<Option<String>>,
+        user_id: Query<Option<Uuid>>,
+        creator: Query<Option<Uuid>>,
         active: Query<Option<bool>>,
         action: Query<Option<ChallengesBanAction>>,
         db: Data<&DbTxn>,
-        _auth: AdminAuth,
-    ) -> ListBans::Response<AdminAuth> {
+        auth: VerifiedUserAuth,
+    ) -> ListBans::Response<VerifiedUserAuth> {
+        if !auth.0.admin && user_id.0 != Some(auth.0.id) {
+            return ListBans::permission_denied();
+        }
+
         let mut query = challenges_ban::Entity::find();
         if let Some(user_id) = user_id.0 {
             query = query.filter(challenges_ban::Column::UserId.eq(user_id));
@@ -154,6 +161,8 @@ impl Api {
 
 response!(ListBans = {
     Ok(200) => Vec<Ban>,
+    /// The user is not allowed to query bans of other users.
+    PermissionDenied(403, error),
 });
 
 response!(CreateBan = {
