@@ -19,7 +19,7 @@ use sea_orm::{
     QueryFilter, Set, TransactionTrait, Unchanged,
 };
 use thiserror::Error;
-use tokio::sync::Semaphore;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
@@ -41,6 +41,7 @@ pub struct Api {
     pub judge_cache: Cache<JsonFormatter>,
     pub judge_lock: Arc<Semaphore>,
     pub reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
+    pub queue_positions: Arc<RwLock<QueuePositions>>,
 }
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
@@ -67,6 +68,7 @@ impl Api {
             return ListSubmissions::subtask_not_found();
         }
 
+        let queue_positions = self.queue_positions.read().await;
         ListSubmissions::ok(
             cc.find_related(challenges_coding_challenge_submissions::Entity)
                 .filter(challenges_coding_challenge_submissions::Column::Creator.eq(auth.0.id))
@@ -74,7 +76,10 @@ impl Api {
                 .all(&***db)
                 .await?
                 .into_iter()
-                .map(|(submission, result)| Submission::from(submission, result.map(Into::into)))
+                .map(|(submission, result)| {
+                    let position = queue_positions.position(submission.id);
+                    Submission::from(submission, result.map(Into::into), position)
+                })
                 .collect(),
         )
     }
@@ -167,6 +172,7 @@ impl Api {
         .insert(&***db)
         .await?;
 
+        let position = self.queue_positions.write().await.push(submission.id);
         tokio::spawn({
             let judge_lock = Arc::clone(&self.judge_lock);
             let submission = submission.clone();
@@ -175,15 +181,26 @@ impl Api {
             let cache = self.judge_cache.clone();
             let reward_lock = Arc::clone(&self.reward_lock);
             let state = Arc::clone(&self.state);
+            let queue_positions = Arc::clone(&self.queue_positions);
             async move {
-                let _guard = judge_lock.acquire().await;
                 let submission_id = submission.id;
+                let pop = || async {
+                    if !queue_positions.write().await.pop(submission_id) {
+                        error!("judge task for {submission_id} failed to pop queue position");
+                    }
+                };
+                let Ok(_guard) = judge_lock.acquire().await else {
+                    error!("judge task for {submission_id} failed to acquire lock",);
+                    // don't pop here since we didn't get the semaphore permit
+                    return;
+                };
                 let db = match db.begin().await {
                     Ok(x) => x,
                     Err(err) => {
                         error!(
                             "judge task for {submission_id} failed to start db transaction: {err}",
                         );
+                        pop().await;
                         return;
                     }
                 };
@@ -209,10 +226,11 @@ impl Api {
                 } else if let Err(err) = db.commit().await {
                     error!("judge task for {submission_id} failed to commit db transaction: {err}");
                 }
+                pop().await;
             }
         });
 
-        CreateSubmission::ok(Submission::from(submission, None))
+        CreateSubmission::ok(Submission::from(submission, None, Some(position)))
     }
 }
 
@@ -394,5 +412,103 @@ impl Api {
                 self.sandkasten.list_environments().await
             })
             .await??)
+    }
+}
+
+pub struct QueuePositions {
+    workers: usize,
+    counter: usize,
+    done: usize,
+    ids: HashMap<Uuid, usize>,
+}
+
+impl QueuePositions {
+    pub fn new(workers: usize) -> Self {
+        Self {
+            workers,
+            counter: 0,
+            done: 0,
+            ids: HashMap::new(),
+        }
+    }
+
+    pub fn push(&mut self, key: Uuid) -> usize {
+        let id = *self.ids.entry(key).or_insert_with(|| {
+            self.counter += 1;
+            self.counter
+        });
+        self.id_position(id)
+    }
+
+    pub fn pop(&mut self, key: Uuid) -> bool {
+        if !self
+            .ids
+            .get(&key)
+            .is_some_and(|&x| self.id_position(x) == 0)
+        {
+            return false;
+        }
+
+        self.ids.remove(&key);
+        self.done += 1;
+        true
+    }
+
+    pub fn position(&self, key: Uuid) -> Option<usize> {
+        let id = *self.ids.get(&key)?;
+        Some(self.id_position(id))
+    }
+
+    fn id_position(&self, id: usize) -> usize {
+        id.saturating_sub(self.workers + self.done)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn queue_positions() {
+        let mut qp = QueuePositions::new(3);
+        let key = Uuid::from_u128;
+        qp.push(key(0));
+        qp.push(key(1));
+        qp.push(key(2));
+        qp.push(key(3));
+        qp.push(key(4));
+        qp.push(key(5));
+        assert_eq!(qp.position(key(0)), Some(0));
+        assert_eq!(qp.position(key(1)), Some(0));
+        assert_eq!(qp.position(key(2)), Some(0));
+        assert_eq!(qp.position(key(3)), Some(1));
+        assert_eq!(qp.position(key(4)), Some(2));
+        assert_eq!(qp.position(key(5)), Some(3));
+
+        // cannot pop pending keys
+        assert!(!qp.pop(key(3)));
+        assert!(!qp.pop(key(4)));
+        assert!(!qp.pop(key(5)));
+
+        assert!(qp.pop(key(1)));
+        assert_eq!(qp.position(key(0)), Some(0));
+        assert_eq!(qp.position(key(1)), None);
+        assert_eq!(qp.position(key(2)), Some(0));
+        assert_eq!(qp.position(key(3)), Some(0));
+        assert_eq!(qp.position(key(4)), Some(1));
+        assert_eq!(qp.position(key(5)), Some(2));
+        assert!(!qp.pop(key(1))); // already popped
+
+        assert!(qp.pop(key(2)));
+        assert_eq!(qp.position(key(0)), Some(0));
+        assert_eq!(qp.position(key(1)), None);
+        assert_eq!(qp.position(key(2)), None);
+        assert_eq!(qp.position(key(3)), Some(0));
+        assert_eq!(qp.position(key(4)), Some(0));
+        assert_eq!(qp.position(key(5)), Some(1));
+
+        assert_eq!(qp.push(key(6)), 2);
+        assert_eq!(qp.push(key(6)), 2); // push is idempotent
+        assert_eq!(qp.push(key(7)), 3);
     }
 }

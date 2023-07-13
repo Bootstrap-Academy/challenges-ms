@@ -140,6 +140,8 @@ pub struct Submission {
     pub environment: String,
     /// The evaluation result of the submission.
     pub result: Option<CheckResult<RunSummary>>,
+    /// The number of submissions in the judge's queue before this one.
+    pub queue_position: Option<usize>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -236,6 +238,7 @@ impl Submission {
     pub fn from(
         submission: challenges_coding_challenge_submissions::Model,
         result: Option<CheckResult<RunSummary>>,
+        queue_position: Option<usize>,
     ) -> Self {
         Self {
             id: submission.id,
@@ -244,6 +247,7 @@ impl Submission {
             creation_timestamp: submission.creation_timestamp.and_utc(),
             environment: submission.environment,
             result,
+            queue_position,
         }
     }
 }

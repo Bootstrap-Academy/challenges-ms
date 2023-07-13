@@ -45,8 +45,11 @@ impl CodingChallenges {
                 state: self.state,
                 sandkasten: self.sandkasten,
                 judge_cache: self.judge_cache,
-                judge_lock: self.judge_lock,
                 reward_lock: Default::default(),
+                queue_positions: Arc::new(
+                    QueuePositions::new(self.judge_lock.available_permits()).into(),
+                ),
+                judge_lock: self.judge_lock,
             },
         )
     }
@@ -130,6 +133,8 @@ mod _check_error {
     });
 }
 use _check_error::CheckError::raw as _CheckError;
+
+use self::submissions::QueuePositions;
 
 struct CheckChallenge<'a> {
     judge: Judge<'a>,
