@@ -246,7 +246,7 @@ impl From<CheckResult<RunResult>> for CheckResult<RunSummary> {
 
 impl Submission {
     pub fn from(
-        submission: challenges_coding_challenge_submissions::Model,
+        submission: &challenges_coding_challenge_submissions::Model,
         result: Option<CheckResult<RunSummary>>,
         queue_position: Option<usize>,
     ) -> Self {
@@ -255,7 +255,7 @@ impl Submission {
             subtask_id: submission.subtask_id,
             creator: submission.creator,
             creation_timestamp: submission.creation_timestamp.and_utc(),
-            environment: submission.environment,
+            environment: submission.environment.clone(),
             result,
             queue_position,
         }

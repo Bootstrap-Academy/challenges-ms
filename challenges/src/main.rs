@@ -12,7 +12,7 @@ use sandkasten_client::SandkastenClient;
 use sea_orm::{ConnectOptions, Database};
 use tracing::{info, warn};
 
-use crate::endpoints::get_api;
+use crate::endpoints::setup_api;
 
 mod endpoints;
 mod services;
@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let api_service = OpenApiService::new(
-        get_api(shared_state.clone(), Arc::clone(&config), sandkasten),
+        setup_api(shared_state.clone(), Arc::clone(&config), sandkasten).await?,
         "Bootstrap Academy Backend: Challenges Microservice",
         env!("CARGO_PKG_VERSION"),
     )

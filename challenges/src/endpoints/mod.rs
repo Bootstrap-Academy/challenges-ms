@@ -12,7 +12,7 @@ use self::{
 };
 
 mod challenges;
-mod coding_challenges;
+pub mod coding_challenges;
 mod course_tasks;
 mod matchings;
 mod multiple_choice;
@@ -37,12 +37,12 @@ pub enum Tags {
     CodingChallenges,
 }
 
-pub fn get_api(
+pub async fn setup_api(
     state: Arc<SharedState>,
     config: Arc<Config>,
     sandkasten: SandkastenClient,
-) -> impl OpenApi {
-    (
+) -> anyhow::Result<impl OpenApi> {
+    Ok((
         Challenges {
             state: Arc::clone(&state),
         },
@@ -76,6 +76,7 @@ pub fn get_api(
             )),
             config,
         }
-        .get_api(),
-    )
+        .setup_api()
+        .await?,
+    ))
 }

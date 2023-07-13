@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use anyhow::{bail, Context};
 use chrono::Utc;
 use entity::{
     challenges_coding_challenge_result, challenges_coding_challenge_submissions,
@@ -18,8 +19,8 @@ use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sandkasten_client::{schemas::environments::Environment, SandkastenClient};
 use schemas::challenges::coding_challenges::{QueueStatus, Submission, SubmissionContent};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, Set, TransactionTrait, Unchanged,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait,
+    ModelTrait, QueryFilter, QueryOrder, Set, TransactionTrait, Unchanged,
 };
 use thiserror::Error;
 use tokio::sync::{RwLock, Semaphore};
@@ -92,7 +93,7 @@ impl Api {
                 .into_iter()
                 .map(|(submission, result)| {
                     let position = queue_positions.position(submission.id);
-                    Submission::from(submission, result.map(Into::into), position)
+                    Submission::from(&submission, result.map(Into::into), position)
                 })
                 .collect(),
         )
@@ -175,76 +176,35 @@ impl Api {
             return CreateSubmission::environment_not_found();
         }
 
-        let submission = challenges_coding_challenge_submissions::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            subtask_id: Set(cc.subtask_id),
-            creator: Set(auth.0.id),
-            creation_timestamp: Set(Utc::now().naive_utc()),
-            environment: Set(data.0.environment),
-            code: Set(data.0.code),
-        }
-        .insert(&***db)
-        .await?;
-
-        let position = self.queue_positions.write().await.push(submission.id);
-        tokio::spawn({
-            let judge_lock = Arc::clone(&self.judge_lock);
-            let submission = submission.clone();
-            let db = self.state.db.clone();
-            let sandkasten = self.sandkasten.clone();
-            let cache = self.judge_cache.clone();
-            let reward_lock = Arc::clone(&self.reward_lock);
-            let state = Arc::clone(&self.state);
-            let queue_positions = Arc::clone(&self.queue_positions);
-            async move {
-                let submission_id = submission.id;
-                let pop = || async {
-                    if !queue_positions.write().await.pop(submission_id) {
-                        error!("judge task for {submission_id} failed to pop queue position");
-                    }
-                };
-                let Ok(_guard) = judge_lock.acquire().await else {
-                    error!("judge task for {submission_id} failed to acquire lock",);
-                    // don't pop here since we didn't get the semaphore permit
-                    return;
-                };
-                let db = match db.begin().await {
-                    Ok(x) => x,
-                    Err(err) => {
-                        error!(
-                            "judge task for {submission_id} failed to start db transaction: {err}",
-                        );
-                        pop().await;
-                        return;
-                    }
-                };
-                let judge = Judge {
-                    sandkasten: &sandkasten,
-                    evaluator: &cc.evaluator,
-                    cache: &cache,
-                };
-                if let Err(err) = judge_submission(JudgeSubmission {
-                    db: &db,
-                    subtask: &subtask,
-                    challenge: &cc,
-                    submission,
-                    judge,
-                    reward_lock,
-                    state,
-                    user_subtask,
-                })
-                .await
-                {
-                    error!("judge task for {submission_id} failed: {err}");
-                    db.rollback().await.ok();
-                } else if let Err(err) = db.commit().await {
-                    error!("judge task for {submission_id} failed to commit db transaction: {err}");
-                }
-                pop().await;
+        let submission = Arc::new(
+            challenges_coding_challenge_submissions::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                subtask_id: Set(cc.subtask_id),
+                creator: Set(auth.0.id),
+                creation_timestamp: Set(Utc::now().naive_utc()),
+                environment: Set(data.0.environment),
+                code: Set(data.0.code),
             }
-        });
+            .insert(&***db)
+            .await?,
+        );
 
-        CreateSubmission::ok(Submission::from(submission, None, Some(position)))
+        let position = start_judge_submission_task(StartJudgeSubmissionTask {
+            submission: Arc::clone(&submission),
+            subtask,
+            judge_lock: Arc::clone(&self.judge_lock),
+            db: self.state.db.clone(),
+            sandkasten: self.sandkasten.clone(),
+            cache: self.judge_cache.clone(),
+            reward_lock: Arc::clone(&self.reward_lock),
+            state: Arc::clone(&self.state),
+            challenge: Arc::new(cc),
+            user_subtask,
+            queue_positions: Arc::clone(&self.queue_positions),
+        })
+        .await;
+
+        CreateSubmission::ok(Submission::from(&submission, None, Some(position)))
     }
 }
 
@@ -274,11 +234,96 @@ response!(CreateSubmission = {
     NoAccess(403, error),
 });
 
+struct StartJudgeSubmissionTask {
+    submission: Arc<challenges_coding_challenge_submissions::Model>,
+    subtask: challenges_subtasks::Model,
+    judge_lock: Arc<Semaphore>,
+    db: DatabaseConnection,
+    sandkasten: SandkastenClient,
+    cache: Cache<JsonFormatter>,
+    reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
+    state: Arc<SharedState>,
+    challenge: Arc<challenges_coding_challenges::Model>,
+    user_subtask: Option<challenges_user_subtasks::Model>,
+    queue_positions: Arc<RwLock<QueuePositions>>,
+}
+
+async fn start_judge_submission_task(
+    StartJudgeSubmissionTask {
+        submission,
+        judge_lock,
+        db,
+        sandkasten,
+        cache,
+        reward_lock,
+        state,
+        challenge: cc,
+        queue_positions,
+        subtask,
+        user_subtask,
+    }: StartJudgeSubmissionTask,
+) -> usize {
+    let position = queue_positions.write().await.push(submission.id);
+    trace!(
+        "submission {} enqueued at position {}",
+        submission.id,
+        position
+    );
+    tokio::spawn({
+        async move {
+            let submission_id = submission.id;
+            let pop = || async {
+                if !queue_positions.write().await.pop(submission_id) {
+                    error!("judge task for {submission_id} failed to pop queue position");
+                }
+            };
+            let Ok(_guard) = judge_lock.acquire().await else {
+                error!("judge task for {submission_id} failed to acquire lock",);
+                // don't pop here since we didn't get the semaphore permit
+                return;
+            };
+            let db = match db.begin().await {
+                Ok(x) => x,
+                Err(err) => {
+                    error!("judge task for {submission_id} failed to start db transaction: {err}",);
+                    pop().await;
+                    return;
+                }
+            };
+            let judge = Judge {
+                sandkasten: &sandkasten,
+                evaluator: &cc.evaluator,
+                cache: &cache,
+            };
+            if let Err(err) = judge_submission(JudgeSubmission {
+                db: &db,
+                subtask: &subtask,
+                challenge: &cc,
+                submission,
+                judge,
+                reward_lock,
+                state,
+                user_subtask,
+            })
+            .await
+            {
+                error!("judge task for {submission_id} failed: {err}");
+                db.rollback().await.ok();
+            } else if let Err(err) = db.commit().await {
+                error!("judge task for {submission_id} failed to commit db transaction: {err}");
+            }
+            pop().await;
+        }
+    });
+
+    position
+}
+
 struct JudgeSubmission<'a, 'b> {
     db: &'a DatabaseTransaction,
     subtask: &'a challenges_subtasks::Model,
     challenge: &'a challenges_coding_challenges::Model,
-    submission: challenges_coding_challenge_submissions::Model,
+    submission: Arc<challenges_coding_challenge_submissions::Model>,
     judge: Judge<'b>,
     reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     state: Arc<SharedState>,
@@ -430,6 +475,78 @@ impl Api {
                 self.sandkasten.list_environments().await
             })
             .await??)
+    }
+
+    pub async fn setup_api(self) -> anyhow::Result<Self> {
+        self.resume_judge()
+            .await
+            .context("failed to resume judge")?;
+        Ok(self)
+    }
+
+    pub async fn resume_judge(&self) -> anyhow::Result<()> {
+        debug!("resuming judge");
+        let db = &self.state.db;
+
+        let subtasks = challenges_subtasks::Entity::find()
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|x| (x.id, x))
+            .collect::<HashMap<_, _>>();
+        let coding_challenges = challenges_coding_challenges::Entity::find()
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|x| (x.subtask_id, Arc::new(x)))
+            .collect::<HashMap<_, _>>();
+        let user_subtasks = challenges_user_subtasks::Entity::find()
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|x| ((x.user_id, x.subtask_id), x))
+            .collect::<HashMap<_, _>>();
+        let submissions = challenges_coding_challenge_submissions::Entity::find()
+            .left_join(challenges_coding_challenge_result::Entity)
+            .filter(challenges_coding_challenge_result::Column::SubmissionId.is_null())
+            .order_by_asc(challenges_coding_challenge_submissions::Column::CreationTimestamp)
+            .all(db)
+            .await?;
+
+        debug!("found {} submission(s) to judge", submissions.len());
+        for submission in submissions {
+            let Some(subtask) = subtasks.get(&submission.subtask_id) else {
+                bail!(
+                    "failed to find subtask {} for submission {}",
+                    submission.subtask_id,
+                    submission.id
+                );
+            };
+            let Some(challenge) = coding_challenges.get(&submission.subtask_id) else {
+                bail!(
+                    "failed to find coding challenge {} for submission {}",
+                    submission.subtask_id,
+                    submission.id
+                );
+            };
+            let user_subtask = user_subtasks.get(&(submission.creator, submission.subtask_id));
+            start_judge_submission_task(StartJudgeSubmissionTask {
+                submission: Arc::new(submission),
+                subtask: subtask.clone(),
+                judge_lock: Arc::clone(&self.judge_lock),
+                db: db.clone(),
+                sandkasten: self.sandkasten.clone(),
+                cache: self.judge_cache.clone(),
+                reward_lock: Arc::clone(&self.reward_lock),
+                state: Arc::clone(&self.state),
+                challenge: Arc::clone(challenge),
+                user_subtask: user_subtask.cloned(),
+                queue_positions: Arc::clone(&self.queue_positions),
+            })
+            .await;
+        }
+
+        Ok(())
     }
 }
 

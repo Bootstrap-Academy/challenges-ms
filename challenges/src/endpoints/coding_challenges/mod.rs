@@ -17,7 +17,7 @@ use crate::services::judge::{Error as JudgeError, Judge};
 mod assets;
 mod challenges;
 mod judge;
-mod submissions;
+pub mod submissions;
 
 pub struct CodingChallenges {
     pub state: Arc<SharedState>,
@@ -28,8 +28,8 @@ pub struct CodingChallenges {
 }
 
 impl CodingChallenges {
-    pub fn get_api(self) -> impl OpenApi {
-        (
+    pub async fn setup_api(self) -> anyhow::Result<impl OpenApi> {
+        Ok((
             assets::Api,
             challenges::Api {
                 sandkasten: self.sandkasten.clone(),
@@ -50,8 +50,10 @@ impl CodingChallenges {
                     QueuePositions::new(self.judge_lock.available_permits()).into(),
                 ),
                 judge_lock: self.judge_lock,
-            },
-        )
+            }
+            .setup_api()
+            .await?,
+        ))
     }
 }
 
