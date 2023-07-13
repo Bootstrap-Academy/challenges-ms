@@ -8,12 +8,15 @@ use entity::{
 };
 use fnct::{format::JsonFormatter, key};
 use key_rwlock::KeyRwLock;
-use lib::{auth::VerifiedUserAuth, Cache, SharedState};
+use lib::{
+    auth::{AdminAuth, VerifiedUserAuth},
+    Cache, SharedState,
+};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sandkasten_client::{schemas::environments::Environment, SandkastenClient};
-use schemas::challenges::coding_challenges::{Submission, SubmissionContent};
+use schemas::challenges::coding_challenges::{QueueStatus, Submission, SubmissionContent};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
     QueryFilter, Set, TransactionTrait, Unchanged,
@@ -46,6 +49,17 @@ pub struct Api {
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
 impl Api {
+    /// Return the current judge queue status.
+    #[oai(path = "/coding_challenges/queue", method = "get")]
+    async fn get_queue_status(&self, _auth: AdminAuth) -> GetQueueStatus::Response<AdminAuth> {
+        let qp = self.queue_positions.read().await;
+        GetQueueStatus::ok(QueueStatus {
+            workers: qp.workers(),
+            active: qp.active(),
+            waiting: qp.waiting(),
+        })
+    }
+
     /// List all submissions of a coding challenge.
     #[oai(
         path = "/tasks/:task_id/coding_challenges/:subtask_id/submissions",
@@ -233,6 +247,10 @@ impl Api {
         CreateSubmission::ok(Submission::from(submission, None, Some(position)))
     }
 }
+
+response!(GetQueueStatus = {
+    Ok(200) => QueueStatus,
+});
 
 response!(ListSubmissions = {
     Ok(200) => Vec<Submission>,
@@ -432,6 +450,18 @@ impl QueuePositions {
         }
     }
 
+    pub fn workers(&self) -> usize {
+        self.workers
+    }
+
+    pub fn active(&self) -> usize {
+        self.workers.min(self.counter - self.done)
+    }
+
+    pub fn waiting(&self) -> usize {
+        self.id_position(self.counter)
+    }
+
     pub fn push(&mut self, key: Uuid) -> usize {
         let id = *self.ids.entry(key).or_insert_with(|| {
             self.counter += 1;
@@ -471,13 +501,21 @@ mod tests {
     #[test]
     fn queue_positions() {
         let mut qp = QueuePositions::new(3);
+        assert_eq!(qp.workers(), 3);
         let key = Uuid::from_u128;
+        assert_eq!((qp.active(), qp.waiting()), (0, 0));
         qp.push(key(0));
+        assert_eq!((qp.active(), qp.waiting()), (1, 0));
         qp.push(key(1));
+        assert_eq!((qp.active(), qp.waiting()), (2, 0));
         qp.push(key(2));
+        assert_eq!((qp.active(), qp.waiting()), (3, 0));
         qp.push(key(3));
+        assert_eq!((qp.active(), qp.waiting()), (3, 1));
         qp.push(key(4));
+        assert_eq!((qp.active(), qp.waiting()), (3, 2));
         qp.push(key(5));
+        assert_eq!((qp.active(), qp.waiting()), (3, 3));
         assert_eq!(qp.position(key(0)), Some(0));
         assert_eq!(qp.position(key(1)), Some(0));
         assert_eq!(qp.position(key(2)), Some(0));
@@ -489,6 +527,7 @@ mod tests {
         assert!(!qp.pop(key(3)));
         assert!(!qp.pop(key(4)));
         assert!(!qp.pop(key(5)));
+        assert_eq!((qp.active(), qp.waiting()), (3, 3));
 
         assert!(qp.pop(key(1)));
         assert_eq!(qp.position(key(0)), Some(0));
@@ -497,6 +536,7 @@ mod tests {
         assert_eq!(qp.position(key(3)), Some(0));
         assert_eq!(qp.position(key(4)), Some(1));
         assert_eq!(qp.position(key(5)), Some(2));
+        assert_eq!((qp.active(), qp.waiting()), (3, 2));
         assert!(!qp.pop(key(1))); // already popped
 
         assert!(qp.pop(key(2)));
@@ -506,9 +546,13 @@ mod tests {
         assert_eq!(qp.position(key(3)), Some(0));
         assert_eq!(qp.position(key(4)), Some(0));
         assert_eq!(qp.position(key(5)), Some(1));
+        assert_eq!((qp.active(), qp.waiting()), (3, 1));
 
         assert_eq!(qp.push(key(6)), 2);
+        assert_eq!((qp.active(), qp.waiting()), (3, 2));
         assert_eq!(qp.push(key(6)), 2); // push is idempotent
+        assert_eq!((qp.active(), qp.waiting()), (3, 2));
         assert_eq!(qp.push(key(7)), 3);
+        assert_eq!((qp.active(), qp.waiting()), (3, 3));
     }
 }

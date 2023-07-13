@@ -18,6 +18,16 @@ use uuid::Uuid;
 use super::subtasks::{CreateSubtaskRequest, Subtask, UpdateSubtaskRequest};
 
 #[derive(Debug, Clone, Object)]
+pub struct QueueStatus {
+    /// The number of workers used to process submissions.
+    pub workers: usize,
+    /// The number of submissions that are currently being processed.
+    pub active: usize,
+    /// The number of submissions that are waiting to be picked up by a worker.
+    pub waiting: usize,
+}
+
+#[derive(Debug, Clone, Object)]
 pub struct CodingChallengeSummary {
     #[oai(flatten)]
     pub subtask: Subtask,
