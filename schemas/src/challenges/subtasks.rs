@@ -33,7 +33,7 @@ pub struct Subtask {
     pub unlocked: bool,
     /// Whether the user has completed this subtask.
     pub solved: bool,
-    /// Whether the user has rated this subtask.
+    /// Whether the user has submitted feedback or reported this subtask.
     pub rated: bool,
     /// Whether the subtask is enabled and visible to normal users.
     pub enabled: bool,
