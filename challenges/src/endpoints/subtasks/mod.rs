@@ -10,7 +10,7 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
-use schemas::challenges::subtasks::{Subtask, UserUpdateSubtaskRequest};
+use schemas::challenges::subtasks::{Subtask, SubtaskStats, UserUpdateSubtaskRequest};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter, Set,
     Unchanged,
@@ -20,8 +20,8 @@ use uuid::Uuid;
 use super::Tags;
 use crate::services::{
     subtasks::{
-        get_user_subtask, query_subtasks_only, update_user_subtask, QuerySubtasksFilter,
-        UserSubtaskExt,
+        count_subtasks, get_user_subtask, get_user_subtasks, query_subtasks_only,
+        update_user_subtask, QuerySubtasksFilter, UserSubtaskExt,
     },
     tasks::{get_specific_task, Task},
 };
@@ -95,6 +95,65 @@ impl Subtasks {
             )
             .await?,
         )
+    }
+
+    /// Return user specific subtask statistics
+    #[oai(path = "/subtasks/stats", method = "get")]
+    pub async fn get_subtask_stats(
+        &self,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> GetSubtaskStats::Response<VerifiedUserAuth> {
+        let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
+
+        let total = count_subtasks(&db, &auth.0, None, Default::default(), &user_subtasks).await?;
+
+        let solved = count_subtasks(
+            &db,
+            &auth.0,
+            None,
+            QuerySubtasksFilter {
+                solved: Some(true),
+                ..Default::default()
+            },
+            &user_subtasks,
+        )
+        .await?;
+        let attempted = count_subtasks(
+            &db,
+            &auth.0,
+            None,
+            QuerySubtasksFilter {
+                solved: Some(false),
+                attempted: Some(true),
+                ..Default::default()
+            },
+            &user_subtasks,
+        )
+        .await?;
+        let unattempted = total - solved - attempted;
+
+        let unlocked = count_subtasks(
+            &db,
+            &auth.0,
+            None,
+            QuerySubtasksFilter {
+                unlocked: Some(true),
+                ..Default::default()
+            },
+            &user_subtasks,
+        )
+        .await?;
+        let locked = total - unlocked;
+
+        GetSubtaskStats::ok(SubtaskStats {
+            total,
+            solved,
+            attempted,
+            unattempted,
+            locked,
+            unlocked,
+        })
     }
 
     /// Unlock a subtask by paying its fee.
@@ -218,6 +277,10 @@ impl Subtasks {
 
 response!(ListSubtasks = {
     Ok(200) => Vec<Subtask>,
+});
+
+response!(GetSubtaskStats = {
+    Ok(200) => SubtaskStats,
 });
 
 response!(UnlockSubtask = {

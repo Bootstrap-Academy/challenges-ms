@@ -78,6 +78,26 @@ pub struct UserUpdateSubtaskRequest {
 }
 
 #[derive(Debug, Clone, Object)]
+pub struct SubtaskStats {
+    /// Total number of subtasks.
+    ///
+    /// `total` == `solved` + `tried` + `untried` == `locked` + `unlocked`
+    pub total: u64,
+
+    /// Number of subtasks the user has already solved.
+    pub solved: u64,
+    /// Number of subtasks the user has unsuccessfully tried to solve.
+    pub attempted: u64,
+    /// Number of subtasks the user has not yet tried to solve.
+    pub unattempted: u64,
+
+    /// Number of subtasks the user has access to.
+    pub locked: u64,
+    /// Number of subtasks the user does not have access to.
+    pub unlocked: u64,
+}
+
+#[derive(Debug, Clone, Object)]
 pub struct PostFeedbackRequest {
     pub rating: ChallengesRating,
 }

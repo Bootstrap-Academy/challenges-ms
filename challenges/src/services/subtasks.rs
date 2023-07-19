@@ -288,6 +288,7 @@ pub enum CheckPermissionsError {
     DbErr(#[from] DbErr),
 }
 
+#[derive(Default)]
 pub struct QuerySubtasksFilter {
     pub free: Option<bool>,
     pub unlocked: Option<bool>,
@@ -315,6 +316,25 @@ pub async fn query_subtasks_only(
         .into_iter()
         .filter_map(|subtask| subtasks_filter_map(subtask, user, &filter, &user_subtasks))
         .collect())
+}
+
+pub async fn count_subtasks(
+    db: &DatabaseTransaction,
+    user: &User,
+    task_id: Option<Uuid>,
+    filter: QuerySubtasksFilter,
+    user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
+) -> Result<u64, DbErr> {
+    let mut query = challenges_subtasks::Entity::find().left_join(challenges_user_subtasks::Entity);
+    if let Some(task_id) = task_id {
+        query = query.filter(challenges_subtasks::Column::TaskId.eq(task_id));
+    }
+    Ok(prepare_query(query, &filter, user)
+        .all(db)
+        .await?
+        .into_iter()
+        .filter_map(|subtask| subtasks_filter_map(subtask, user, &filter, user_subtasks))
+        .count() as _)
 }
 
 pub async fn query_subtasks<E, T>(
