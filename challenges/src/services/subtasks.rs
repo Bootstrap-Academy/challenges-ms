@@ -318,22 +318,29 @@ pub async fn query_subtasks_only(
         .collect())
 }
 
-pub async fn count_subtasks(
+pub async fn count_subtasks_prepare(
     db: &DatabaseTransaction,
     user: &User,
     task_id: Option<Uuid>,
-    filter: QuerySubtasksFilter,
-    user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
-) -> Result<u64, DbErr> {
+) -> Result<Vec<challenges_subtasks::Model>, DbErr> {
     let mut query = challenges_subtasks::Entity::find().left_join(challenges_user_subtasks::Entity);
     if let Some(task_id) = task_id {
         query = query.filter(challenges_subtasks::Column::TaskId.eq(task_id));
     }
-    Ok(prepare_query(query, &filter, user)
+    prepare_query(query, &Default::default(), user)
         .all(db)
-        .await?
-        .into_iter()
-        .filter_map(|subtask| subtasks_filter_map(subtask, user, &filter, user_subtasks))
+        .await
+}
+
+pub fn count_subtasks(
+    subtasks: &[challenges_subtasks::Model],
+    user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
+    user: &User,
+    filter: QuerySubtasksFilter,
+) -> Result<u64, DbErr> {
+    Ok(subtasks
+        .iter()
+        .filter(|subtask| subtasks_filter(subtask, user, &filter, user_subtasks))
         .count() as _)
 }
 
@@ -387,6 +394,23 @@ where
         query = query.filter(challenges_subtasks::Column::Creator.eq(creator));
     }
     query.order_by_asc(challenges_subtasks::Column::CreationTimestamp)
+}
+
+fn subtasks_filter(
+    subtask: &challenges_subtasks::Model,
+    user: &User,
+    filter: &QuerySubtasksFilter,
+    user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
+) -> bool {
+    let user_subtask = user_subtasks.get(&subtask.id);
+    let unlocked = user_subtask.check_access(user, subtask);
+    let attempted = user_subtask.attempted();
+    let solved = user_subtask.is_solved();
+    let rated = user_subtask.is_rated();
+    filter.unlocked.unwrap_or(unlocked) == unlocked
+        && filter.attempted.unwrap_or(attempted) == attempted
+        && filter.solved.unwrap_or(solved) == solved
+        && filter.rated.unwrap_or(rated) == rated
 }
 
 fn subtasks_filter_map(

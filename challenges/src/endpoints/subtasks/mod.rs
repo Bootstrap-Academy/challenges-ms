@@ -20,8 +20,8 @@ use uuid::Uuid;
 use super::Tags;
 use crate::services::{
     subtasks::{
-        count_subtasks, get_user_subtask, get_user_subtasks, query_subtasks_only,
-        update_user_subtask, QuerySubtasksFilter, UserSubtaskExt,
+        count_subtasks, count_subtasks_prepare, get_user_subtask, get_user_subtasks,
+        query_subtasks_only, update_user_subtask, QuerySubtasksFilter, UserSubtaskExt,
     },
     tasks::{get_specific_task, Task},
 };
@@ -105,45 +105,40 @@ impl Subtasks {
         auth: VerifiedUserAuth,
     ) -> GetSubtaskStats::Response<VerifiedUserAuth> {
         let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
+        let subtasks = count_subtasks_prepare(&db, &auth.0, None).await?;
 
-        let total = count_subtasks(&db, &auth.0, None, Default::default(), &user_subtasks).await?;
+        let total = count_subtasks(&subtasks, &user_subtasks, &auth.0, Default::default())?;
 
         let solved = count_subtasks(
-            &db,
+            &subtasks,
+            &user_subtasks,
             &auth.0,
-            None,
             QuerySubtasksFilter {
                 solved: Some(true),
                 ..Default::default()
             },
-            &user_subtasks,
-        )
-        .await?;
+        )?;
         let attempted = count_subtasks(
-            &db,
+            &subtasks,
+            &user_subtasks,
             &auth.0,
-            None,
             QuerySubtasksFilter {
                 solved: Some(false),
                 attempted: Some(true),
                 ..Default::default()
             },
-            &user_subtasks,
-        )
-        .await?;
+        )?;
         let unattempted = total - solved - attempted;
 
         let unlocked = count_subtasks(
-            &db,
+            &subtasks,
+            &user_subtasks,
             &auth.0,
-            None,
             QuerySubtasksFilter {
                 unlocked: Some(true),
                 ..Default::default()
             },
-            &user_subtasks,
-        )
-        .await?;
+        )?;
         let locked = total - unlocked;
 
         GetSubtaskStats::ok(SubtaskStats {
