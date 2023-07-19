@@ -291,6 +291,7 @@ pub enum CheckPermissionsError {
 pub struct QuerySubtasksFilter {
     pub free: Option<bool>,
     pub unlocked: Option<bool>,
+    pub attempted: Option<bool>,
     pub solved: Option<bool>,
     pub rated: Option<bool>,
     pub enabled: Option<bool>,
@@ -376,9 +377,11 @@ fn subtasks_filter_map(
 ) -> Option<Subtask> {
     let user_subtask = user_subtasks.get(&subtask.id);
     let unlocked = user_subtask.check_access(user, &subtask);
+    let attempted = user_subtask.attempted();
     let solved = user_subtask.is_solved();
     let rated = user_subtask.is_rated();
     (filter.unlocked.unwrap_or(unlocked) == unlocked
+        && filter.attempted.unwrap_or(attempted) == attempted
         && filter.solved.unwrap_or(solved) == solved
         && filter.rated.unwrap_or(rated) == rated)
         .then_some(Subtask::from(subtask, unlocked, solved, rated))

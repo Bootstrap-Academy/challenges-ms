@@ -44,13 +44,15 @@ impl Matchings {
     async fn list_matchings(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for free matchings.
+        /// Whether to search for free subtasks.
         free: Query<Option<bool>>,
-        /// Whether to search for unlocked matchings.
+        /// Whether to search for unlocked subtasks.
         unlocked: Query<Option<bool>>,
-        /// Whether to search for solved matchings.
+        /// Whether to search for subtasks the user has attempted to solve.
+        attempted: Query<Option<bool>>,
+        /// Whether to search for solved subtasks.
         solved: Query<Option<bool>>,
-        /// Whether to search for rated matchings.
+        /// Whether to search for rated subtasks.
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
@@ -67,6 +69,7 @@ impl Matchings {
                 QuerySubtasksFilter {
                     free: free.0,
                     unlocked: unlocked.0,
+                    attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,

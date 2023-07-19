@@ -51,13 +51,15 @@ impl Api {
     async fn list_challenges(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for free coding challenges.
+        /// Whether to search for free subtasks.
         free: Query<Option<bool>>,
-        /// Whether to search for unlocked coding challenges.
+        /// Whether to search for unlocked subtasks.
         unlocked: Query<Option<bool>>,
-        /// Whether to search for solved challenges.
+        /// Whether to search for subtasks the user has attempted to solve.
+        attempted: Query<Option<bool>>,
+        /// Whether to search for solved subtasks.
         solved: Query<Option<bool>>,
-        /// Whether to search for rated challenges.
+        /// Whether to search for rated subtasks.
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
@@ -74,6 +76,7 @@ impl Api {
                 QuerySubtasksFilter {
                     free: free.0,
                     unlocked: unlocked.0,
+                    attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
