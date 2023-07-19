@@ -358,7 +358,7 @@ where
     }
     if let Some(free) = filter.free {
         let col = challenges_subtasks::Column::Fee;
-        query = query.filter(if free { col.lt(1) } else { col.gt(0) });
+        query = query.filter(if free { col.lte(0) } else { col.gt(0) });
     }
     if let Some(enabled) = filter.enabled {
         query = query.filter(challenges_subtasks::Column::Enabled.eq(enabled));
