@@ -30,6 +30,7 @@ mod m20230621_141228_matchings;
 mod m20230707_200516_subtask_type;
 mod m20230712_141047_ban_creator_reason;
 mod m20230713_100102_delete_reports;
+mod m20230719_174846_user_subtasks_last_attempt;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -60,6 +61,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230707_200516_subtask_type::Migration),
             Box::new(m20230712_141047_ban_creator_reason::Migration),
             Box::new(m20230713_100102_delete_reports::Migration),
+            Box::new(m20230719_174846_user_subtasks_last_attempt::Migration),
         ]
     }
 }

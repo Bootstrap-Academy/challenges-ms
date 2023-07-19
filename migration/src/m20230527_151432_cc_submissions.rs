@@ -103,8 +103,8 @@ impl MigrationTrait for Migration {
     }
 }
 
-#[derive(Iden)]
-enum Submission {
+#[derive(Iden, Clone, Copy)]
+pub enum Submission {
     #[iden = "challenges_coding_challenge_submissions"]
     Table,
     Id,

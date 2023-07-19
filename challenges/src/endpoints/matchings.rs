@@ -21,7 +21,7 @@ use schemas::challenges::matchings::{
     CreateMatchingRequest, Matching, MatchingSummary, MatchingWithSolution, SolveMatchingFeedback,
     SolveMatchingRequest, UpdateMatchingRequest,
 };
-use sea_orm::{ActiveModelTrait, ColumnTrait, ModelTrait, QueryFilter, QueryOrder, Set, Unchanged};
+use sea_orm::{ActiveModelTrait, Set, Unchanged};
 use uuid::Uuid;
 
 use super::Tags;
@@ -280,17 +280,11 @@ impl Matchings {
             return SolveMatching::solution_different_length();
         }
 
-        let previous_attempts = matching
-            .find_related(challenges_matching_attempts::Entity)
-            .filter(challenges_matching_attempts::Column::UserId.eq(auth.0.id))
-            .order_by_desc(challenges_matching_attempts::Column::Timestamp)
-            .all(&***db)
-            .await?;
         let solved_previously = user_subtask.is_solved();
-        if let Some(last_attempt) = previous_attempts.first() {
+        if let Some(last_attempt) = user_subtask.last_attempt() {
             let time_left = self.config.challenges.matchings.timeout_incr as i64
-                * previous_attempts.len() as i64
-                - (Utc::now().naive_utc() - last_attempt.timestamp).num_seconds();
+                * user_subtask.attempts() as i64
+                - (Utc::now() - last_attempt).num_seconds();
             if !solved_previously && time_left > 0 {
                 return SolveMatching::too_many_requests(time_left as u64);
             }
@@ -320,6 +314,8 @@ impl Matchings {
                             .map(|x| Unchanged(Some(x)))
                             .unwrap_or(Set(Some(now))),
                         solved_timestamp: Set(Some(now)),
+                        last_attempt_timestamp: Set(Some(now)),
+                        attempts: Set(user_subtask.attempts() as i32 + 1),
                         ..Default::default()
                     },
                 )
@@ -328,6 +324,19 @@ impl Matchings {
                 if auth.0.id != subtask.creator {
                     send_task_rewards(&self.state.services, &db, auth.0.id, &subtask).await?;
                 }
+            } else {
+                update_user_subtask(
+                    &db,
+                    user_subtask.as_ref(),
+                    challenges_user_subtasks::ActiveModel {
+                        user_id: Set(auth.0.id),
+                        subtask_id: Set(subtask.id),
+                        last_attempt_timestamp: Set(Some(now)),
+                        attempts: Set(user_subtask.attempts() as i32 + 1),
+                        ..Default::default()
+                    },
+                )
+                .await?;
             }
 
             challenges_matching_attempts::ActiveModel {

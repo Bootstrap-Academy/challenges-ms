@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use entity::{
-    challenges_multiple_choice_attempts, challenges_multiple_choice_quizes,
-    challenges_user_subtasks, sea_orm_active_enums::ChallengesSubtaskType,
+    challenges_multiple_choice_quizes, challenges_user_subtasks,
+    sea_orm_active_enums::ChallengesSubtaskType,
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -22,7 +22,7 @@ use schemas::challenges::multiple_choice::{
     MultipleChoiceQuestion, MultipleChoiceQuestionSummary, SolveMCQFeedback, SolveMCQRequest,
     UpdateMultipleChoiceQuestionRequest,
 };
-use sea_orm::{ActiveModelTrait, ColumnTrait, ModelTrait, QueryFilter, QueryOrder, Set, Unchanged};
+use sea_orm::{ActiveModelTrait, Set, Unchanged};
 use uuid::Uuid;
 
 use super::Tags;
@@ -269,21 +269,15 @@ impl MultipleChoice {
             return SolveMCQ::wrong_length();
         }
 
-        let previous_attempts = mcq
-            .find_related(challenges_multiple_choice_attempts::Entity)
-            .filter(challenges_multiple_choice_attempts::Column::UserId.eq(auth.0.id))
-            .order_by_desc(challenges_multiple_choice_attempts::Column::Timestamp)
-            .all(&***db)
-            .await?;
         let solved_previously = user_subtask.is_solved();
-        if let Some(last_attempt) = previous_attempts.first() {
+        if let Some(last_attempt) = user_subtask.last_attempt() {
             let time_left = self
                 .config
                 .challenges
                 .multiple_choice_questions
                 .timeout_incr as i64
-                * previous_attempts.len() as i64
-                - (Utc::now().naive_utc() - last_attempt.timestamp).num_seconds();
+                * user_subtask.attempts() as i64
+                - (Utc::now() - last_attempt).num_seconds();
             if !solved_previously && time_left > 0 {
                 return SolveMCQ::too_many_requests(time_left as u64);
             }
@@ -307,6 +301,8 @@ impl MultipleChoice {
                             .map(|x| Unchanged(Some(x)))
                             .unwrap_or(Set(Some(now))),
                         solved_timestamp: Set(Some(now)),
+                        last_attempt_timestamp: Set(Some(now)),
+                        attempts: Set(user_subtask.attempts() as i32 + 1),
                         ..Default::default()
                     },
                 )
@@ -315,17 +311,20 @@ impl MultipleChoice {
                 if auth.0.id != subtask.creator {
                     send_task_rewards(&self.state.services, &db, auth.0.id, &subtask).await?;
                 }
+            } else {
+                update_user_subtask(
+                    &db,
+                    user_subtask.as_ref(),
+                    challenges_user_subtasks::ActiveModel {
+                        user_id: Set(auth.0.id),
+                        subtask_id: Set(subtask.id),
+                        last_attempt_timestamp: Set(Some(now)),
+                        attempts: Set(user_subtask.attempts() as i32 + 1),
+                        ..Default::default()
+                    },
+                )
+                .await?;
             }
-
-            challenges_multiple_choice_attempts::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                question_id: Set(mcq.subtask_id),
-                user_id: Set(auth.0.id),
-                timestamp: Set(now),
-                solved: Set(solved),
-            }
-            .insert(&***db)
-            .await?;
         }
 
         SolveMCQ::ok(SolveMCQFeedback {

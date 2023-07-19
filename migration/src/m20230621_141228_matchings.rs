@@ -91,8 +91,8 @@ pub enum Matching {
     Solution,
 }
 
-#[derive(Iden)]
-enum MatchingAttempt {
+#[derive(Iden, Clone, Copy)]
+pub enum MatchingAttempt {
     #[iden = "challenges_matching_attempts"]
     Table,
     Id,

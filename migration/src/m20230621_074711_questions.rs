@@ -90,8 +90,8 @@ pub enum Question {
     Blocks,
 }
 
-#[derive(Iden)]
-enum QuestionAttempt {
+#[derive(Iden, Clone, Copy)]
+pub enum QuestionAttempt {
     #[iden = "challenges_question_attempts"]
     Table,
     Id,

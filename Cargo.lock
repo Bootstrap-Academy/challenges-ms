@@ -1223,6 +1223,7 @@ name = "migration"
 version = "0.1.0"
 dependencies = [
  "lib",
+ "sea-orm",
  "sea-orm-migration",
  "tokio",
 ]

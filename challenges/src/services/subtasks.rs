@@ -192,6 +192,8 @@ pub trait UserSubtaskExt {
     fn is_unlocked(&self) -> bool;
     fn is_solved(&self) -> bool;
     fn is_rated(&self) -> bool;
+    fn last_attempt(&self) -> Option<DateTime<Utc>>;
+    fn attempts(&self) -> usize;
 
     fn check_access(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
         user.admin || user.id == subtask.creator || subtask.fee == 0 || self.is_unlocked()
@@ -199,6 +201,10 @@ pub trait UserSubtaskExt {
 
     fn can_rate(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
         user.id != subtask.creator && self.is_solved() && !self.is_rated()
+    }
+
+    fn attempted(&self) -> bool {
+        self.last_attempt().is_some()
     }
 }
 
@@ -214,6 +220,14 @@ impl UserSubtaskExt for challenges_user_subtasks::Model {
     fn is_rated(&self) -> bool {
         self.rating_timestamp.is_some()
     }
+
+    fn last_attempt(&self) -> Option<DateTime<Utc>> {
+        self.last_attempt_timestamp.map(|x| x.and_utc())
+    }
+
+    fn attempts(&self) -> usize {
+        self.attempts as _
+    }
 }
 
 impl<T: UserSubtaskExt> UserSubtaskExt for &T {
@@ -226,6 +240,12 @@ impl<T: UserSubtaskExt> UserSubtaskExt for &T {
     fn is_rated(&self) -> bool {
         T::is_rated(self)
     }
+    fn last_attempt(&self) -> Option<DateTime<Utc>> {
+        T::last_attempt(self)
+    }
+    fn attempts(&self) -> usize {
+        T::attempts(self)
+    }
 }
 
 impl<T: UserSubtaskExt> UserSubtaskExt for Option<T> {
@@ -237,6 +257,12 @@ impl<T: UserSubtaskExt> UserSubtaskExt for Option<T> {
     }
     fn is_rated(&self) -> bool {
         self.as_ref().is_some_and(|x| x.is_rated())
+    }
+    fn last_attempt(&self) -> Option<DateTime<Utc>> {
+        self.as_ref().and_then(|x| x.last_attempt())
+    }
+    fn attempts(&self) -> usize {
+        self.as_ref().map(|x| x.attempts()).unwrap_or(0)
     }
 }
 

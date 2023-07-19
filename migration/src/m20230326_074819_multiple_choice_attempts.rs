@@ -58,8 +58,8 @@ impl MigrationTrait for Migration {
     }
 }
 
-#[derive(Iden)]
-enum MultipleChoiceAttempt {
+#[derive(Iden, Clone, Copy)]
+pub enum MultipleChoiceAttempt {
     #[iden = "challenges_multiple_choice_attempts"]
     Table,
     Id,

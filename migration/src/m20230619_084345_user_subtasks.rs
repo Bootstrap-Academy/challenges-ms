@@ -91,9 +91,12 @@ impl MigrationTrait for Migration {
 pub enum UserSubtask {
     #[iden = "challenges_user_subtasks"]
     Table,
+    UserId,
     SubtaskId,
     UnlockedTimestamp,
     SolvedTimestamp,
     Rating,
     RatingTimestamp,
+    LastAttemptTimestamp,
+    Attempts,
 }

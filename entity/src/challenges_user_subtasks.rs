@@ -15,6 +15,8 @@ pub struct Model {
     pub solved_timestamp: Option<DateTime>,
     pub rating: Option<ChallengesRating>,
     pub rating_timestamp: Option<DateTime>,
+    pub last_attempt_timestamp: Option<DateTime>,
+    pub attempts: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

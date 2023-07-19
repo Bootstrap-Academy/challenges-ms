@@ -357,45 +357,33 @@ async fn judge_submission(
     trace!("judge result for {}: {result:?}", submission.id);
     match result {
         Ok(()) => {
-            {
-                let _guard = reward_lock
-                    .write((submission.subtask_id, submission.creator))
-                    .await;
-                let solved_previously = challenge
-                    .find_related(challenges_coding_challenge_submissions::Entity)
-                    .find_also_related(challenges_coding_challenge_result::Entity)
-                    .filter(
-                        challenges_coding_challenge_submissions::Column::Creator
-                            .eq(submission.creator),
-                    )
-                    .filter(
-                        challenges_coding_challenge_result::Column::Verdict
-                            .eq(ChallengesVerdict::Ok),
-                    )
-                    .one(db)
-                    .await?
-                    .is_some();
-                if !solved_previously {
-                    update_user_subtask(
-                        db,
-                        user_subtask.as_ref(),
-                        challenges_user_subtasks::ActiveModel {
-                            user_id: Set(submission.creator),
-                            subtask_id: Set(subtask.id),
-                            unlocked_timestamp: user_subtask
-                                .as_ref()
-                                .and_then(|x| x.unlocked_timestamp)
-                                .map(|x| Unchanged(Some(x)))
-                                .unwrap_or(Set(Some(submission.creation_timestamp))),
-                            solved_timestamp: Set(Some(submission.creation_timestamp)),
-                            ..Default::default()
-                        },
-                    )
-                    .await?;
+            let _guard = reward_lock
+                .write((submission.subtask_id, submission.creator))
+                .await;
 
-                    if submission.creator != subtask.creator {
-                        send_task_rewards(&state.services, db, submission.creator, subtask).await?;
-                    }
+            let solved_previously = user_subtask.is_solved();
+            if !solved_previously {
+                update_user_subtask(
+                    db,
+                    user_subtask.as_ref(),
+                    challenges_user_subtasks::ActiveModel {
+                        user_id: Set(submission.creator),
+                        subtask_id: Set(subtask.id),
+                        unlocked_timestamp: user_subtask
+                            .as_ref()
+                            .and_then(|x| x.unlocked_timestamp)
+                            .map(|x| Unchanged(Some(x)))
+                            .unwrap_or(Set(Some(submission.creation_timestamp))),
+                        solved_timestamp: Set(Some(submission.creation_timestamp)),
+                        last_attempt_timestamp: Set(Some(submission.creation_timestamp)),
+                        attempts: Set(user_subtask.attempts() as i32 + 1),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+
+                if submission.creator != subtask.creator {
+                    send_task_rewards(&state.services, db, submission.creator, subtask).await?;
                 }
             }
             challenges_coding_challenge_result::ActiveModel {
@@ -433,6 +421,18 @@ async fn judge_submission(
                 ),
                 None => (None, None, None, None),
             };
+            update_user_subtask(
+                db,
+                user_subtask.as_ref(),
+                challenges_user_subtasks::ActiveModel {
+                    user_id: Set(submission.creator),
+                    subtask_id: Set(subtask.id),
+                    last_attempt_timestamp: Set(Some(submission.creation_timestamp)),
+                    attempts: Set(user_subtask.attempts() as i32 + 1),
+                    ..Default::default()
+                },
+            )
+            .await?;
             challenges_coding_challenge_result::ActiveModel {
                 submission_id: Set(submission.id),
                 verdict: Set(result.verdict),
