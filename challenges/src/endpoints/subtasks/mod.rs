@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use entity::{challenges_subtasks, challenges_tasks, challenges_user_subtasks};
+use entity::{
+    challenges_subtasks, challenges_tasks, challenges_user_subtasks,
+    sea_orm_active_enums::ChallengesSubtaskType,
+};
 use lib::{auth::VerifiedUserAuth, config::Config, services::shop::AddCoinsError, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
@@ -101,31 +104,45 @@ impl Subtasks {
     #[oai(path = "/subtasks/stats", method = "get")]
     pub async fn get_subtask_stats(
         &self,
+        task_id: Query<Option<Uuid>>,
+        /// Filter by subtask type.
+        subtask_type: Query<Option<ChallengesSubtaskType>>,
+        /// Whether to search for free subtasks.
+        free: Query<Option<bool>>,
+        /// Filter by creator.
+        creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetSubtaskStats::Response<VerifiedUserAuth> {
-        let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
-        let subtasks = count_subtasks_prepare(&db, &auth.0, None).await?;
+        let filter = QuerySubtasksFilter {
+            free: free.0,
+            creator: creator.0,
+            ..Default::default()
+        };
 
-        let total = count_subtasks(&subtasks, &user_subtasks, &auth.0, Default::default())?;
+        let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
+        let subtasks =
+            count_subtasks_prepare(&db, &auth.0, task_id.0, &filter, subtask_type.0).await?;
+
+        let total = count_subtasks(&subtasks, &user_subtasks, &auth.0, &filter)?;
 
         let solved = count_subtasks(
             &subtasks,
             &user_subtasks,
             &auth.0,
-            QuerySubtasksFilter {
+            &QuerySubtasksFilter {
                 solved: Some(true),
-                ..Default::default()
+                ..filter
             },
         )?;
         let attempted = count_subtasks(
             &subtasks,
             &user_subtasks,
             &auth.0,
-            QuerySubtasksFilter {
+            &QuerySubtasksFilter {
                 solved: Some(false),
                 attempted: Some(true),
-                ..Default::default()
+                ..filter
             },
         )?;
         let unattempted = total - solved - attempted;
@@ -134,9 +151,9 @@ impl Subtasks {
             &subtasks,
             &user_subtasks,
             &auth.0,
-            QuerySubtasksFilter {
+            &QuerySubtasksFilter {
                 unlocked: Some(true),
-                ..Default::default()
+                ..filter
             },
         )?;
         let locked = total - unlocked;

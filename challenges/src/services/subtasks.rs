@@ -322,25 +322,28 @@ pub async fn count_subtasks_prepare(
     db: &DatabaseTransaction,
     user: &User,
     task_id: Option<Uuid>,
+    filter: &QuerySubtasksFilter,
+    subtask_type: Option<ChallengesSubtaskType>,
 ) -> Result<Vec<challenges_subtasks::Model>, DbErr> {
     let mut query = challenges_subtasks::Entity::find().left_join(challenges_user_subtasks::Entity);
     if let Some(task_id) = task_id {
         query = query.filter(challenges_subtasks::Column::TaskId.eq(task_id));
     }
-    prepare_query(query, &Default::default(), user)
-        .all(db)
-        .await
+    if let Some(ty) = subtask_type {
+        query = query.filter(challenges_subtasks::Column::Ty.eq(ty));
+    }
+    prepare_query(query, filter, user).all(db).await
 }
 
 pub fn count_subtasks(
     subtasks: &[challenges_subtasks::Model],
     user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
     user: &User,
-    filter: QuerySubtasksFilter,
+    filter: &QuerySubtasksFilter,
 ) -> Result<u64, DbErr> {
     Ok(subtasks
         .iter()
-        .filter(|subtask| subtasks_filter(subtask, user, &filter, user_subtasks))
+        .filter(|subtask| subtasks_filter(subtask, user, filter, user_subtasks))
         .count() as _)
 }
 
