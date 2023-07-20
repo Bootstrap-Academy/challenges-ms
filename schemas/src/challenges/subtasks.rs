@@ -81,7 +81,8 @@ pub struct UserUpdateSubtaskRequest {
 pub struct SubtaskStats {
     /// Total number of subtasks.
     ///
-    /// `total` == `solved` + `tried` + `untried` == `locked` + `unlocked`
+    /// `total` == `solved` + `attempted` + `unattempted` == `locked` +
+    /// `unlocked`
     pub total: u64,
 
     /// Number of subtasks the user has already solved.
