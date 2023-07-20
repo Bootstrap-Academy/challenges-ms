@@ -1924,8 +1924,7 @@ checksum = "fe232bdf6be8c8de797b22184ee71118d63780ea42ac85b61d1baa6d3b782ae9"
 [[package]]
 name = "sandkasten-client"
 version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34d7af7648652af2fec39cb25464503a02ad27b0c7c7bd4934ee6d8416d4b471"
+source = "git+https://github.com/Defelo/sandkasten.git#d01b209c7ea478b079cfbc9e5bec4389e778c9a4"
 dependencies = [
  "poem-openapi",
  "reqwest",
