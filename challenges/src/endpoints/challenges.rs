@@ -44,7 +44,7 @@ impl Challenges {
         let mut query = challenges_challenge_categories::Entity::find()
             .order_by_asc(challenges_challenge_categories::Column::Title);
         if let Some(title) = title.0 {
-            query = query.filter(challenges_challenge_categories::Column::Title.contains(&title));
+            query = query.filter(challenges_challenge_categories::Column::Title.contains(title));
         }
         ListCategories::ok(
             query
@@ -148,7 +148,7 @@ impl Challenges {
             .filter(challenges_challenges::Column::CategoryId.eq(category_id.0))
             .order_by_asc(challenges_challenges::Column::Title);
         if let Some(title) = title.0 {
-            query = query.filter(challenges_challenges::Column::Title.contains(&title));
+            query = query.filter(challenges_challenges::Column::Title.contains(title));
         }
         ListChallenges::ok(
             query
