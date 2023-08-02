@@ -53,7 +53,7 @@ impl MigrationTrait for Migration {
                             .column(subtask_id)
                             .column(user_id)
                             .expr(Expr::col((table, timestamp)).max())
-                            .expr(Expr::asterisk().count())
+                            .expr(Expr::col(Asterisk).count())
                             .group_by_columns([subtask_id, user_id]),
                     ),
                 )
