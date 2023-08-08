@@ -313,6 +313,7 @@ dependencies = [
  "chrono",
  "entity",
  "fnct",
+ "futures",
  "itertools 0.11.0",
  "key-rwlock",
  "lib",
@@ -2130,6 +2131,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "entity",
+ "lib",
  "poem-ext",
  "poem-openapi",
  "sandkasten-client",

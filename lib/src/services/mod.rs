@@ -1,20 +1,23 @@
 use std::{sync::Arc, time::Duration};
 
+use fnct::format::JsonFormatter;
 use reqwest::{Client, Method, RequestBuilder, StatusCode};
 use thiserror::Error;
 use url::Url;
 
-use self::{shop::ShopService, skills::SkillsService};
+use self::{auth::AuthService, shop::ShopService, skills::SkillsService};
 use crate::{
     jwt::{sign_jwt, InternalAuthToken, JwtSecret},
     Cache, CacheError,
 };
 
+pub mod auth;
 pub mod shop;
 pub mod skills;
 
 #[derive(Debug, Clone)]
 pub struct Services {
+    pub auth: AuthService,
     pub skills: SkillsService,
     pub shop: ShopService,
 }
@@ -31,6 +34,12 @@ impl Services {
             ttl: jwt_ttl,
         });
         Self {
+            auth: AuthService::new(Service::new(
+                "auth",
+                conf.auth.clone(),
+                Arc::clone(&jwt_config),
+                cache.clone(),
+            )),
             skills: SkillsService::new(Service::new(
                 "skills",
                 conf.skills.clone(),
@@ -54,6 +63,7 @@ struct Service {
     base_url: Url,
     jwt_config: Arc<JwtConfig>,
     cache: Cache,
+    json_cache: Cache<JsonFormatter>,
 }
 
 impl Service {
@@ -62,6 +72,7 @@ impl Service {
             name,
             base_url,
             jwt_config,
+            json_cache: cache.with_formatter(JsonFormatter),
             cache,
         }
     }
@@ -109,6 +120,8 @@ pub enum ServiceError {
     ReqwestError(#[from] reqwest::Error),
     #[error("cache error: {0}")]
     CacheError(#[from] CacheError),
+    #[error("cache error: {0}")]
+    JsonCacheError(#[from] CacheError<JsonFormatter>),
     #[error("unexpected response status code: {0}")]
     UnexpectedStatusCode(StatusCode),
 }

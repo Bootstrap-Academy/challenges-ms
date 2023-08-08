@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use fnct::key;
 use reqwest::StatusCode;
@@ -87,6 +87,53 @@ impl SkillsService {
             })
             .await??)
     }
+
+    pub async fn get_leaderboard(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> ServiceResult<GlobalLeaderboard> {
+        Ok(self
+            .0
+            .json_cache
+            .cached_result(
+                key!(limit, offset),
+                &[],
+                Some(Duration::from_secs(10)),
+                || async {
+                    self.0
+                        .get("/leaderboard")
+                        .query(&[("limit", limit), ("offset", offset)])
+                        .send()
+                        .await?
+                        .error_for_status()?
+                        .json()
+                        .await
+                },
+            )
+            .await??)
+    }
+
+    pub async fn get_leaderboard_user(&self, user_id: Uuid) -> ServiceResult<Rank> {
+        Ok(self
+            .0
+            .cache
+            .cached_result(
+                key!(user_id),
+                &[],
+                Some(Duration::from_secs(10)),
+                || async {
+                    self.0
+                        .get(&format!("/leaderboard/{user_id}"))
+                        .send()
+                        .await?
+                        .error_for_status()?
+                        .json()
+                        .await
+                },
+            )
+            .await??)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -122,4 +169,23 @@ struct AddSkillProgressRequest {
 pub enum AddSkillProgressError {
     #[error("Skill not found")]
     SkillNotFound,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GlobalLeaderboard {
+    pub leaderboard: Vec<GlobalLeaderboardUser>,
+    pub total: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GlobalLeaderboardUser {
+    pub user: Uuid,
+    #[serde(flatten)]
+    pub rank: Rank,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Rank {
+    pub xp: u64,
+    pub rank: u64,
 }

@@ -8,12 +8,14 @@ use tokio::sync::Semaphore;
 
 use self::{
     challenges::Challenges, coding_challenges::CodingChallenges, course_tasks::CourseTasks,
-    matchings::Matchings, multiple_choice::MultipleChoice, question::Questions, subtasks::Subtasks,
+    leaderboard::Leaderboard, matchings::Matchings, multiple_choice::MultipleChoice,
+    question::Questions, subtasks::Subtasks,
 };
 
 mod challenges;
 pub mod coding_challenges;
 mod course_tasks;
+mod leaderboard;
 mod matchings;
 mod multiple_choice;
 mod question;
@@ -35,6 +37,8 @@ pub enum Tags {
     Matchings,
     /// Coding challenges (subtasks)
     CodingChallenges,
+    /// Leaderboard
+    Leaderboard,
 }
 
 pub async fn setup_api(
@@ -69,7 +73,7 @@ pub async fn setup_api(
         },
         CodingChallenges {
             judge_cache: state.cache.with_formatter(JsonFormatter),
-            state,
+            state: Arc::clone(&state),
             sandkasten,
             judge_lock: Arc::new(Semaphore::new(
                 config.challenges.coding_challenges.max_concurrency,
@@ -78,5 +82,6 @@ pub async fn setup_api(
         }
         .setup_api()
         .await?,
+        Leaderboard { state },
     ))
 }
