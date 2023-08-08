@@ -125,7 +125,8 @@ impl Subtasks {
         };
 
         let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
-        let subtasks = count_subtasks_prepare(&db, &auth.0, task_id.0, &filter).await?;
+        let subtasks =
+            count_subtasks_prepare(&db, &auth.0, task_id.0.map(|x| vec![x]), &filter).await?;
 
         filter.ty = None;
         GetSubtaskStats::ok(stat_subtasks(&subtasks, &user_subtasks, &auth.0, filter))

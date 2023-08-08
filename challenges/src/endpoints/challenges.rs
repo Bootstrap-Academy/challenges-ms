@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use entity::{challenges_challenge_categories, challenges_challenges, challenges_tasks};
+use entity::{
+    challenges_challenge_categories, challenges_challenges, challenges_tasks,
+    sea_orm_active_enums::ChallengesSubtaskType,
+};
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
     services::Services,
@@ -14,9 +17,12 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
-use schemas::challenges::challenges::{
-    Category, Challenge, CreateCategoryRequest, CreateChallengeRequest, UpdateCategoryRequest,
-    UpdateChallengeRequest,
+use schemas::challenges::{
+    challenges::{
+        Category, Challenge, CreateCategoryRequest, CreateChallengeRequest, UpdateCategoryRequest,
+        UpdateChallengeRequest,
+    },
+    subtasks::SubtaskStats,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, QueryFilter,
@@ -25,6 +31,9 @@ use sea_orm::{
 use uuid::Uuid;
 
 use super::Tags;
+use crate::services::subtasks::{
+    count_subtasks_prepare, get_user_subtasks, stat_subtasks, QuerySubtasksFilter,
+};
 
 pub struct Challenges {
     pub state: Arc<SharedState>,
@@ -68,6 +77,42 @@ impl Challenges {
             Some(category) => GetCategory::ok(category.into()),
             None => GetCategory::not_found(),
         }
+    }
+
+    /// Return user specific subtask statistics for a category.
+    #[oai(path = "/categories/:category_id/stats", method = "get")]
+    pub async fn get_category_stats(
+        &self,
+        category_id: Query<Uuid>,
+        /// Filter by subtask type.
+        subtask_type: Query<Option<ChallengesSubtaskType>>,
+        /// Whether to search for free subtasks.
+        free: Query<Option<bool>>,
+        /// Filter by creator.
+        creator: Query<Option<Uuid>>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+    ) -> GetCategoryStats::Response<VerifiedUserAuth> {
+        let task_ids = challenges_challenges::Entity::find()
+            .filter(challenges_challenges::Column::CategoryId.eq(category_id.0))
+            .all(&***db)
+            .await?
+            .into_iter()
+            .map(|c| c.task_id)
+            .collect();
+
+        let mut filter = QuerySubtasksFilter {
+            free: free.0,
+            creator: creator.0,
+            ty: subtask_type.0,
+            ..Default::default()
+        };
+
+        let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
+        let subtasks = count_subtasks_prepare(&db, &auth.0, Some(task_ids), &filter).await?;
+
+        filter.ty = None;
+        GetCategoryStats::ok(stat_subtasks(&subtasks, &user_subtasks, &auth.0, filter))
     }
 
     /// Create a new challenge category.
@@ -299,6 +344,10 @@ response!(GetCategory = {
     Ok(200) => Category,
     /// Category does not exist.
     NotFound(404, error),
+});
+
+response!(GetCategoryStats = {
+    Ok(200) => SubtaskStats,
 });
 
 response!(CreateCategory = {
