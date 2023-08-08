@@ -81,6 +81,7 @@ impl Api {
                     rated: rated.0,
                     enabled: enabled.0,
                     creator: creator.0,
+                    ty: None,
                 },
                 CodingChallengeSummary::from,
             )

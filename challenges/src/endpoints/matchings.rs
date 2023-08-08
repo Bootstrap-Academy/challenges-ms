@@ -74,6 +74,7 @@ impl Matchings {
                     rated: rated.0,
                     enabled: enabled.0,
                     creator: creator.0,
+                    ty: None,
                 },
                 MatchingSummary::from,
             )

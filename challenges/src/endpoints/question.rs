@@ -73,6 +73,7 @@ impl Questions {
                     rated: rated.0,
                     enabled: enabled.0,
                     creator: creator.0,
+                    ty: None,
                 },
                 QuestionSummary::from,
             )

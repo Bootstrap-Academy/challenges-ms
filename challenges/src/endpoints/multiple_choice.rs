@@ -75,6 +75,7 @@ impl MultipleChoice {
                     rated: rated.0,
                     enabled: enabled.0,
                     creator: creator.0,
+                    ty: None,
                 },
                 MultipleChoiceQuestionSummary::from,
             )

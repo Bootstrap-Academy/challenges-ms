@@ -13,7 +13,9 @@ use lib::{
     },
 };
 use poem_ext::responses::ErrorResponse;
-use schemas::challenges::subtasks::{CreateSubtaskRequest, Subtask, UpdateSubtaskRequest};
+use schemas::challenges::subtasks::{
+    CreateSubtaskRequest, Subtask, SubtaskStats, UpdateSubtaskRequest,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
     QueryFilter, QueryOrder, Related, Set, Unchanged,
@@ -297,6 +299,7 @@ pub struct QuerySubtasksFilter {
     pub rated: Option<bool>,
     pub enabled: Option<bool>,
     pub creator: Option<Uuid>,
+    pub ty: Option<ChallengesSubtaskType>,
 }
 
 pub async fn query_subtasks_only(
@@ -323,28 +326,48 @@ pub async fn count_subtasks_prepare(
     user: &User,
     task_id: Option<Uuid>,
     filter: &QuerySubtasksFilter,
-    subtask_type: Option<ChallengesSubtaskType>,
 ) -> Result<Vec<challenges_subtasks::Model>, DbErr> {
     let mut query = challenges_subtasks::Entity::find().left_join(challenges_user_subtasks::Entity);
     if let Some(task_id) = task_id {
         query = query.filter(challenges_subtasks::Column::TaskId.eq(task_id));
     }
-    if let Some(ty) = subtask_type {
-        query = query.filter(challenges_subtasks::Column::Ty.eq(ty));
-    }
     prepare_query(query, filter, user).all(db).await
 }
 
-pub fn count_subtasks(
+pub fn stat_subtasks(
     subtasks: &[challenges_subtasks::Model],
     user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
     user: &User,
-    filter: &QuerySubtasksFilter,
-) -> Result<u64, DbErr> {
-    Ok(subtasks
-        .iter()
-        .filter(|subtask| subtasks_filter(subtask, user, filter, user_subtasks))
-        .count() as _)
+    filter: QuerySubtasksFilter,
+) -> SubtaskStats {
+    let mut total = 0;
+    let mut solved = 0;
+    let mut attempted = 0;
+    let mut unlocked = 0;
+
+    for subtask in subtasks {
+        let user_subtask = user_subtasks.get(&subtask.id);
+        if !subtasks_filter(subtask, user, &filter, user_subtask) {
+            continue;
+        }
+
+        total += 1;
+        solved += user_subtask.is_solved() as u64;
+        attempted += (!user_subtask.is_solved() && user_subtask.attempted()) as u64;
+        unlocked += user_subtask.check_access(user, subtask) as u64;
+    }
+
+    let unattempted = total - solved - attempted;
+    let locked = total - unlocked;
+
+    SubtaskStats {
+        total,
+        solved,
+        attempted,
+        unattempted,
+        locked,
+        unlocked,
+    }
 }
 
 pub async fn query_subtasks<E, T>(
@@ -396,6 +419,9 @@ where
     if let Some(creator) = filter.creator {
         query = query.filter(challenges_subtasks::Column::Creator.eq(creator));
     }
+    if let Some(ty) = filter.ty {
+        query = query.filter(challenges_subtasks::Column::Ty.eq(ty));
+    }
     query.order_by_asc(challenges_subtasks::Column::CreationTimestamp)
 }
 
@@ -403,14 +429,14 @@ fn subtasks_filter(
     subtask: &challenges_subtasks::Model,
     user: &User,
     filter: &QuerySubtasksFilter,
-    user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
+    user_subtask: Option<&challenges_user_subtasks::Model>,
 ) -> bool {
-    let user_subtask = user_subtasks.get(&subtask.id);
     let unlocked = user_subtask.check_access(user, subtask);
     let attempted = user_subtask.attempted();
     let solved = user_subtask.is_solved();
     let rated = user_subtask.is_rated();
-    filter.unlocked.unwrap_or(unlocked) == unlocked
+    !filter.ty.is_some_and(|ty| ty != subtask.ty)
+        && filter.unlocked.unwrap_or(unlocked) == unlocked
         && filter.attempted.unwrap_or(attempted) == attempted
         && filter.solved.unwrap_or(solved) == solved
         && filter.rated.unwrap_or(rated) == rated

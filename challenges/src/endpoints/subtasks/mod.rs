@@ -23,8 +23,8 @@ use uuid::Uuid;
 use super::Tags;
 use crate::services::{
     subtasks::{
-        count_subtasks, count_subtasks_prepare, get_user_subtask, get_user_subtasks,
-        query_subtasks_only, update_user_subtask, QuerySubtasksFilter, UserSubtaskExt,
+        count_subtasks_prepare, get_user_subtask, get_user_subtasks, query_subtasks_only,
+        stat_subtasks, update_user_subtask, QuerySubtasksFilter, UserSubtaskExt,
     },
     tasks::{get_specific_task, Task},
 };
@@ -64,6 +64,8 @@ impl Subtasks {
     pub async fn list_subtasks(
         &self,
         task_id: Query<Option<Uuid>>,
+        /// Filter by subtask type.
+        subtask_type: Query<Option<ChallengesSubtaskType>>,
         /// Whether to search for free subtasks.
         free: Query<Option<bool>>,
         /// Whether to search for unlocked subtasks.
@@ -94,6 +96,7 @@ impl Subtasks {
                     rated: rated.0,
                     enabled: enabled.0,
                     creator: creator.0,
+                    ty: subtask_type.0,
                 },
             )
             .await?,
@@ -114,58 +117,18 @@ impl Subtasks {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> GetSubtaskStats::Response<VerifiedUserAuth> {
-        let filter = QuerySubtasksFilter {
+        let mut filter = QuerySubtasksFilter {
             free: free.0,
             creator: creator.0,
+            ty: subtask_type.0,
             ..Default::default()
         };
 
         let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
-        let subtasks =
-            count_subtasks_prepare(&db, &auth.0, task_id.0, &filter, subtask_type.0).await?;
+        let subtasks = count_subtasks_prepare(&db, &auth.0, task_id.0, &filter).await?;
 
-        let total = count_subtasks(&subtasks, &user_subtasks, &auth.0, &filter)?;
-
-        let solved = count_subtasks(
-            &subtasks,
-            &user_subtasks,
-            &auth.0,
-            &QuerySubtasksFilter {
-                solved: Some(true),
-                ..filter
-            },
-        )?;
-        let attempted = count_subtasks(
-            &subtasks,
-            &user_subtasks,
-            &auth.0,
-            &QuerySubtasksFilter {
-                solved: Some(false),
-                attempted: Some(true),
-                ..filter
-            },
-        )?;
-        let unattempted = total - solved - attempted;
-
-        let unlocked = count_subtasks(
-            &subtasks,
-            &user_subtasks,
-            &auth.0,
-            &QuerySubtasksFilter {
-                unlocked: Some(true),
-                ..filter
-            },
-        )?;
-        let locked = total - unlocked;
-
-        GetSubtaskStats::ok(SubtaskStats {
-            total,
-            solved,
-            attempted,
-            unattempted,
-            locked,
-            unlocked,
-        })
+        filter.ty = None;
+        GetSubtaskStats::ok(stat_subtasks(&subtasks, &user_subtasks, &auth.0, filter))
     }
 
     /// Unlock a subtask by paying its fee.
