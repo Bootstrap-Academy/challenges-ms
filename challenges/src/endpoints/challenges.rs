@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    count_subtasks_prepare, get_user_subtasks, stat_subtasks, QuerySubtasksFilter,
+    get_user_subtasks, stat_subtasks, stat_subtasks_prepare, QuerySubtasksFilter,
 };
 
 pub struct Challenges {
@@ -109,7 +109,7 @@ impl Challenges {
         };
 
         let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
-        let subtasks = count_subtasks_prepare(&db, &auth.0, Some(task_ids), &filter).await?;
+        let subtasks = stat_subtasks_prepare(&db, &auth.0, Some(task_ids), &filter).await?;
 
         filter.ty = None;
         GetCategoryStats::ok(stat_subtasks(&subtasks, &user_subtasks, &auth.0, filter))

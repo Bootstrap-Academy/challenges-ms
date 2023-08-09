@@ -321,13 +321,13 @@ pub async fn query_subtasks_only(
         .collect())
 }
 
-pub async fn count_subtasks_prepare(
+pub async fn stat_subtasks_prepare(
     db: &DatabaseTransaction,
     user: &User,
     task_ids: Option<Vec<Uuid>>,
     filter: &QuerySubtasksFilter,
 ) -> Result<Vec<challenges_subtasks::Model>, DbErr> {
-    let mut query = challenges_subtasks::Entity::find().left_join(challenges_user_subtasks::Entity);
+    let mut query = challenges_subtasks::Entity::find();
     if let Some(task_ids) = task_ids {
         query = query.filter(challenges_subtasks::Column::TaskId.is_in(task_ids));
     }

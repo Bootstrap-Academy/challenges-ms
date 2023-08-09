@@ -23,8 +23,8 @@ use uuid::Uuid;
 use super::Tags;
 use crate::services::{
     subtasks::{
-        count_subtasks_prepare, get_user_subtask, get_user_subtasks, query_subtasks_only,
-        stat_subtasks, update_user_subtask, QuerySubtasksFilter, UserSubtaskExt,
+        get_user_subtask, get_user_subtasks, query_subtasks_only, stat_subtasks,
+        stat_subtasks_prepare, update_user_subtask, QuerySubtasksFilter, UserSubtaskExt,
     },
     tasks::{get_specific_task, Task},
 };
@@ -126,7 +126,7 @@ impl Subtasks {
 
         let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
         let subtasks =
-            count_subtasks_prepare(&db, &auth.0, task_id.0.map(|x| vec![x]), &filter).await?;
+            stat_subtasks_prepare(&db, &auth.0, task_id.0.map(|x| vec![x]), &filter).await?;
 
         filter.ty = None;
         GetSubtaskStats::ok(stat_subtasks(&subtasks, &user_subtasks, &auth.0, filter))
