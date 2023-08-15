@@ -27,8 +27,6 @@ pub struct Subtask {
     pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
     pub coins: u64,
-    /// The number of morphcoins a user has to pay to access this subtask.
-    pub fee: u64,
     /// Whether the user has unlocked this subtask.
     pub unlocked: bool,
     /// Whether the user has completed this subtask.
@@ -49,9 +47,6 @@ pub struct CreateSubtaskRequest {
     /// to use the configured default value.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub coins: Option<u64>,
-    /// The number of morphcoins a user has to pay to access this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub fee: u64,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -64,17 +59,8 @@ pub struct UpdateSubtaskRequest {
     /// The number of morphcoins a user gets for completing this subtask.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub coins: PatchValue<u64>,
-    /// The number of morphcoins a user has to pay to access this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
-    pub fee: PatchValue<u64>,
     /// Whether the subtask is enabled and visible to normal users.
     pub enabled: PatchValue<bool>,
-}
-
-#[derive(Debug, Clone, Object)]
-pub struct UserUpdateSubtaskRequest {
-    /// The number of morphcoins a user has to pay to access this subtask.
-    pub fee: PatchValue<u64>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -146,8 +132,6 @@ pub struct SubtasksUserConfig {
     pub max_xp: u64,
     /// The maximum `coins` value for subtasks created by normal users
     pub max_coins: u64,
-    /// The maximum `fee` value for subtasks created by normal users
-    pub max_fee: u64,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -234,7 +218,6 @@ impl Subtask {
             creation_timestamp: subtask.creation_timestamp.and_utc(),
             xp: subtask.xp as _,
             coins: subtask.coins as _,
-            fee: subtask.fee as _,
             unlocked,
             solved,
             rated,

@@ -198,7 +198,7 @@ pub trait UserSubtaskExt {
     fn attempts(&self) -> usize;
 
     fn check_access(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
-        user.admin || user.id == subtask.creator || subtask.fee == 0 || self.is_unlocked()
+        user.admin || user.id == subtask.creator || self.is_unlocked()
     }
 
     fn can_rate(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
@@ -292,7 +292,6 @@ pub enum CheckPermissionsError {
 
 #[derive(Default)]
 pub struct QuerySubtasksFilter {
-    pub free: Option<bool>,
     pub unlocked: Option<bool>,
     pub attempted: Option<bool>,
     pub solved: Option<bool>,
@@ -408,10 +407,6 @@ where
                 .add(challenges_subtasks::Column::Creator.eq(user.id))
                 .add(challenges_subtasks::Column::Enabled.eq(true)),
         );
-    }
-    if let Some(free) = filter.free {
-        let col = challenges_subtasks::Column::Fee;
-        query = query.filter(if free { col.lte(0) } else { col.gt(0) });
     }
     if let Some(enabled) = filter.enabled {
         query = query.filter(challenges_subtasks::Column::Enabled.eq(enabled));
@@ -582,11 +577,6 @@ pub async fn create_subtask(
                 config.challenges.quizzes.max_coins,
             )));
         }
-        if data.fee > config.challenges.quizzes.max_fee {
-            return Ok(Err(CreateSubtaskError::FeeLimitExceeded(
-                config.challenges.quizzes.max_fee,
-            )));
-        }
     }
 
     match get_active_ban(db, user, ChallengesBanAction::Create).await? {
@@ -603,7 +593,6 @@ pub async fn create_subtask(
         creation_timestamp: Set(Utc::now().naive_utc()),
         xp: Set(xp as _),
         coins: Set(coins as _),
-        fee: Set(data.fee as _),
         enabled: Set(true),
     }
     .insert(db)
@@ -618,7 +607,6 @@ pub enum CreateSubtaskError {
     Banned(Option<DateTime<Utc>>),
     XpLimitExceeded(u64),
     CoinLimitExceeded(u64),
-    FeeLimitExceeded(u64),
 }
 
 pub async fn update_subtask<E>(
@@ -651,7 +639,6 @@ where
         creation_timestamp: Unchanged(subtask.creation_timestamp),
         xp: data.xp.map(|x| x as _).update(subtask.xp),
         coins: data.coins.map(|x| x as _).update(subtask.coins),
-        fee: data.fee.map(|x| x as _).update(subtask.fee),
         enabled: data.enabled.update(subtask.enabled),
     }
     .update(db)

@@ -63,7 +63,8 @@ impl Api {
         )
         .await?;
 
-        if data.0.rating == ChallengesRating::Positive && subtask.fee > 0 {
+        if data.0.rating == ChallengesRating::Positive {
+            // TODO
             self.state
                 .services
                 .shop

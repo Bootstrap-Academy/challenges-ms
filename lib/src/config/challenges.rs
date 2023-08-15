@@ -18,7 +18,6 @@ pub struct Quizzes {
     pub min_level: u32,
     pub max_xp: u64,
     pub max_coins: u64,
-    pub max_fee: u64,
     pub ban_days: Vec<u32>,
 }
 

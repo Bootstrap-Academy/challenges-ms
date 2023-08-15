@@ -44,8 +44,6 @@ impl Matchings {
     async fn list_matchings(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for free subtasks.
-        free: Query<Option<bool>>,
         /// Whether to search for unlocked subtasks.
         unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
@@ -67,7 +65,6 @@ impl Matchings {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    free: free.0,
                     unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
@@ -162,9 +159,6 @@ impl Matchings {
             }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateMatching::coin_limit_exceeded(x)
-            }
-            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
-                return CreateMatching::fee_limit_exceeded(x)
             }
         };
 
@@ -390,8 +384,6 @@ response!(CreateMatching = {
     XpLimitExceeded(403, error) => u64,
     /// The max coin limit has been exceeded.
     CoinLimitExceeded(403, error) => u64,
-    /// The max fee limit has been exceeded.
-    FeeLimitExceeded(403, error) => u64,
     /// The left list does not contain the same number of entries as the right list.
     LeftRightDifferentLength(400, error),
     /// The solution list does not contain the same number of entries as the left and right lists.

@@ -45,8 +45,6 @@ impl MultipleChoice {
     async fn list_questions(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for free subtasks.
-        free: Query<Option<bool>>,
         /// Whether to search for unlocked subtasks.
         unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
@@ -68,7 +66,6 @@ impl MultipleChoice {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    free: free.0,
                     unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
@@ -161,9 +158,6 @@ impl MultipleChoice {
             Err(CreateSubtaskError::XpLimitExceeded(x)) => return CreateMCQ::xp_limit_exceeded(x),
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateMCQ::coin_limit_exceeded(x)
-            }
-            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
-                return CreateMCQ::fee_limit_exceeded(x)
             }
         };
 
@@ -370,8 +364,6 @@ response!(CreateMCQ = {
     XpLimitExceeded(403, error) => u64,
     /// The max coin limit has been exceeded.
     CoinLimitExceeded(403, error) => u64,
-    /// The max fee limit has been exceeded.
-    FeeLimitExceeded(403, error) => u64,
     /// `single_choice` is set to `true`, but there is not exactly one correct answer.
     InvalidSingleChoice(400, error),
     /// There is no correct answer.
