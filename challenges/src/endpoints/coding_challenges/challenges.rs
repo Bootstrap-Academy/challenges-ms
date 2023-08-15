@@ -51,8 +51,6 @@ impl Api {
     async fn list_challenges(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for unlocked subtasks.
-        unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
         attempted: Query<Option<bool>>,
         /// Whether to search for solved subtasks.
@@ -72,7 +70,6 @@ impl Api {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,

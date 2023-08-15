@@ -16,7 +16,7 @@ use crate::{
     endpoints::Tags,
     services::{
         judge::{self, get_executor_config, Judge},
-        subtasks::{get_subtask, get_user_subtask, UserSubtaskExt},
+        subtasks::get_subtask,
     },
 };
 
@@ -51,10 +51,7 @@ impl Api {
             return TestExample::example_not_found();
         }
 
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return TestExample::no_access();
-        }
+        // TODO check hearts?
 
         let judge = self.get_judge(&cc.evaluator);
 

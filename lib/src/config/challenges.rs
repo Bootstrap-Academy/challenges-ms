@@ -24,20 +24,25 @@ pub struct Quizzes {
 #[derive(Debug, Deserialize)]
 pub struct MultipleChoiceQuestions {
     pub timeout_incr: u64,
+    pub hearts: u32,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Questions {
     pub timeout_incr: u64,
+    pub hearts: u32,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Matchings {
     pub timeout_incr: u64,
+    pub hearts: u32,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CodingChallenges {
     pub sandkasten_url: Url,
     pub max_concurrency: usize,
+
+    pub hearts: u32,
 }

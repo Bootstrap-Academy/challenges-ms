@@ -55,8 +55,6 @@ impl Subtasks {
         task_id: Query<Option<Uuid>>,
         /// Filter by subtask type.
         subtask_type: Query<Option<ChallengesSubtaskType>>,
-        /// Whether to search for unlocked subtasks.
-        unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
         attempted: Query<Option<bool>>,
         /// Whether to search for solved subtasks.
@@ -76,7 +74,6 @@ impl Subtasks {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,
@@ -112,7 +109,7 @@ impl Subtasks {
             stat_subtasks_prepare(&db, &auth.0, task_id.0.map(|x| vec![x]), &filter).await?;
 
         filter.ty = None;
-        GetSubtaskStats::ok(stat_subtasks(&subtasks, &user_subtasks, &auth.0, filter))
+        GetSubtaskStats::ok(stat_subtasks(&subtasks, &user_subtasks, filter))
     }
 
     /// Delete a subtask.

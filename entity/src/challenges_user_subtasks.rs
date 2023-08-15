@@ -11,7 +11,6 @@ pub struct Model {
     pub user_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub subtask_id: Uuid,
-    pub unlocked_timestamp: Option<DateTime>,
     pub solved_timestamp: Option<DateTime>,
     pub rating: Option<ChallengesRating>,
     pub rating_timestamp: Option<DateTime>,

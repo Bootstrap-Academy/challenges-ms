@@ -1,3 +1,6 @@
+use std::time::Duration;
+
+use fnct::key;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -36,6 +39,70 @@ impl ShopService {
             code => return Err(super::ServiceError::UnexpectedStatusCode(code)),
         })
     }
+
+    pub async fn has_premium(&self, user_id: Uuid) -> ServiceResult<bool> {
+        Ok(self
+            .0
+            .cache
+            .cached_result(
+                key!(user_id),
+                &[],
+                Some(Duration::from_secs(10)),
+                || async {
+                    self.0
+                        .get(&format!("/premium/{user_id}"))
+                        .send()
+                        .await?
+                        .error_for_status()?
+                        .json()
+                        .await
+                },
+            )
+            .await??)
+    }
+
+    pub async fn get_hearts(&self, user_id: Uuid) -> ServiceResult<u32> {
+        Ok(self
+            .0
+            .cache
+            .cached_result(
+                key!(user_id),
+                &["hearts", &format!("{user_id}")],
+                Some(Duration::from_secs(10)),
+                || async {
+                    Ok::<_, reqwest::Error>(
+                        self.0
+                            .get(&format!("/hearts/{user_id}"))
+                            .send()
+                            .await?
+                            .error_for_status()?
+                            .json::<Hearts>()
+                            .await?
+                            .hearts,
+                    )
+                },
+            )
+            .await??)
+    }
+
+    pub async fn add_hearts(&self, user_id: Uuid, hearts: i32) -> ServiceResult<bool> {
+        let success = self
+            .0
+            .post(&format!("/hearts/{user_id}"))
+            .json(&AddHeartsRequest { hearts })
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if success {
+            self.0
+                .cache
+                .pop_tags(&["hearts", &format!("{user_id}")])
+                .await?;
+        }
+        Ok(success)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,4 +122,14 @@ struct AddCoinsRequest<'a> {
     coins: i64,
     description: &'a str,
     credit_note: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct Hearts {
+    hearts: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct AddHeartsRequest {
+    hearts: i32,
 }

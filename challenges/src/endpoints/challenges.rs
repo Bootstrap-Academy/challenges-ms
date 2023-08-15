@@ -109,7 +109,7 @@ impl Challenges {
         let subtasks = stat_subtasks_prepare(&db, &auth.0, Some(task_ids), &filter).await?;
 
         filter.ty = None;
-        GetCategoryStats::ok(stat_subtasks(&subtasks, &user_subtasks, &auth.0, filter))
+        GetCategoryStats::ok(stat_subtasks(&subtasks, &user_subtasks, filter))
     }
 
     /// Create a new challenge category.

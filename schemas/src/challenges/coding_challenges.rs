@@ -31,9 +31,8 @@ pub struct QueueStatus {
 pub struct CodingChallengeSummary {
     #[oai(flatten)]
     pub subtask: Subtask,
-    /// The challenge description. Only available if the user has unlocked the
-    /// subtask.
-    pub description: Option<String>,
+    /// The challenge description.
+    pub description: String,
     /// The number of milliseconds the solution may run.
     pub time_limit: u16,
     /// The number of megabytes of memory the solution may use.
@@ -200,7 +199,7 @@ pub struct ExecutorConfig {
 impl CodingChallengeSummary {
     pub fn from(cc: challenges_coding_challenges::Model, subtask: Subtask) -> Self {
         Self {
-            description: subtask.unlocked.then_some(cc.description),
+            description: cc.description,
             time_limit: cc.time_limit as _,
             memory_limit: cc.memory_limit as _,
             static_tests: cc.static_tests as _,

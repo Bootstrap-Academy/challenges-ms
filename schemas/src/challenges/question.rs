@@ -9,7 +9,7 @@ pub struct QuestionSummary {
     #[oai(flatten)]
     pub subtask: Subtask,
     // The question text.
-    pub question: Option<String>,
+    pub question: String,
     // Whether the answer is case sensitive.
     pub case_sensitive: bool,
     // Whether the answer can contain letters.
@@ -125,7 +125,7 @@ pub struct SolveQuestionFeedback {
 impl QuestionSummary {
     pub fn from(question: challenges_questions::Model, subtask: Subtask) -> Self {
         Self {
-            question: subtask.unlocked.then_some(question.question),
+            question: question.question,
             case_sensitive: question.case_sensitive,
             ascii_letters: question.ascii_letters,
             digits: question.digits,

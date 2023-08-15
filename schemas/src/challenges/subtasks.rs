@@ -27,8 +27,6 @@ pub struct Subtask {
     pub xp: u64,
     /// The number of morphcoins a user gets for completing this subtask.
     pub coins: u64,
-    /// Whether the user has unlocked this subtask.
-    pub unlocked: bool,
     /// Whether the user has completed this subtask.
     pub solved: bool,
     /// Whether the user has submitted feedback or reported this subtask.
@@ -67,8 +65,7 @@ pub struct UpdateSubtaskRequest {
 pub struct SubtaskStats {
     /// Total number of subtasks.
     ///
-    /// `total` == `solved` + `attempted` + `unattempted` == `locked` +
-    /// `unlocked`
+    /// `total` == `solved` + `attempted` + `unattempted`
     pub total: u64,
 
     /// Number of subtasks the user has already solved.
@@ -77,11 +74,6 @@ pub struct SubtaskStats {
     pub attempted: u64,
     /// Number of subtasks the user has not yet tried to solve.
     pub unattempted: u64,
-
-    /// Number of subtasks the user has access to.
-    pub locked: u64,
-    /// Number of subtasks the user does not have access to.
-    pub unlocked: u64,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -204,12 +196,7 @@ impl Report {
 }
 
 impl Subtask {
-    pub fn from(
-        subtask: challenges_subtasks::Model,
-        unlocked: bool,
-        solved: bool,
-        rated: bool,
-    ) -> Self {
+    pub fn from(subtask: challenges_subtasks::Model, solved: bool, rated: bool) -> Self {
         Self {
             id: subtask.id,
             task_id: subtask.task_id,
@@ -218,7 +205,6 @@ impl Subtask {
             creation_timestamp: subtask.creation_timestamp.and_utc(),
             xp: subtask.xp as _,
             coins: subtask.coins as _,
-            unlocked,
             solved,
             rated,
             enabled: subtask.enabled,

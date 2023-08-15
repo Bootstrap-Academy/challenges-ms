@@ -27,9 +27,9 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
-    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
-    QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
+    create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
+    query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
+    CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
 };
 
 pub struct MultipleChoice {
@@ -45,8 +45,6 @@ impl MultipleChoice {
     async fn list_questions(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for unlocked subtasks.
-        unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
         attempted: Query<Option<bool>>,
         /// Whether to search for solved subtasks.
@@ -66,7 +64,6 @@ impl MultipleChoice {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,
@@ -258,14 +255,11 @@ impl MultipleChoice {
             return SolveMCQ::subtask_not_found();
         }
 
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return SolveMCQ::no_access();
-        }
-
         if data.0.answers.len() != mcq.answers.len() {
             return SolveMCQ::wrong_length();
         }
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
 
         let solved_previously = user_subtask.is_solved();
         if let Some(last_attempt) = user_subtask.last_attempt() {
@@ -281,6 +275,17 @@ impl MultipleChoice {
             }
         }
 
+        if !deduct_hearts(
+            &self.state.services,
+            &self.config,
+            auth.0.id,
+            ChallengesSubtaskType::MultipleChoiceQuestion,
+        )
+        .await?
+        {
+            return SolveMCQ::no_access();
+        }
+
         let correct_cnt = check_answers(&data.0.answers, mcq.correct_answers);
         let solved = correct_cnt == mcq.answers.len();
 
@@ -293,11 +298,6 @@ impl MultipleChoice {
                     challenges_user_subtasks::ActiveModel {
                         user_id: Set(auth.0.id),
                         subtask_id: Set(subtask.id),
-                        unlocked_timestamp: user_subtask
-                            .as_ref()
-                            .and_then(|x| x.unlocked_timestamp)
-                            .map(|x| Unchanged(Some(x)))
-                            .unwrap_or(Set(Some(now))),
                         solved_timestamp: Set(Some(now)),
                         last_attempt_timestamp: Set(Some(now)),
                         attempts: Set(user_subtask.attempts() as i32 + 1),
