@@ -26,9 +26,10 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
-    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
-    QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
+    create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
+    query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
+    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
+    UserSubtaskExt,
 };
 
 pub struct Matchings {
@@ -44,10 +45,6 @@ impl Matchings {
     async fn list_matchings(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for free subtasks.
-        free: Query<Option<bool>>,
-        /// Whether to search for unlocked subtasks.
-        unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
         attempted: Query<Option<bool>>,
         /// Whether to search for solved subtasks.
@@ -56,6 +53,8 @@ impl Matchings {
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
+        /// Whether to search for retired subtasks.
+        retired: Query<Option<bool>>,
         /// Filter by creator.
         creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
@@ -67,12 +66,11 @@ impl Matchings {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    free: free.0,
-                    unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
+                    retired: retired.0,
                     creator: creator.0,
                     ty: None,
                 },
@@ -100,9 +98,8 @@ impl Matchings {
         )
         .await?
         {
-            Ok(matching) => GetMatching::ok(matching),
-            Err(QuerySubtaskError::NotFound) => GetMatching::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetMatching::no_access(),
+            Some(matching) => GetMatching::ok(matching),
+            None => GetMatching::subtask_not_found(),
         }
     }
 
@@ -128,8 +125,8 @@ impl Matchings {
         .await?
         {
             Ok(matching) => GetMatchingWithSolution::ok(matching),
-            Err(QuerySubtaskError::NotFound) => GetMatchingWithSolution::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetMatchingWithSolution::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetMatchingWithSolution::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetMatchingWithSolution::forbidden(),
         }
     }
 
@@ -162,9 +159,6 @@ impl Matchings {
             }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateMatching::coin_limit_exceeded(x)
-            }
-            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
-                return CreateMatching::fee_limit_exceeded(x)
             }
         };
 
@@ -275,23 +269,23 @@ impl Matchings {
             return SolveMatching::subtask_not_found();
         }
 
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return SolveMatching::no_access();
-        }
-
         if data.0.answer.len() != matching.solution.len() {
             return SolveMatching::solution_different_length();
         }
 
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+
         let solved_previously = user_subtask.is_solved();
         if let Some(last_attempt) = user_subtask.last_attempt() {
-            let time_left = self.config.challenges.matchings.timeout_incr as i64
-                * user_subtask.attempts() as i64
+            let time_left = self.config.challenges.matchings.timeout as i64
                 - (Utc::now() - last_attempt).num_seconds();
-            if !solved_previously && time_left > 0 {
+            if time_left > 0 {
                 return SolveMatching::too_many_requests(time_left as u64);
             }
+        }
+
+        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+            return SolveMatching::not_enough_hearts();
         }
 
         let correct = data
@@ -312,11 +306,6 @@ impl Matchings {
                     challenges_user_subtasks::ActiveModel {
                         user_id: Set(auth.0.id),
                         subtask_id: Set(subtask.id),
-                        unlocked_timestamp: user_subtask
-                            .as_ref()
-                            .and_then(|x| x.unlocked_timestamp)
-                            .map(|x| Unchanged(Some(x)))
-                            .unwrap_or(Set(Some(now))),
                         solved_timestamp: Set(Some(now)),
                         last_attempt_timestamp: Set(Some(now)),
                         attempts: Set(user_subtask.attempts() as i32 + 1),
@@ -366,8 +355,6 @@ response!(GetMatching = {
     Ok(200) => Matching,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this matching.
-    NoAccess(403, error),
 });
 
 response!(GetMatchingWithSolution = {
@@ -390,8 +377,6 @@ response!(CreateMatching = {
     XpLimitExceeded(403, error) => u64,
     /// The max coin limit has been exceeded.
     CoinLimitExceeded(403, error) => u64,
-    /// The max fee limit has been exceeded.
-    FeeLimitExceeded(403, error) => u64,
     /// The left list does not contain the same number of entries as the right list.
     LeftRightDifferentLength(400, error),
     /// The solution list does not contain the same number of entries as the left and right lists.
@@ -424,8 +409,8 @@ response!(SolveMatching = {
     TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this matching.
-    NoAccess(403, error),
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
+    NotEnoughHearts(403, error),
     /// The solution list does not contain the same number of entries as the left and right lists.
     SolutionDifferentLength(400, error),
 });

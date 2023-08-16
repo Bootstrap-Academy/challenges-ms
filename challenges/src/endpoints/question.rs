@@ -25,9 +25,10 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
-    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
-    QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
+    create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
+    query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
+    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
+    UserSubtaskExt,
 };
 
 pub struct Questions {
@@ -43,10 +44,6 @@ impl Questions {
     async fn list_questions(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for free subtasks.
-        free: Query<Option<bool>>,
-        /// Whether to search for unlocked subtasks.
-        unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
         attempted: Query<Option<bool>>,
         /// Whether to search for solved subtasks.
@@ -55,6 +52,8 @@ impl Questions {
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
+        /// Whether to search for retired subtasks.
+        retired: Query<Option<bool>>,
         /// Filter by creator.
         creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
@@ -66,12 +65,11 @@ impl Questions {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    free: free.0,
-                    unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
+                    retired: retired.0,
                     creator: creator.0,
                     ty: None,
                 },
@@ -99,9 +97,8 @@ impl Questions {
         )
         .await?
         {
-            Ok(mcq) => GetQuestion::ok(mcq),
-            Err(QuerySubtaskError::NotFound) => GetQuestion::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetQuestion::no_access(),
+            Some(mcq) => GetQuestion::ok(mcq),
+            None => GetQuestion::subtask_not_found(),
         }
     }
 
@@ -127,8 +124,8 @@ impl Questions {
         .await?
         {
             Ok(matching) => GetQuestionWithSolution::ok(matching),
-            Err(QuerySubtaskError::NotFound) => GetQuestionWithSolution::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetQuestionWithSolution::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetQuestionWithSolution::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetQuestionWithSolution::forbidden(),
         }
     }
 
@@ -161,9 +158,6 @@ impl Questions {
             }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateQuestion::coin_limit_exceeded(x)
-            }
-            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
-                return CreateQuestion::fee_limit_exceeded(x)
             }
         };
 
@@ -263,18 +257,18 @@ impl Questions {
         }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return SolveQuestion::no_access();
-        }
 
         let solved_previously = user_subtask.is_solved();
         if let Some(last_attempt) = user_subtask.last_attempt() {
-            let time_left = self.config.challenges.questions.timeout_incr as i64
-                * user_subtask.attempts() as i64
+            let time_left = self.config.challenges.questions.timeout as i64
                 - (Utc::now() - last_attempt).num_seconds();
-            if !solved_previously && time_left > 0 {
+            if time_left > 0 {
                 return SolveQuestion::too_many_requests(time_left as u64);
             }
+        }
+
+        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+            return SolveQuestion::not_enough_hearts();
         }
 
         let answer = normalize_answer(&data.0.answer, question.case_sensitive);
@@ -292,11 +286,6 @@ impl Questions {
                     challenges_user_subtasks::ActiveModel {
                         user_id: Set(auth.0.id),
                         subtask_id: Set(subtask.id),
-                        unlocked_timestamp: user_subtask
-                            .as_ref()
-                            .and_then(|x| x.unlocked_timestamp)
-                            .map(|x| Unchanged(Some(x)))
-                            .unwrap_or(Set(Some(now))),
                         solved_timestamp: Set(Some(now)),
                         last_attempt_timestamp: Set(Some(now)),
                         attempts: Set(user_subtask.attempts() as i32 + 1),
@@ -336,8 +325,6 @@ response!(GetQuestion = {
     Ok(200) => Question,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
 });
 
 response!(GetQuestionWithSolution = {
@@ -360,8 +347,6 @@ response!(CreateQuestion = {
     XpLimitExceeded(403, error) => u64,
     /// The max coin limit has been exceeded.
     CoinLimitExceeded(403, error) => u64,
-    /// The max fee limit has been exceeded.
-    FeeLimitExceeded(403, error) => u64,
     /// One of `ascii_letters`, `digits` or `punctuation` is set to `false`, but one of the `answers` contains such a character.
     InvalidChar(400, error),
 });
@@ -382,8 +367,8 @@ response!(SolveQuestion = {
     TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
+    NotEnoughHearts(403, error),
 });
 
 fn check_answers(answers: &[String], ascii_letters: bool, digits: bool, punctuation: bool) -> bool {

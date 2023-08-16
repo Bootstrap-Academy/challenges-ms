@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use entity::{
     challenges_ban, challenges_subtasks, challenges_tasks, challenges_user_subtasks,
@@ -28,12 +29,70 @@ use super::{
     tasks::{get_specific_task, get_task, get_task_with_specific, Task},
 };
 
+pub async fn check_hearts(
+    services: &Services,
+    config: &Config,
+    user: &User,
+    subtask: &challenges_subtasks::Model,
+) -> anyhow::Result<bool> {
+    if subtask.retired
+        || user.admin
+        || user.id == subtask.creator
+        || services.shop.has_premium(user.id).await?
+    {
+        return Ok(true);
+    }
+
+    let hearts = services
+        .shop
+        .get_hearts(user.id)
+        .await
+        .with_context(|| format!("failed to get hearts of user {}", user.id))?;
+    Ok(hearts >= subtask_hearts(config, subtask.ty))
+}
+
+pub async fn deduct_hearts(
+    services: &Services,
+    config: &Config,
+    user: &User,
+    subtask: &challenges_subtasks::Model,
+) -> anyhow::Result<bool> {
+    if subtask.retired
+        || user.admin
+        || user.id == subtask.creator
+        || services.shop.has_premium(user.id).await?
+    {
+        return Ok(true);
+    }
+
+    let hearts = subtask_hearts(config, subtask.ty);
+    services
+        .shop
+        .add_hearts(user.id, -(hearts as i32))
+        .await
+        .with_context(|| format!("failed to deduct {hearts} hearts for user {}", user.id))
+}
+
+fn subtask_hearts(config: &Config, ty: ChallengesSubtaskType) -> u32 {
+    let config = &config.challenges;
+    match ty {
+        ChallengesSubtaskType::CodingChallenge => config.coding_challenges.hearts,
+        ChallengesSubtaskType::Matching => config.matchings.hearts,
+        ChallengesSubtaskType::MultipleChoiceQuestion => config.multiple_choice_questions.hearts,
+        ChallengesSubtaskType::Question => config.questions.hearts,
+    }
+}
+
 pub async fn send_task_rewards(
     services: &Services,
     db: &DatabaseTransaction,
     user_id: Uuid,
     subtask: &challenges_subtasks::Model,
 ) -> Result<(), SendTaskRewardsError> {
+    if subtask.retired {
+        return Ok(());
+    }
+
     if subtask.xp != 0 {
         let skills = get_skills(
             services,
@@ -191,15 +250,10 @@ pub async fn get_skills(services: &Services, task: Task) -> ServiceResult<Vec<St
 }
 
 pub trait UserSubtaskExt {
-    fn is_unlocked(&self) -> bool;
     fn is_solved(&self) -> bool;
     fn is_rated(&self) -> bool;
     fn last_attempt(&self) -> Option<DateTime<Utc>>;
     fn attempts(&self) -> usize;
-
-    fn check_access(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
-        user.admin || user.id == subtask.creator || subtask.fee == 0 || self.is_unlocked()
-    }
 
     fn can_rate(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
         user.id != subtask.creator && self.is_solved() && !self.is_rated()
@@ -211,10 +265,6 @@ pub trait UserSubtaskExt {
 }
 
 impl UserSubtaskExt for challenges_user_subtasks::Model {
-    fn is_unlocked(&self) -> bool {
-        self.unlocked_timestamp.is_some()
-    }
-
     fn is_solved(&self) -> bool {
         self.solved_timestamp.is_some()
     }
@@ -233,9 +283,6 @@ impl UserSubtaskExt for challenges_user_subtasks::Model {
 }
 
 impl<T: UserSubtaskExt> UserSubtaskExt for &T {
-    fn is_unlocked(&self) -> bool {
-        T::is_unlocked(self)
-    }
     fn is_solved(&self) -> bool {
         T::is_solved(self)
     }
@@ -251,9 +298,6 @@ impl<T: UserSubtaskExt> UserSubtaskExt for &T {
 }
 
 impl<T: UserSubtaskExt> UserSubtaskExt for Option<T> {
-    fn is_unlocked(&self) -> bool {
-        self.as_ref().is_some_and(|x| x.is_unlocked())
-    }
     fn is_solved(&self) -> bool {
         self.as_ref().is_some_and(|x| x.is_solved())
     }
@@ -292,12 +336,11 @@ pub enum CheckPermissionsError {
 
 #[derive(Default)]
 pub struct QuerySubtasksFilter {
-    pub free: Option<bool>,
-    pub unlocked: Option<bool>,
     pub attempted: Option<bool>,
     pub solved: Option<bool>,
     pub rated: Option<bool>,
     pub enabled: Option<bool>,
+    pub retired: Option<bool>,
     pub creator: Option<Uuid>,
     pub ty: Option<ChallengesSubtaskType>,
 }
@@ -317,7 +360,7 @@ pub async fn query_subtasks_only(
         .all(db)
         .await?
         .into_iter()
-        .filter_map(|subtask| subtasks_filter_map(subtask, user, &filter, &user_subtasks))
+        .filter_map(|subtask| subtasks_filter_map(subtask, &filter, &user_subtasks))
         .collect())
 }
 
@@ -337,36 +380,30 @@ pub async fn stat_subtasks_prepare(
 pub fn stat_subtasks(
     subtasks: &[challenges_subtasks::Model],
     user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
-    user: &User,
     filter: QuerySubtasksFilter,
 ) -> SubtaskStats {
     let mut total = 0;
     let mut solved = 0;
     let mut attempted = 0;
-    let mut unlocked = 0;
 
     for subtask in subtasks {
         let user_subtask = user_subtasks.get(&subtask.id);
-        if !subtasks_filter(subtask, user, &filter, user_subtask) {
+        if !subtasks_filter(subtask, &filter, user_subtask) {
             continue;
         }
 
         total += 1;
         solved += user_subtask.is_solved() as u64;
         attempted += (!user_subtask.is_solved() && user_subtask.attempted()) as u64;
-        unlocked += user_subtask.check_access(user, subtask) as u64;
     }
 
     let unattempted = total - solved - attempted;
-    let locked = total - unlocked;
 
     SubtaskStats {
         total,
         solved,
         attempted,
         unattempted,
-        locked,
-        unlocked,
     }
 }
 
@@ -392,7 +429,7 @@ where
     .await?
     .into_iter()
     .filter_map(|(specific, subtask)| {
-        let subtask = subtasks_filter_map(subtask?, user, &filter, &user_subtasks)?;
+        let subtask = subtasks_filter_map(subtask?, &filter, &user_subtasks)?;
         Some(map(specific, subtask))
     })
     .collect())
@@ -409,12 +446,11 @@ where
                 .add(challenges_subtasks::Column::Enabled.eq(true)),
         );
     }
-    if let Some(free) = filter.free {
-        let col = challenges_subtasks::Column::Fee;
-        query = query.filter(if free { col.lte(0) } else { col.gt(0) });
-    }
     if let Some(enabled) = filter.enabled {
         query = query.filter(challenges_subtasks::Column::Enabled.eq(enabled));
+    }
+    if let Some(retired) = filter.retired {
+        query = query.filter(challenges_subtasks::Column::Retired.eq(retired));
     }
     if let Some(creator) = filter.creator {
         query = query.filter(challenges_subtasks::Column::Creator.eq(creator));
@@ -427,16 +463,13 @@ where
 
 fn subtasks_filter(
     subtask: &challenges_subtasks::Model,
-    user: &User,
     filter: &QuerySubtasksFilter,
     user_subtask: Option<&challenges_user_subtasks::Model>,
 ) -> bool {
-    let unlocked = user_subtask.check_access(user, subtask);
     let attempted = user_subtask.attempted();
     let solved = user_subtask.is_solved();
     let rated = user_subtask.is_rated();
     !filter.ty.is_some_and(|ty| ty != subtask.ty)
-        && filter.unlocked.unwrap_or(unlocked) == unlocked
         && filter.attempted.unwrap_or(attempted) == attempted
         && filter.solved.unwrap_or(solved) == solved
         && filter.rated.unwrap_or(rated) == rated
@@ -444,20 +477,17 @@ fn subtasks_filter(
 
 fn subtasks_filter_map(
     subtask: challenges_subtasks::Model,
-    user: &User,
     filter: &QuerySubtasksFilter,
     user_subtasks: &HashMap<Uuid, challenges_user_subtasks::Model>,
 ) -> Option<Subtask> {
     let user_subtask = user_subtasks.get(&subtask.id);
-    let unlocked = user_subtask.check_access(user, &subtask);
     let attempted = user_subtask.attempted();
     let solved = user_subtask.is_solved();
     let rated = user_subtask.is_rated();
-    (filter.unlocked.unwrap_or(unlocked) == unlocked
-        && filter.attempted.unwrap_or(attempted) == attempted
+    (filter.attempted.unwrap_or(attempted) == attempted
         && filter.solved.unwrap_or(solved) == solved
         && filter.rated.unwrap_or(rated) == rated)
-        .then_some(Subtask::from(subtask, unlocked, solved, rated))
+        .then_some(Subtask::from(subtask, solved, rated))
 }
 
 pub async fn query_subtask<E, T>(
@@ -466,31 +496,23 @@ pub async fn query_subtask<E, T>(
     task_id: Uuid,
     subtask_id: Uuid,
     map: impl Fn(E::Model, Subtask) -> T,
-) -> Result<Result<T, QuerySubtaskError>, DbErr>
+) -> Result<Option<T>, DbErr>
 where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
 {
     let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
-        return Ok(Err(QuerySubtaskError::NotFound));
+        return Ok(None);
     };
     if !user.admin && user.id != subtask.creator && !subtask.enabled {
-        return Ok(Err(QuerySubtaskError::NotFound));
+        return Ok(None);
     }
 
     let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
-    if !user_subtask.check_access(user, &subtask) {
-        return Ok(Err(QuerySubtaskError::NoAccess));
-    }
 
-    Ok(Ok(map(
+    Ok(Some(map(
         specific,
-        Subtask::from(
-            subtask,
-            true,
-            user_subtask.is_solved(),
-            user_subtask.is_rated(),
-        ),
+        Subtask::from(subtask, user_subtask.is_solved(), user_subtask.is_rated()),
     )))
 }
 
@@ -500,32 +522,27 @@ pub async fn query_subtask_admin<E, T>(
     task_id: Uuid,
     subtask_id: Uuid,
     map: impl Fn(E::Model, Subtask) -> T,
-) -> Result<Result<T, QuerySubtaskError>, DbErr>
+) -> Result<Result<T, QuerySubtaskAdminError>, DbErr>
 where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
 {
     let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
-        return Ok(Err(QuerySubtaskError::NotFound));
+        return Ok(Err(QuerySubtaskAdminError::NotFound));
     };
 
     if !(user.admin || user.id == subtask.creator) {
-        return Ok(Err(QuerySubtaskError::NoAccess));
+        return Ok(Err(QuerySubtaskAdminError::NoAccess));
     }
 
     let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
     Ok(Ok(map(
         specific,
-        Subtask::from(
-            subtask,
-            true,
-            user_subtask.is_solved(),
-            user_subtask.is_rated(),
-        ),
+        Subtask::from(subtask, user_subtask.is_solved(), user_subtask.is_rated()),
     )))
 }
 
-pub enum QuerySubtaskError {
+pub enum QuerySubtaskAdminError {
     NotFound,
     NoAccess,
 }
@@ -582,11 +599,6 @@ pub async fn create_subtask(
                 config.challenges.quizzes.max_coins,
             )));
         }
-        if data.fee > config.challenges.quizzes.max_fee {
-            return Ok(Err(CreateSubtaskError::FeeLimitExceeded(
-                config.challenges.quizzes.max_fee,
-            )));
-        }
     }
 
     match get_active_ban(db, user, ChallengesBanAction::Create).await? {
@@ -603,13 +615,13 @@ pub async fn create_subtask(
         creation_timestamp: Set(Utc::now().naive_utc()),
         xp: Set(xp as _),
         coins: Set(coins as _),
-        fee: Set(data.fee as _),
         enabled: Set(true),
+        retired: Set(false),
     }
     .insert(db)
     .await?;
 
-    Ok(Ok(Subtask::from(subtask, true, false, false)))
+    Ok(Ok(Subtask::from(subtask, false, false)))
 }
 
 pub enum CreateSubtaskError {
@@ -618,7 +630,6 @@ pub enum CreateSubtaskError {
     Banned(Option<DateTime<Utc>>),
     XpLimitExceeded(u64),
     CoinLimitExceeded(u64),
-    FeeLimitExceeded(u64),
 }
 
 pub async fn update_subtask<E>(
@@ -651,8 +662,8 @@ where
         creation_timestamp: Unchanged(subtask.creation_timestamp),
         xp: data.xp.map(|x| x as _).update(subtask.xp),
         coins: data.coins.map(|x| x as _).update(subtask.coins),
-        fee: data.fee.map(|x| x as _).update(subtask.fee),
         enabled: data.enabled.update(subtask.enabled),
+        retired: data.retired.update(subtask.retired),
     }
     .update(db)
     .await?;
@@ -660,12 +671,7 @@ where
     let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
     Ok(Ok((
         specific,
-        Subtask::from(
-            subtask,
-            true,
-            user_subtask.is_solved(),
-            user_subtask.is_rated(),
-        ),
+        Subtask::from(subtask, user_subtask.is_solved(), user_subtask.is_rated()),
     )))
 }
 

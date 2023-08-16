@@ -86,8 +86,6 @@ impl Challenges {
         category_id: Query<Uuid>,
         /// Filter by subtask type.
         subtask_type: Query<Option<ChallengesSubtaskType>>,
-        /// Whether to search for free subtasks.
-        free: Query<Option<bool>>,
         /// Filter by creator.
         creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
@@ -102,7 +100,6 @@ impl Challenges {
             .collect();
 
         let mut filter = QuerySubtasksFilter {
-            free: free.0,
             creator: creator.0,
             ty: subtask_type.0,
             ..Default::default()
@@ -112,7 +109,7 @@ impl Challenges {
         let subtasks = stat_subtasks_prepare(&db, &auth.0, Some(task_ids), &filter).await?;
 
         filter.ty = None;
-        GetCategoryStats::ok(stat_subtasks(&subtasks, &user_subtasks, &auth.0, filter))
+        GetCategoryStats::ok(stat_subtasks(&subtasks, &user_subtasks, filter))
     }
 
     /// Create a new challenge category.

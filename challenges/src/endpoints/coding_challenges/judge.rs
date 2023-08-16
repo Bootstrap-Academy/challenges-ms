@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use entity::challenges_coding_challenges;
 use fnct::{format::JsonFormatter, key};
-use lib::{auth::VerifiedUserAuth, Cache};
+use lib::{auth::VerifiedUserAuth, config::Config, Cache, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
@@ -16,11 +18,13 @@ use crate::{
     endpoints::Tags,
     services::{
         judge::{self, get_executor_config, Judge},
-        subtasks::{get_subtask, get_user_subtask, UserSubtaskExt},
+        subtasks::{check_hearts, get_subtask},
     },
 };
 
 pub struct Api {
+    pub state: Arc<SharedState>,
+    pub config: Arc<Config>,
     pub sandkasten: SandkastenClient,
     pub judge_cache: Cache<JsonFormatter>,
 }
@@ -51,9 +55,8 @@ impl Api {
             return TestExample::example_not_found();
         }
 
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return TestExample::no_access();
+        if !check_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+            return TestExample::not_enough_hearts();
         }
 
         let judge = self.get_judge(&cc.evaluator);
@@ -143,8 +146,8 @@ response!(TestExample = {
     ExampleNotFound(404, error),
     /// Environment does not exist.
     EnvironmentNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
+    NotEnoughHearts(403, error),
     /// The evaluator failed to execute.
     EvaluatorFailed(400, error),
 });

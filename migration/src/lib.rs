@@ -31,6 +31,9 @@ mod m20230707_200516_subtask_type;
 mod m20230712_141047_ban_creator_reason;
 mod m20230713_100102_delete_reports;
 mod m20230719_174846_user_subtasks_last_attempt;
+mod m20230815_162457_remove_subtask_fee;
+mod m20230815_203544_remove_subtask_unlocked;
+mod m20230816_173651_retire_subtasks;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -62,6 +65,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20230712_141047_ban_creator_reason::Migration),
             Box::new(m20230713_100102_delete_reports::Migration),
             Box::new(m20230719_174846_user_subtasks_last_attempt::Migration),
+            Box::new(m20230815_162457_remove_subtask_fee::Migration),
+            Box::new(m20230815_203544_remove_subtask_unlocked::Migration),
+            Box::new(m20230816_173651_retire_subtasks::Migration),
         ]
     }
 }

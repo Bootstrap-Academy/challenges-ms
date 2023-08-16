@@ -14,9 +14,9 @@ pub struct Model {
     pub creation_timestamp: DateTime,
     pub xp: i64,
     pub coins: i64,
-    pub fee: i64,
     pub enabled: bool,
     pub ty: ChallengesSubtaskType,
+    pub retired: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

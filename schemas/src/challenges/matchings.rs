@@ -9,9 +9,9 @@ pub struct MatchingSummary {
     #[oai(flatten)]
     pub subtask: Subtask,
     /// The entries on the left.
-    pub left: Option<Vec<String>>,
+    pub left: Vec<String>,
     /// The entries on the right.
-    pub right: Option<Vec<String>>,
+    pub right: Vec<String>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -86,8 +86,8 @@ pub struct SolveMatchingFeedback {
 impl MatchingSummary {
     pub fn from(matching: challenges_matchings::Model, subtask: Subtask) -> Self {
         Self {
-            left: subtask.unlocked.then_some(matching.left),
-            right: subtask.unlocked.then_some(matching.right),
+            left: matching.left,
+            right: matching.right,
             subtask,
         }
     }

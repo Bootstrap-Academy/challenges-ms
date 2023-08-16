@@ -3,9 +3,9 @@ use std::sync::Arc;
 use chrono::Utc;
 use entity::{
     challenges_user_subtasks,
-    sea_orm_active_enums::{ChallengesRating, ChallengesReportReason},
+    sea_orm_active_enums::{ChallengesRating, ChallengesReportReason, ChallengesSubtaskType},
 };
-use lib::{auth::VerifiedUserAuth, SharedState};
+use lib::{auth::VerifiedUserAuth, config::Config, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
@@ -21,6 +21,7 @@ use crate::{
 
 pub struct Api {
     pub state: Arc<SharedState>,
+    pub config: Arc<Config>,
 }
 
 #[OpenApi(tag = "Tags::Subtasks")]
@@ -63,11 +64,20 @@ impl Api {
         )
         .await?;
 
-        if data.0.rating == ChallengesRating::Positive && subtask.fee > 0 {
+        if data.0.rating == ChallengesRating::Positive {
+            let config = &self.config.challenges;
+            let coins = match subtask.ty {
+                ChallengesSubtaskType::CodingChallenge => config.coding_challenges.creator_coins,
+                ChallengesSubtaskType::Matching => config.matchings.creator_coins,
+                ChallengesSubtaskType::MultipleChoiceQuestion => {
+                    config.multiple_choice_questions.creator_coins
+                }
+                ChallengesSubtaskType::Question => config.questions.creator_coins,
+            };
             self.state
                 .services
                 .shop
-                .add_coins(subtask.creator, 1, "Quiz", true)
+                .add_coins(subtask.creator, coins as _, "Quiz/Challenge", true)
                 .await??;
         }
 

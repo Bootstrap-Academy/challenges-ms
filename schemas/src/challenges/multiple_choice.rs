@@ -11,8 +11,8 @@ use super::subtasks::{CreateSubtaskRequest, Subtask, UpdateSubtaskRequest};
 pub struct MultipleChoiceQuestionSummary {
     #[oai(flatten)]
     pub subtask: Subtask,
-    /// The question text. Only available if the user has unlocked the subtask.
-    pub question: Option<String>,
+    /// The question text.
+    pub question: String,
     /// Whether this question is a single choice question (exactly one answer is
     /// correct).
     pub single_choice: bool,
@@ -91,7 +91,7 @@ pub struct SolveMCQFeedback {
 impl MultipleChoiceQuestionSummary {
     pub fn from(mcq: challenges_multiple_choice_quizes::Model, subtask: Subtask) -> Self {
         Self {
-            question: subtask.unlocked.then_some(mcq.question),
+            question: mcq.question,
             single_choice: mcq.single_choice,
             subtask,
         }

@@ -31,7 +31,7 @@ use crate::{
         judge::{self, get_executor_config, Judge},
         subtasks::{
             create_subtask, query_subtask, query_subtask_admin, query_subtasks, update_subtask,
-            CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError,
+            CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
         },
     },
 };
@@ -51,10 +51,6 @@ impl Api {
     async fn list_challenges(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for free subtasks.
-        free: Query<Option<bool>>,
-        /// Whether to search for unlocked subtasks.
-        unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
         attempted: Query<Option<bool>>,
         /// Whether to search for solved subtasks.
@@ -63,6 +59,8 @@ impl Api {
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
+        /// Whether to search for retired subtasks.
+        retired: Query<Option<bool>>,
         /// Filter by creator.
         creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
@@ -74,12 +72,11 @@ impl Api {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    free: free.0,
-                    unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
+                    retired: retired.0,
                     creator: creator.0,
                     ty: None,
                 },
@@ -107,9 +104,8 @@ impl Api {
         )
         .await?
         {
-            Ok(x) => GetCodingChallenge::ok(x),
-            Err(QuerySubtaskError::NotFound) => GetCodingChallenge::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetCodingChallenge::no_access(),
+            Some(x) => GetCodingChallenge::ok(x),
+            None => GetCodingChallenge::subtask_not_found(),
         }
     }
 
@@ -134,9 +130,8 @@ impl Api {
         )
         .await?
         {
-            Ok(cc) => cc,
-            Err(QuerySubtaskError::NotFound) => return GetExamples::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => return GetExamples::no_access(),
+            Some(cc) => cc,
+            None => return GetExamples::subtask_not_found(),
         };
 
         let judge = self.get_judge(&cc.evaluator);
@@ -200,8 +195,8 @@ impl Api {
         .await?
         {
             Ok(cc) => GetEvaluator::ok(cc.evaluator),
-            Err(QuerySubtaskError::NotFound) => GetEvaluator::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetEvaluator::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetEvaluator::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetEvaluator::forbidden(),
         }
     }
 
@@ -230,8 +225,8 @@ impl Api {
                 environment: cc.solution_environment,
                 code: cc.solution_code,
             }),
-            Err(QuerySubtaskError::NotFound) => GetSolution::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetSolution::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetSolution::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetSolution::forbidden(),
         }
     }
 
@@ -266,9 +261,6 @@ impl Api {
             }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateCodingChallenge::coin_limit_exceeded(x)
-            }
-            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
-                return CreateCodingChallenge::fee_limit_exceeded(x)
             }
         };
 
@@ -395,16 +387,12 @@ response!(GetCodingChallenge = {
     Ok(200) => CodingChallenge,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
 });
 
 response!(GetExamples = {
     Ok(200) => Vec<Example>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
     /// The evaluator failed to execute.
     EvaluatorFailed(400, error),
     /// Failed to generate an example.
@@ -439,8 +427,6 @@ response!(CreateCodingChallenge = {
     XpLimitExceeded(403, error) => u64,
     /// The max coin limit has been exceeded.
     CoinLimitExceeded(403, error) => u64,
-    /// The max fee limit has been exceeded.
-    FeeLimitExceeded(403, error) => u64,
     /// Time limit exceeded
     TimeLimitExceeded(403, error) => u64,
     /// Memory limit exceeded

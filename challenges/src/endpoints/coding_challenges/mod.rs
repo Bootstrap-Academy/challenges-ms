@@ -34,14 +34,17 @@ impl CodingChallenges {
             challenges::Api {
                 sandkasten: self.sandkasten.clone(),
                 judge_cache: self.judge_cache.clone(),
-                config: self.config,
+                config: Arc::clone(&self.config),
                 state: Arc::clone(&self.state),
             },
             judge::Api {
+                state: Arc::clone(&self.state),
+                config: Arc::clone(&self.config),
                 sandkasten: self.sandkasten.clone(),
                 judge_cache: self.judge_cache.clone(),
             },
             submissions::Api {
+                config: self.config,
                 state: self.state,
                 sandkasten: self.sandkasten,
                 judge_cache: self.judge_cache,

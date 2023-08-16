@@ -11,6 +11,7 @@ use fnct::{format::JsonFormatter, key};
 use key_rwlock::KeyRwLock;
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
+    config::Config,
     Cache, SharedState,
 };
 use poem::web::Data;
@@ -20,7 +21,7 @@ use sandkasten_client::{schemas::environments::Environment, SandkastenClient};
 use schemas::challenges::coding_challenges::{QueueStatus, Submission, SubmissionContent};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait,
-    ModelTrait, QueryFilter, QueryOrder, Set, TransactionTrait, Unchanged,
+    ModelTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use thiserror::Error;
 use tokio::sync::{RwLock, Semaphore};
@@ -33,7 +34,7 @@ use crate::{
     services::{
         judge::{self, Judge},
         subtasks::{
-            get_subtask, get_user_subtask, send_task_rewards, update_user_subtask,
+            deduct_hearts, get_subtask, get_user_subtask, send_task_rewards, update_user_subtask,
             SendTaskRewardsError, UserSubtaskExt,
         },
     },
@@ -41,6 +42,7 @@ use crate::{
 
 pub struct Api {
     pub state: Arc<SharedState>,
+    pub config: Arc<Config>,
     pub sandkasten: SandkastenClient,
     pub judge_cache: Cache<JsonFormatter>,
     pub judge_lock: Arc<Semaphore>,
@@ -163,17 +165,26 @@ impl Api {
             return CreateSubmission::subtask_not_found();
         }
 
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return CreateSubmission::no_access();
-        }
-
         if !self
             .get_environments()
             .await?
             .contains_key(&data.0.environment)
         {
             return CreateSubmission::environment_not_found();
+        }
+
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+
+        if let Some(last_attempt) = user_subtask.last_attempt() {
+            let time_left = self.config.challenges.coding_challenges.timeout as i64
+                - (Utc::now() - last_attempt).num_seconds();
+            if time_left > 0 {
+                return CreateSubmission::too_many_requests(time_left as u64);
+            }
+        }
+
+        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+            return CreateSubmission::not_enough_hearts();
         }
 
         let submission = Arc::new(
@@ -226,12 +237,14 @@ response!(GetSubmission = {
 
 response!(CreateSubmission = {
     Ok(201) => Submission,
+    /// Try again later. `details` contains the number of seconds to wait.
+    TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The solution environment does not exist.
     EnvironmentNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
+    NotEnoughHearts(403, error),
 });
 
 struct StartJudgeSubmissionTask {
@@ -369,11 +382,6 @@ async fn judge_submission(
                     challenges_user_subtasks::ActiveModel {
                         user_id: Set(submission.creator),
                         subtask_id: Set(subtask.id),
-                        unlocked_timestamp: user_subtask
-                            .as_ref()
-                            .and_then(|x| x.unlocked_timestamp)
-                            .map(|x| Unchanged(Some(x)))
-                            .unwrap_or(Set(Some(submission.creation_timestamp))),
                         solved_timestamp: Set(Some(submission.creation_timestamp)),
                         last_attempt_timestamp: Set(Some(submission.creation_timestamp)),
                         attempts: Set(user_subtask.attempts() as i32 + 1),

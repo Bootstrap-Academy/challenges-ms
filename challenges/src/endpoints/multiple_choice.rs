@@ -27,9 +27,10 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
-    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
-    QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
+    create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
+    query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
+    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
+    UserSubtaskExt,
 };
 
 pub struct MultipleChoice {
@@ -45,10 +46,6 @@ impl MultipleChoice {
     async fn list_questions(
         &self,
         task_id: Path<Uuid>,
-        /// Whether to search for free subtasks.
-        free: Query<Option<bool>>,
-        /// Whether to search for unlocked subtasks.
-        unlocked: Query<Option<bool>>,
         /// Whether to search for subtasks the user has attempted to solve.
         attempted: Query<Option<bool>>,
         /// Whether to search for solved subtasks.
@@ -57,6 +54,8 @@ impl MultipleChoice {
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
+        /// Whether to search for retired subtasks.
+        retired: Query<Option<bool>>,
         /// Filter by creator.
         creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
@@ -68,12 +67,11 @@ impl MultipleChoice {
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
-                    free: free.0,
-                    unlocked: unlocked.0,
                     attempted: attempted.0,
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
+                    retired: retired.0,
                     creator: creator.0,
                     ty: None,
                 },
@@ -101,9 +99,8 @@ impl MultipleChoice {
         )
         .await?
         {
-            Ok(mcq) => GetMCQ::ok(mcq),
-            Err(QuerySubtaskError::NotFound) => GetMCQ::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetMCQ::no_access(),
+            Some(mcq) => GetMCQ::ok(mcq),
+            None => GetMCQ::subtask_not_found(),
         }
     }
 
@@ -129,8 +126,8 @@ impl MultipleChoice {
         .await?
         {
             Ok(mcq) => GetMCQWithSolution::ok(mcq),
-            Err(QuerySubtaskError::NotFound) => GetMCQWithSolution::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetMCQWithSolution::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetMCQWithSolution::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetMCQWithSolution::forbidden(),
         }
     }
 
@@ -161,9 +158,6 @@ impl MultipleChoice {
             Err(CreateSubtaskError::XpLimitExceeded(x)) => return CreateMCQ::xp_limit_exceeded(x),
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateMCQ::coin_limit_exceeded(x)
-            }
-            Err(CreateSubtaskError::FeeLimitExceeded(x)) => {
-                return CreateMCQ::fee_limit_exceeded(x)
             }
         };
 
@@ -264,27 +258,23 @@ impl MultipleChoice {
             return SolveMCQ::subtask_not_found();
         }
 
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.check_access(&auth.0, &subtask) {
-            return SolveMCQ::no_access();
-        }
-
         if data.0.answers.len() != mcq.answers.len() {
             return SolveMCQ::wrong_length();
         }
 
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+
         let solved_previously = user_subtask.is_solved();
         if let Some(last_attempt) = user_subtask.last_attempt() {
-            let time_left = self
-                .config
-                .challenges
-                .multiple_choice_questions
-                .timeout_incr as i64
-                * user_subtask.attempts() as i64
+            let time_left = self.config.challenges.multiple_choice_questions.timeout as i64
                 - (Utc::now() - last_attempt).num_seconds();
-            if !solved_previously && time_left > 0 {
+            if time_left > 0 {
                 return SolveMCQ::too_many_requests(time_left as u64);
             }
+        }
+
+        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+            return SolveMCQ::not_enough_hearts();
         }
 
         let correct_cnt = check_answers(&data.0.answers, mcq.correct_answers);
@@ -299,11 +289,6 @@ impl MultipleChoice {
                     challenges_user_subtasks::ActiveModel {
                         user_id: Set(auth.0.id),
                         subtask_id: Set(subtask.id),
-                        unlocked_timestamp: user_subtask
-                            .as_ref()
-                            .and_then(|x| x.unlocked_timestamp)
-                            .map(|x| Unchanged(Some(x)))
-                            .unwrap_or(Set(Some(now))),
                         solved_timestamp: Set(Some(now)),
                         last_attempt_timestamp: Set(Some(now)),
                         attempts: Set(user_subtask.attempts() as i32 + 1),
@@ -346,8 +331,6 @@ response!(GetMCQ = {
     Ok(200) => MultipleChoiceQuestion<String>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
 });
 
 response!(GetMCQWithSolution = {
@@ -370,8 +353,6 @@ response!(CreateMCQ = {
     XpLimitExceeded(403, error) => u64,
     /// The max coin limit has been exceeded.
     CoinLimitExceeded(403, error) => u64,
-    /// The max fee limit has been exceeded.
-    FeeLimitExceeded(403, error) => u64,
     /// `single_choice` is set to `true`, but there is not exactly one correct answer.
     InvalidSingleChoice(400, error),
     /// There is no correct answer.
@@ -398,6 +379,6 @@ response!(SolveMCQ = {
     TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
+    NotEnoughHearts(403, error),
 });
