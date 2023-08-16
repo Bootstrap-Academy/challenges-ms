@@ -37,7 +37,10 @@ impl Subtasks {
                 config: Arc::clone(&self.config),
             },
             self.clone(),
-            feedback::Api { state: self.state },
+            feedback::Api {
+                state: self.state,
+                config: Arc::clone(&self.config),
+            },
             reports::Api {
                 config: self.config,
             },
