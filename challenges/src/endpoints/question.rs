@@ -52,6 +52,8 @@ impl Questions {
         rated: Query<Option<bool>>,
         /// Whether to search for enabled subtasks.
         enabled: Query<Option<bool>>,
+        /// Whether to search for retired subtasks.
+        retired: Query<Option<bool>>,
         /// Filter by creator.
         creator: Query<Option<Uuid>>,
         db: Data<&DbTxn>,
@@ -67,6 +69,7 @@ impl Questions {
                     solved: solved.0,
                     rated: rated.0,
                     enabled: enabled.0,
+                    retired: retired.0,
                     creator: creator.0,
                     ty: None,
                 },

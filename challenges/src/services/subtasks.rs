@@ -340,6 +340,7 @@ pub struct QuerySubtasksFilter {
     pub solved: Option<bool>,
     pub rated: Option<bool>,
     pub enabled: Option<bool>,
+    pub retired: Option<bool>,
     pub creator: Option<Uuid>,
     pub ty: Option<ChallengesSubtaskType>,
 }
@@ -447,6 +448,9 @@ where
     }
     if let Some(enabled) = filter.enabled {
         query = query.filter(challenges_subtasks::Column::Enabled.eq(enabled));
+    }
+    if let Some(retired) = filter.retired {
+        query = query.filter(challenges_subtasks::Column::Retired.eq(retired));
     }
     if let Some(creator) = filter.creator {
         query = query.filter(challenges_subtasks::Column::Creator.eq(creator));
