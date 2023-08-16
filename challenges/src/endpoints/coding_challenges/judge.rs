@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use entity::challenges_coding_challenges;
 use fnct::{format::JsonFormatter, key};
-use lib::{auth::VerifiedUserAuth, Cache};
+use lib::{auth::VerifiedUserAuth, config::Config, Cache, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
@@ -16,11 +18,13 @@ use crate::{
     endpoints::Tags,
     services::{
         judge::{self, get_executor_config, Judge},
-        subtasks::get_subtask,
+        subtasks::{check_hearts, get_subtask},
     },
 };
 
 pub struct Api {
+    pub state: Arc<SharedState>,
+    pub config: Arc<Config>,
     pub sandkasten: SandkastenClient,
     pub judge_cache: Cache<JsonFormatter>,
 }
@@ -51,7 +55,9 @@ impl Api {
             return TestExample::example_not_found();
         }
 
-        // TODO check hearts?
+        if !check_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+            return TestExample::no_access();
+        }
 
         let judge = self.get_judge(&cc.evaluator);
 

@@ -29,6 +29,24 @@ use super::{
     tasks::{get_specific_task, get_task, get_task_with_specific, Task},
 };
 
+pub async fn check_hearts(
+    services: &Services,
+    config: &Config,
+    user: &User,
+    subtask: &challenges_subtasks::Model,
+) -> anyhow::Result<bool> {
+    if user.admin || user.id == subtask.creator || services.shop.has_premium(user.id).await? {
+        return Ok(true);
+    }
+
+    let hearts = services
+        .shop
+        .get_hearts(user.id)
+        .await
+        .with_context(|| format!("failed to get hearts of user {}", user.id))?;
+    Ok(hearts >= subtask_hearts(config, subtask.ty))
+}
+
 pub async fn deduct_hearts(
     services: &Services,
     config: &Config,
