@@ -265,7 +265,7 @@ impl Questions {
         }
 
         if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
-            return SolveQuestion::no_access();
+            return SolveQuestion::not_enough_hearts();
         }
 
         let answer = normalize_answer(&data.0.answer, question.case_sensitive);
@@ -365,7 +365,7 @@ response!(SolveQuestion = {
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
-    NoAccess(403, error),
+    NotEnoughHearts(403, error),
 });
 
 fn check_answers(answers: &[String], ascii_letters: bool, digits: bool, punctuation: bool) -> bool {

@@ -282,7 +282,7 @@ impl Matchings {
         }
 
         if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
-            return SolveMatching::no_access();
+            return SolveMatching::not_enough_hearts();
         }
 
         let correct = data
@@ -407,7 +407,7 @@ response!(SolveMatching = {
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
-    NoAccess(403, error),
+    NotEnoughHearts(403, error),
     /// The solution list does not contain the same number of entries as the left and right lists.
     SolutionDifferentLength(400, error),
 });

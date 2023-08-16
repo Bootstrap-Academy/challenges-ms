@@ -56,7 +56,7 @@ impl Api {
         }
 
         if !check_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
-            return TestExample::no_access();
+            return TestExample::not_enough_hearts();
         }
 
         let judge = self.get_judge(&cc.evaluator);
@@ -147,7 +147,7 @@ response!(TestExample = {
     /// Environment does not exist.
     EnvironmentNotFound(404, error),
     /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
-    NoAccess(403, error),
+    NotEnoughHearts(403, error),
     /// The evaluator failed to execute.
     EvaluatorFailed(400, error),
 });

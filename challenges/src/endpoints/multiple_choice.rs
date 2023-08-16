@@ -271,7 +271,7 @@ impl MultipleChoice {
         }
 
         if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
-            return SolveMCQ::no_access();
+            return SolveMCQ::not_enough_hearts();
         }
 
         let correct_cnt = check_answers(&data.0.answers, mcq.correct_answers);
@@ -377,5 +377,5 @@ response!(SolveMCQ = {
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
-    NoAccess(403, error),
+    NotEnoughHearts(403, error),
 });

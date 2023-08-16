@@ -184,7 +184,7 @@ impl Api {
         }
 
         if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
-            return CreateSubmission::no_access();
+            return CreateSubmission::not_enough_hearts();
         }
 
         let submission = Arc::new(
@@ -244,7 +244,7 @@ response!(CreateSubmission = {
     /// The solution environment does not exist.
     EnvironmentNotFound(404, error),
     /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
-    NoAccess(403, error),
+    NotEnoughHearts(403, error),
 });
 
 struct StartJudgeSubmissionTask {
