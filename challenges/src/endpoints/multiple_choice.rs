@@ -29,7 +29,8 @@ use super::Tags;
 use crate::services::subtasks::{
     create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
     query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
-    CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
+    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
+    UserSubtaskExt,
 };
 
 pub struct MultipleChoice {
@@ -95,9 +96,8 @@ impl MultipleChoice {
         )
         .await?
         {
-            Ok(mcq) => GetMCQ::ok(mcq),
-            Err(QuerySubtaskError::NotFound) => GetMCQ::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetMCQ::no_access(),
+            Some(mcq) => GetMCQ::ok(mcq),
+            None => GetMCQ::subtask_not_found(),
         }
     }
 
@@ -123,8 +123,8 @@ impl MultipleChoice {
         .await?
         {
             Ok(mcq) => GetMCQWithSolution::ok(mcq),
-            Err(QuerySubtaskError::NotFound) => GetMCQWithSolution::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetMCQWithSolution::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetMCQWithSolution::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetMCQWithSolution::forbidden(),
         }
     }
 
@@ -340,8 +340,6 @@ response!(GetMCQ = {
     Ok(200) => MultipleChoiceQuestion<String>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
 });
 
 response!(GetMCQWithSolution = {

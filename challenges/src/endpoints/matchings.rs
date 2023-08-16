@@ -28,7 +28,8 @@ use super::Tags;
 use crate::services::subtasks::{
     create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
     query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
-    CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
+    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
+    UserSubtaskExt,
 };
 
 pub struct Matchings {
@@ -94,9 +95,8 @@ impl Matchings {
         )
         .await?
         {
-            Ok(matching) => GetMatching::ok(matching),
-            Err(QuerySubtaskError::NotFound) => GetMatching::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetMatching::no_access(),
+            Some(matching) => GetMatching::ok(matching),
+            None => GetMatching::subtask_not_found(),
         }
     }
 
@@ -122,8 +122,8 @@ impl Matchings {
         .await?
         {
             Ok(matching) => GetMatchingWithSolution::ok(matching),
-            Err(QuerySubtaskError::NotFound) => GetMatchingWithSolution::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetMatchingWithSolution::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetMatchingWithSolution::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetMatchingWithSolution::forbidden(),
         }
     }
 
@@ -360,8 +360,6 @@ response!(GetMatching = {
     Ok(200) => Matching,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this matching.
-    NoAccess(403, error),
 });
 
 response!(GetMatchingWithSolution = {

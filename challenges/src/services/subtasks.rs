@@ -462,21 +462,21 @@ pub async fn query_subtask<E, T>(
     task_id: Uuid,
     subtask_id: Uuid,
     map: impl Fn(E::Model, Subtask) -> T,
-) -> Result<Result<T, QuerySubtaskError>, DbErr>
+) -> Result<Option<T>, DbErr>
 where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
 {
     let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
-        return Ok(Err(QuerySubtaskError::NotFound));
+        return Ok(None);
     };
     if !user.admin && user.id != subtask.creator && !subtask.enabled {
-        return Ok(Err(QuerySubtaskError::NotFound));
+        return Ok(None);
     }
 
     let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
 
-    Ok(Ok(map(
+    Ok(Some(map(
         specific,
         Subtask::from(subtask, user_subtask.is_solved(), user_subtask.is_rated()),
     )))
@@ -488,17 +488,17 @@ pub async fn query_subtask_admin<E, T>(
     task_id: Uuid,
     subtask_id: Uuid,
     map: impl Fn(E::Model, Subtask) -> T,
-) -> Result<Result<T, QuerySubtaskError>, DbErr>
+) -> Result<Result<T, QuerySubtaskAdminError>, DbErr>
 where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
 {
     let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
-        return Ok(Err(QuerySubtaskError::NotFound));
+        return Ok(Err(QuerySubtaskAdminError::NotFound));
     };
 
     if !(user.admin || user.id == subtask.creator) {
-        return Ok(Err(QuerySubtaskError::NoAccess));
+        return Ok(Err(QuerySubtaskAdminError::NoAccess));
     }
 
     let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
@@ -508,7 +508,7 @@ where
     )))
 }
 
-pub enum QuerySubtaskError {
+pub enum QuerySubtaskAdminError {
     NotFound,
     NoAccess,
 }

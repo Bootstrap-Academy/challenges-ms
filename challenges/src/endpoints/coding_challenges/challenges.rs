@@ -31,7 +31,7 @@ use crate::{
         judge::{self, get_executor_config, Judge},
         subtasks::{
             create_subtask, query_subtask, query_subtask_admin, query_subtasks, update_subtask,
-            CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError,
+            CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
         },
     },
 };
@@ -101,9 +101,8 @@ impl Api {
         )
         .await?
         {
-            Ok(x) => GetCodingChallenge::ok(x),
-            Err(QuerySubtaskError::NotFound) => GetCodingChallenge::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetCodingChallenge::no_access(),
+            Some(x) => GetCodingChallenge::ok(x),
+            None => GetCodingChallenge::subtask_not_found(),
         }
     }
 
@@ -128,9 +127,8 @@ impl Api {
         )
         .await?
         {
-            Ok(cc) => cc,
-            Err(QuerySubtaskError::NotFound) => return GetExamples::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => return GetExamples::no_access(),
+            Some(cc) => cc,
+            None => return GetExamples::subtask_not_found(),
         };
 
         let judge = self.get_judge(&cc.evaluator);
@@ -194,8 +192,8 @@ impl Api {
         .await?
         {
             Ok(cc) => GetEvaluator::ok(cc.evaluator),
-            Err(QuerySubtaskError::NotFound) => GetEvaluator::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetEvaluator::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetEvaluator::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetEvaluator::forbidden(),
         }
     }
 
@@ -224,8 +222,8 @@ impl Api {
                 environment: cc.solution_environment,
                 code: cc.solution_code,
             }),
-            Err(QuerySubtaskError::NotFound) => GetSolution::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetSolution::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetSolution::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetSolution::forbidden(),
         }
     }
 
@@ -386,16 +384,12 @@ response!(GetCodingChallenge = {
     Ok(200) => CodingChallenge,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
 });
 
 response!(GetExamples = {
     Ok(200) => Vec<Example>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
     /// The evaluator failed to execute.
     EvaluatorFailed(400, error),
     /// Failed to generate an example.

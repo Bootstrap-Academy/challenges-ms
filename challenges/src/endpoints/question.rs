@@ -27,7 +27,8 @@ use super::Tags;
 use crate::services::subtasks::{
     create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
     query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
-    CreateSubtaskError, QuerySubtaskError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
+    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
+    UserSubtaskExt,
 };
 
 pub struct Questions {
@@ -93,9 +94,8 @@ impl Questions {
         )
         .await?
         {
-            Ok(mcq) => GetQuestion::ok(mcq),
-            Err(QuerySubtaskError::NotFound) => GetQuestion::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetQuestion::no_access(),
+            Some(mcq) => GetQuestion::ok(mcq),
+            None => GetQuestion::subtask_not_found(),
         }
     }
 
@@ -121,8 +121,8 @@ impl Questions {
         .await?
         {
             Ok(matching) => GetQuestionWithSolution::ok(matching),
-            Err(QuerySubtaskError::NotFound) => GetQuestionWithSolution::subtask_not_found(),
-            Err(QuerySubtaskError::NoAccess) => GetQuestionWithSolution::forbidden(),
+            Err(QuerySubtaskAdminError::NotFound) => GetQuestionWithSolution::subtask_not_found(),
+            Err(QuerySubtaskAdminError::NoAccess) => GetQuestionWithSolution::forbidden(),
         }
     }
 
@@ -330,8 +330,6 @@ response!(GetQuestion = {
     Ok(200) => Question,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
-    NoAccess(403, error),
 });
 
 response!(GetQuestionWithSolution = {
