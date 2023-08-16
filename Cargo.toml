@@ -15,7 +15,7 @@ lto = true
 codegen-units = 1
 
 [workspace.dependencies]
-anyhow = { version = "1.0.72", default-features = false, features = ["std"] }
+anyhow = { version = "1.0.74", default-features = false, features = ["std"] }
 chrono = { version = "0.4.26", default-features = false, features = ["serde"] }
 config = { version = "0.13.3", default-features = false, features = ["toml"] }
 entity = { version = "0.1.0", path = "./entity" }
