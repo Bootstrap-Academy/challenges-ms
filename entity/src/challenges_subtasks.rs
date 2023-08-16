@@ -16,6 +16,7 @@ pub struct Model {
     pub coins: i64,
     pub enabled: bool,
     pub ty: ChallengesSubtaskType,
+    pub retired: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -33,6 +33,8 @@ pub struct Subtask {
     pub rated: bool,
     /// Whether the subtask is enabled and visible to normal users.
     pub enabled: bool,
+    /// Whether the subtask is retired.
+    pub retired: bool,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -59,6 +61,8 @@ pub struct UpdateSubtaskRequest {
     pub coins: PatchValue<u64>,
     /// Whether the subtask is enabled and visible to normal users.
     pub enabled: PatchValue<bool>,
+    /// Whether the subtask is retired.
+    pub retired: PatchValue<bool>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -208,6 +212,7 @@ impl Subtask {
             solved,
             rated,
             enabled: subtask.enabled,
+            retired: subtask.retired,
         }
     }
 }

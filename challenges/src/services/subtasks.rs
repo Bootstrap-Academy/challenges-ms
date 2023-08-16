@@ -35,7 +35,11 @@ pub async fn check_hearts(
     user: &User,
     subtask: &challenges_subtasks::Model,
 ) -> anyhow::Result<bool> {
-    if user.admin || user.id == subtask.creator || services.shop.has_premium(user.id).await? {
+    if subtask.retired
+        || user.admin
+        || user.id == subtask.creator
+        || services.shop.has_premium(user.id).await?
+    {
         return Ok(true);
     }
 
@@ -53,7 +57,11 @@ pub async fn deduct_hearts(
     user: &User,
     subtask: &challenges_subtasks::Model,
 ) -> anyhow::Result<bool> {
-    if user.admin || user.id == subtask.creator || services.shop.has_premium(user.id).await? {
+    if subtask.retired
+        || user.admin
+        || user.id == subtask.creator
+        || services.shop.has_premium(user.id).await?
+    {
         return Ok(true);
     }
 
@@ -81,6 +89,10 @@ pub async fn send_task_rewards(
     user_id: Uuid,
     subtask: &challenges_subtasks::Model,
 ) -> Result<(), SendTaskRewardsError> {
+    if subtask.retired {
+        return Ok(());
+    }
+
     if subtask.xp != 0 {
         let skills = get_skills(
             services,
@@ -600,6 +612,7 @@ pub async fn create_subtask(
         xp: Set(xp as _),
         coins: Set(coins as _),
         enabled: Set(true),
+        retired: Set(false),
     }
     .insert(db)
     .await?;
@@ -646,6 +659,7 @@ where
         xp: data.xp.map(|x| x as _).update(subtask.xp),
         coins: data.coins.map(|x| x as _).update(subtask.coins),
         enabled: data.enabled.update(subtask.enabled),
+        retired: data.retired.update(subtask.retired),
     }
     .update(db)
     .await?;
