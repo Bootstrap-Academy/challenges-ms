@@ -59,22 +59,23 @@ max_coins = 0
 ban_days = [3, 7, 30]
 
 [challenges.multiple_choice_questions]
-timeout_incr = 10  # seconds
+timeout = 2  # seconds
 hearts = 1
 creator_coins = 1
 
 [challenges.questions]
-timeout_incr = 10  # seconds
+timeout = 2  # seconds
 hearts = 1
 creator_coins = 1
 
 [challenges.matchings]
-timeout_incr = 10  # seconds
+timeout = 2  # seconds
 hearts = 1
 creator_coins = 1
 
 [challenges.coding_challenges]
 sandkasten_url = "http://sandkasten"
 max_concurrency = 4
+timeout = 10  # seconds
 hearts = 2
 creator_coins = 10

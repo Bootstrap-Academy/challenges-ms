@@ -173,11 +173,19 @@ impl Api {
             return CreateSubmission::environment_not_found();
         }
 
+        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
+
+        if let Some(last_attempt) = user_subtask.last_attempt() {
+            let time_left = self.config.challenges.coding_challenges.timeout as i64
+                - (Utc::now() - last_attempt).num_seconds();
+            if time_left > 0 {
+                return CreateSubmission::too_many_requests(time_left as u64);
+            }
+        }
+
         if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
             return CreateSubmission::no_access();
         }
-
-        let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
 
         let submission = Arc::new(
             challenges_coding_challenge_submissions::ActiveModel {
@@ -229,6 +237,8 @@ response!(GetSubmission = {
 
 response!(CreateSubmission = {
     Ok(201) => Submission,
+    /// Try again later. `details` contains the number of seconds to wait.
+    TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The solution environment does not exist.

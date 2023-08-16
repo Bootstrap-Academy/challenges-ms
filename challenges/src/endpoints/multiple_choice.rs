@@ -263,14 +263,9 @@ impl MultipleChoice {
 
         let solved_previously = user_subtask.is_solved();
         if let Some(last_attempt) = user_subtask.last_attempt() {
-            let time_left = self
-                .config
-                .challenges
-                .multiple_choice_questions
-                .timeout_incr as i64
-                * user_subtask.attempts() as i64
+            let time_left = self.config.challenges.multiple_choice_questions.timeout as i64
                 - (Utc::now() - last_attempt).num_seconds();
-            if !solved_previously && time_left > 0 {
+            if time_left > 0 {
                 return SolveMCQ::too_many_requests(time_left as u64);
             }
         }
