@@ -1,6 +1,6 @@
 use std::env;
 
-use config::{ConfigError, File};
+use config::{ConfigError, Environment, File};
 use serde::{de::DeserializeOwned, Deserialize};
 use url::Url;
 
@@ -17,10 +17,10 @@ pub fn load_database_config() -> Result<Database, ConfigError> {
 }
 
 pub fn load_config<T: DeserializeOwned>() -> Result<T, ConfigError> {
+    let path = env::var("CONFIG_PATH").unwrap_or("config.toml".to_owned());
     config::Config::builder()
-        .add_source(File::with_name(
-            &env::var("CONFIG_PATH").unwrap_or("config.toml".to_owned()),
-        ))
+        .add_source(File::with_name(&path))
+        .add_source(Environment::default().separator("__"))
         .build()?
         .try_deserialize()
 }
