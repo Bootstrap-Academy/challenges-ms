@@ -5,7 +5,7 @@ use chrono::Utc;
 use entity::{
     challenges_coding_challenge_result, challenges_coding_challenge_submissions,
     challenges_coding_challenges, challenges_subtasks, challenges_user_subtasks,
-    sea_orm_active_enums::{ChallengesSubtaskType, ChallengesVerdict},
+    sea_orm_active_enums::ChallengesVerdict,
 };
 use fnct::{format::JsonFormatter, key};
 use key_rwlock::KeyRwLock;
@@ -173,14 +173,7 @@ impl Api {
             return CreateSubmission::environment_not_found();
         }
 
-        if !deduct_hearts(
-            &self.state.services,
-            &self.config,
-            auth.0.id,
-            ChallengesSubtaskType::CodingChallenge,
-        )
-        .await?
-        {
+        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
             return CreateSubmission::no_access();
         }
 
@@ -240,7 +233,7 @@ response!(CreateSubmission = {
     SubtaskNotFound(404, error),
     /// The solution environment does not exist.
     EnvironmentNotFound(404, error),
-    /// The user has not unlocked this question.
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
     NoAccess(403, error),
 });
 

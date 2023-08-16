@@ -275,14 +275,7 @@ impl MultipleChoice {
             }
         }
 
-        if !deduct_hearts(
-            &self.state.services,
-            &self.config,
-            auth.0.id,
-            ChallengesSubtaskType::MultipleChoiceQuestion,
-        )
-        .await?
-        {
+        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
             return SolveMCQ::no_access();
         }
 
@@ -388,6 +381,6 @@ response!(SolveMCQ = {
     TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this question.
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
     NoAccess(403, error),
 });

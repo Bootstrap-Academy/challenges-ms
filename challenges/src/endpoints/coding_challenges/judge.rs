@@ -140,7 +140,7 @@ response!(TestExample = {
     ExampleNotFound(404, error),
     /// Environment does not exist.
     EnvironmentNotFound(404, error),
-    /// The user has not unlocked this question.
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
     NoAccess(403, error),
     /// The evaluator failed to execute.
     EvaluatorFailed(400, error),

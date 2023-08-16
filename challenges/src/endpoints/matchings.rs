@@ -282,14 +282,7 @@ impl Matchings {
             }
         }
 
-        if !deduct_hearts(
-            &self.state.services,
-            &self.config,
-            auth.0.id,
-            ChallengesSubtaskType::Matching,
-        )
-        .await?
-        {
+        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
             return SolveMatching::no_access();
         }
 
@@ -414,7 +407,7 @@ response!(SolveMatching = {
     TooManyRequests(429, error) => u64,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
-    /// The user has not unlocked this matching.
+    /// The user does not have enough hearts to submit a solution and is neither an admin nor the creator of this subtask.
     NoAccess(403, error),
     /// The solution list does not contain the same number of entries as the left and right lists.
     SolutionDifferentLength(400, error),

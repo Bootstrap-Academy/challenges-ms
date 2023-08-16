@@ -32,19 +32,19 @@ use super::{
 pub async fn deduct_hearts(
     services: &Services,
     config: &Config,
-    user_id: Uuid,
-    ty: ChallengesSubtaskType,
+    user: &User,
+    subtask: &challenges_subtasks::Model,
 ) -> anyhow::Result<bool> {
-    if services.shop.has_premium(user_id).await? {
+    if user.admin || user.id == subtask.creator || services.shop.has_premium(user.id).await? {
         return Ok(true);
     }
 
-    let hearts = subtask_hearts(config, ty);
+    let hearts = subtask_hearts(config, subtask.ty);
     services
         .shop
-        .add_hearts(user_id, -(hearts as i32))
+        .add_hearts(user.id, -(hearts as i32))
         .await
-        .with_context(|| format!("failed to deduct {hearts} hearts for user {user_id}"))
+        .with_context(|| format!("failed to deduct {hearts} hearts for user {}", user.id))
 }
 
 fn subtask_hearts(config: &Config, ty: ChallengesSubtaskType) -> u32 {
