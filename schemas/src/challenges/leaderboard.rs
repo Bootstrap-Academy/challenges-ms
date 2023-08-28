@@ -4,7 +4,7 @@ use poem_openapi::Object;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Object)]
-pub struct GlobalLeaderboard {
+pub struct Leaderboard {
     /// The list of users on the leaderboard in descending order of score.
     pub leaderboard: Vec<LeaderboardUser>,
     /// The total number of users on the leaderboard.

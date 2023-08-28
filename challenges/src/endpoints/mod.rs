@@ -8,7 +8,7 @@ use tokio::sync::Semaphore;
 
 use self::{
     challenges::Challenges, coding_challenges::CodingChallenges, course_tasks::CourseTasks,
-    leaderboard::Leaderboard, matchings::Matchings, multiple_choice::MultipleChoice,
+    leaderboard::LeaderboardEndpoints, matchings::Matchings, multiple_choice::MultipleChoice,
     question::Questions, subtasks::Subtasks,
 };
 
@@ -82,6 +82,6 @@ pub async fn setup_api(
         }
         .setup_api()
         .await?,
-        Leaderboard { state },
+        LeaderboardEndpoints { state },
     ))
 }
