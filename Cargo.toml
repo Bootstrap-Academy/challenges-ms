@@ -16,7 +16,7 @@ codegen-units = 1
 
 [workspace.dependencies]
 anyhow = { version = "1.0.75", default-features = false, features = ["std"] }
-chrono = { version = "0.4.26", default-features = false, features = ["serde"] }
+chrono = { version = "0.4.27", default-features = false, features = ["serde"] }
 config = { version = "0.13.3", default-features = false, features = ["toml"] }
 entity = { version = "0.1.0", path = "./entity" }
 fnct = { version = "0.6.0", default-features = false, features = ["serde_json"] }
