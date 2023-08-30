@@ -1,6 +1,5 @@
-use chrono::{TimeZone, Utc};
 use futures::future::try_join_all;
-use lib::services::{auth::User, Services};
+use lib::services::Services;
 use schemas::challenges::leaderboard::{Leaderboard, LeaderboardUser, Rank};
 use sea_orm::{
     sea_query::{Alias, BinOper, Expr, Query, SelectStatement},
@@ -136,24 +135,8 @@ async fn resolve_user(
     rank: impl Into<Rank>,
 ) -> anyhow::Result<LeaderboardUser> {
     let user = services.auth.get_user_by_id(user_id).await?;
-    let (name, registration, admin) = match user {
-        Some(User {
-            name,
-            registration,
-            admin,
-            ..
-        }) => (
-            name,
-            Utc.timestamp_nanos(registration as i64 * 1_000_000_000),
-            admin,
-        ),
-        None => ("[Deleted User]".into(), Utc.timestamp_nanos(0), false),
-    };
     Ok(LeaderboardUser {
-        user_id,
-        name,
-        registration,
-        admin,
+        user: user.map(Into::into),
         rank: rank.into(),
     })
 }

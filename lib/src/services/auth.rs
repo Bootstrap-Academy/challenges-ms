@@ -39,6 +39,7 @@ pub struct User {
     pub id: Uuid,
     pub name: String,
     pub display_name: String,
+    pub avatar_url: String,
     pub registration: f64,
     pub admin: bool,
 }
