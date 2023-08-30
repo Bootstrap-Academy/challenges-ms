@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
-use lib::{auth::VerifiedUserAuth, SharedState};
+use fnct::{format::JsonFormatter, key};
+use lib::{auth::VerifiedUserAuth, Cache, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response};
 use poem_openapi::{
@@ -19,6 +20,7 @@ use crate::services::leaderboard::{
 
 pub struct LeaderboardEndpoints {
     pub state: Arc<SharedState>,
+    pub cache: Cache<JsonFormatter>,
 }
 
 #[OpenApi(tag = "Tags::Leaderboard")]
@@ -51,9 +53,16 @@ impl LeaderboardEndpoints {
         db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> GetTaskLeaderboard::Response<VerifiedUserAuth> {
-        GetTaskLeaderboard::ok(
-            get_task_leaderboard(&db, &self.state.services, task_id.0, limit.0, offset.0).await?,
-        )
+        let leaderboard = self
+            .cache
+            .cached_result(
+                key!(task_id.0, limit.0, offset.0),
+                &[],
+                Some(Duration::from_secs(10)),
+                || get_task_leaderboard(&db, &self.state.services, task_id.0, limit.0, offset.0),
+            )
+            .await??;
+        GetTaskLeaderboard::ok(leaderboard)
     }
 
     #[oai(path = "/leaderboard/by-task/:task_id/:user_id", method = "get")]
@@ -64,7 +73,16 @@ impl LeaderboardEndpoints {
         db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> GetTaskLeaderboardUser::Response<VerifiedUserAuth> {
-        GetTaskLeaderboardUser::ok(get_task_leaderboard_user(&db, task_id.0, user_id.0).await?)
+        let rank = self
+            .cache
+            .cached_result(
+                key!(task_id.0, user_id.0),
+                &[],
+                Some(Duration::from_secs(10)),
+                || get_task_leaderboard_user(&db, task_id.0, user_id.0),
+            )
+            .await??;
+        GetTaskLeaderboardUser::ok(rank)
     }
 
     #[oai(path = "/leaderboard/by-language/:language", method = "get")]
@@ -76,10 +94,24 @@ impl LeaderboardEndpoints {
         db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> GetLanguageLeaderboard::Response<VerifiedUserAuth> {
-        GetLanguageLeaderboard::ok(
-            get_language_leaderboard(&db, &self.state.services, &language.0, limit.0, offset.0)
-                .await?,
-        )
+        let leaderboard = self
+            .cache
+            .cached_result(
+                key!(&language.0, limit.0, offset.0),
+                &[],
+                Some(Duration::from_secs(10)),
+                || {
+                    get_language_leaderboard(
+                        &db,
+                        &self.state.services,
+                        &language.0,
+                        limit.0,
+                        offset.0,
+                    )
+                },
+            )
+            .await??;
+        GetLanguageLeaderboard::ok(leaderboard)
     }
 
     #[oai(path = "/leaderboard/by-language/:language/:user_id", method = "get")]
@@ -90,9 +122,16 @@ impl LeaderboardEndpoints {
         db: Data<&DbTxn>,
         _auth: VerifiedUserAuth,
     ) -> GetLanguageLeaderboardUser::Response<VerifiedUserAuth> {
-        GetLanguageLeaderboardUser::ok(
-            get_language_leaderboard_user(&db, &language.0, user_id.0).await?,
-        )
+        let rank = self
+            .cache
+            .cached_result(
+                key!(&language.0, user_id.0),
+                &[],
+                Some(Duration::from_secs(10)),
+                || get_language_leaderboard_user(&db, &language.0, user_id.0),
+            )
+            .await??;
+        GetLanguageLeaderboardUser::ok(rank)
     }
 }
 

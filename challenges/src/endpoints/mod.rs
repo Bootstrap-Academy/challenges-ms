@@ -82,6 +82,9 @@ pub async fn setup_api(
         }
         .setup_api()
         .await?,
-        LeaderboardEndpoints { state },
+        LeaderboardEndpoints {
+            cache: state.cache.with_formatter(Default::default()),
+            state,
+        },
     ))
 }

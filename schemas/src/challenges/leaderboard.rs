@@ -1,9 +1,10 @@
 use chrono::{DateTime, TimeZone, Utc};
 use lib::services;
 use poem_openapi::Object;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct Leaderboard {
     /// The list of users on the leaderboard in descending order of score.
     pub leaderboard: Vec<LeaderboardUser>,
@@ -11,14 +12,14 @@ pub struct Leaderboard {
     pub total: u64,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct LeaderboardUser {
     pub user: Option<User>,
     #[oai(flatten)]
     pub rank: Rank,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct User {
     pub id: Uuid,
     pub name: String,
@@ -28,7 +29,7 @@ pub struct User {
     pub admin: bool,
 }
 
-#[derive(Debug, Clone, Object)]
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct Rank {
     pub score: u64,
     pub rank: u64,
