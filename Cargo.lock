@@ -728,9 +728,9 @@ dependencies = [
 
 [[package]]
 name = "fnct"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e32dc113ffb8ec5fb834fe93e31aece2b8ddffa960596834f4456575d793fbea"
+checksum = "153cc90926a44a0b4ce9081e7aab3fbb23878e020335b14afa9dde1eaca94e00"
 dependencies = [
  "async-trait",
  "postcard",
@@ -1234,9 +1234,9 @@ dependencies = [
 
 [[package]]
 name = "key-rwlock"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae710886ef1c6f43b28f0da0b5f8b872f22c1d99f0f64182195d88523c592ab0"
+checksum = "ce57601bdf3e9f549fe8a31bd5f848fb3ce5d35b0ce05f7b558d9a6d185b7c2d"
 dependencies = [
  "tokio",
 ]
@@ -1702,9 +1702,9 @@ dependencies = [
 
 [[package]]
 name = "poem-ext"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2e7b8409be202699b7cca995bc720452547e6709cf8d201f1a543eddbe3b7e0"
+checksum = "6bdbd601810df4590c4f9bdf8f4c567ad9979d296bb3ebd75190a45fb8f22a21"
 dependencies = [
  "itertools 0.11.0",
  "paste",
@@ -2107,9 +2107,9 @@ checksum = "1ad4cc8da4ef723ed60bced201181d83791ad433213d8c24efffda1eec85d741"
 
 [[package]]
 name = "sandkasten-client"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c981349cf9122bbdf73ae952c078f5870134357a7fd689d4b7171102cce8f1af"
+checksum = "10402629cc1581cb128d5354f661acd4393b8ca1428f97dac1553b13fd92cc5e"
 dependencies = [
  "poem-openapi",
  "reqwest",

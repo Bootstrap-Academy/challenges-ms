@@ -11,7 +11,7 @@ entity = { workspace = true }
 fnct = { workspace = true }
 futures = { version = "0.3.28", default-features = false, features = ["std"] }
 itertools = { workspace = true }
-key-rwlock = { version = "0.1.1", default-features = false }
+key-rwlock = { version = "0.1.2", default-features = false }
 lib = { workspace = true }
 poem = { workspace = true }
 poem-ext = { workspace = true }
