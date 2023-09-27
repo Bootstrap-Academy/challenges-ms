@@ -90,6 +90,7 @@ impl Api {
             cc.find_related(challenges_coding_challenge_submissions::Entity)
                 .filter(challenges_coding_challenge_submissions::Column::Creator.eq(auth.0.id))
                 .find_also_related(challenges_coding_challenge_result::Entity)
+                .order_by_desc(challenges_coding_challenge_submissions::Column::CreationTimestamp)
                 .all(&***db)
                 .await?
                 .into_iter()
