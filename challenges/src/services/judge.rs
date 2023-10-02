@@ -210,14 +210,14 @@ impl Judge<'_> {
             x => x?,
         };
         if let Some(verdict) = match (time_limit, memory_limit) {
-            _ if output.run.status != 0 => Some(ChallengesVerdict::RuntimeError),
-            _ if output.run.stdout.is_empty() => Some(ChallengesVerdict::NoOutput),
             (Some(time_limit), _) if output.run.resource_usage.time > time_limit => {
                 Some(ChallengesVerdict::TimeLimitExceeded)
             }
             (_, Some(memory_limit)) if output.run.resource_usage.memory / 1024 > memory_limit => {
                 Some(ChallengesVerdict::MemoryLimitExceeded)
             }
+            _ if output.run.status != 0 => Some(ChallengesVerdict::RuntimeError),
+            _ if output.run.stdout.is_empty() => Some(ChallengesVerdict::NoOutput),
             _ => None,
         } {
             return Ok(CheckResult {
