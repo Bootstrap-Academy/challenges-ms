@@ -238,12 +238,13 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum ChallengeCategory {
+pub enum ChallengeCategory {
     #[iden = "challenges_challenge_categories"]
     Table,
     Id,
     Title,
     Description,
+    CreationTimestamp,
 }
 
 #[derive(Iden)]

@@ -34,6 +34,7 @@ mod m20230719_174846_user_subtasks_last_attempt;
 mod m20230815_162457_remove_subtask_fee;
 mod m20230815_203544_remove_subtask_unlocked;
 mod m20230816_173651_retire_subtasks;
+mod m20231014_142202_category_creation_timestamp;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -68,6 +69,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230815_162457_remove_subtask_fee::Migration),
             Box::new(m20230815_203544_remove_subtask_unlocked::Migration),
             Box::new(m20230816_173651_retire_subtasks::Migration),
+            Box::new(m20231014_142202_category_creation_timestamp::Migration),
         ]
     }
 }

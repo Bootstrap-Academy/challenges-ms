@@ -51,7 +51,7 @@ impl Challenges {
         _auth: VerifiedUserAuth,
     ) -> ListCategories::Response<VerifiedUserAuth> {
         let mut query = challenges_challenge_categories::Entity::find()
-            .order_by_asc(challenges_challenge_categories::Column::Title);
+            .order_by_asc(challenges_challenge_categories::Column::CreationTimestamp);
         if let Some(title) = title.0 {
             query = query.filter(challenges_challenge_categories::Column::Title.contains(title));
         }
@@ -125,6 +125,7 @@ impl Challenges {
                 id: Set(Uuid::new_v4()),
                 title: Set(data.0.title),
                 description: Set(data.0.description),
+                creation_timestamp: Set(Utc::now().naive_utc()),
             }
             .insert(&***db)
             .await?
@@ -147,6 +148,7 @@ impl Challenges {
                     id: Unchanged(category.id),
                     title: data.0.title.update(category.title),
                     description: data.0.description.update(category.description),
+                    creation_timestamp: Unchanged(category.creation_timestamp),
                 }
                 .update(&***db)
                 .await?

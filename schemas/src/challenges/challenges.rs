@@ -13,6 +13,8 @@ pub struct Category {
     pub title: String,
     /// The description of the category
     pub description: String,
+    /// The creation timestamp of the category
+    pub creation_timestamp: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -132,6 +134,7 @@ impl From<challenges_challenge_categories::Model> for Category {
             id: value.id,
             title: value.title,
             description: value.description,
+            creation_timestamp: value.creation_timestamp.and_utc(),
         }
     }
 }
