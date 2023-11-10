@@ -76,6 +76,7 @@ impl MigrationTrait for Migration {
     }
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Iden)]
 pub enum Question {
     #[iden = "challenges_questions"]
