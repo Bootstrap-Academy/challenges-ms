@@ -10,7 +10,9 @@ use poem_ext::{db::DbTransactionMiddleware, panic_handler::PanicHandler};
 use poem_openapi::OpenApiService;
 use sandkasten_client::SandkastenClient;
 use sea_orm::{ConnectOptions, Database};
-use tracing::{info, warn};
+use sentry::integrations::tracing::EventFilter;
+use tracing::{info, warn, Level};
+use tracing_subscriber::{prelude::*, EnvFilter};
 
 use crate::endpoints::setup_api;
 
@@ -19,10 +21,30 @@ mod services;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
-
-    info!("Loading config");
     let config = Arc::new(config::load()?);
+
+    let _sentry_guard = config.challenges.sentry.as_ref().map(|sentry_config| {
+        sentry::init((
+            sentry_config.dsn.as_str(),
+            sentry::ClientOptions {
+                release: Some(env!("CARGO_PKG_VERSION").into()),
+                attach_stacktrace: true,
+                ..Default::default()
+            },
+        ))
+    });
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_filter(EnvFilter::from_default_env()))
+        .with(
+            sentry::integrations::tracing::layer().event_filter(|md| match md.level() {
+                &Level::ERROR => EventFilter::Exception,
+                &Level::WARN => EventFilter::Event,
+                &Level::INFO | &Level::DEBUG => EventFilter::Breadcrumb,
+                &Level::TRACE => EventFilter::Ignore,
+            }),
+        )
+        .init();
 
     info!("Connecting to database");
     let mut db_options = ConnectOptions::new(config.database.url.to_string());

@@ -66,3 +66,8 @@ pub struct Services {
     pub events: Url,
     pub challenges: Url,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct Sentry {
+    pub dsn: Url,
+}

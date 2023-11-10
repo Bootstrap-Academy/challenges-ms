@@ -1,11 +1,14 @@
 use serde::Deserialize;
 use url::Url;
 
+use super::Sentry;
+
 #[derive(Debug, Deserialize)]
 pub struct ChallengesConfig {
     pub host: String,
     pub port: u16,
     pub server: String,
+    pub sentry: Option<Sentry>,
     pub quizzes: Quizzes, // course tasks
     pub multiple_choice_questions: MultipleChoiceQuestions,
     pub questions: Questions,
