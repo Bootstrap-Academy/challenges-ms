@@ -32,7 +32,7 @@ redis = { version = "0.23.3", default-features = false, features = ["tokio-comp"
 reqwest = { version = "0.11.22", default-features = false, features = ["rustls-tls", "blocking", "json"] }
 sandkasten-client = { version = "0.1.7", default-features = false, features = ["reqwest", "poem-openapi"] }
 schemas = { version = "2.0.1", path = "./schemas" }
-sea-orm = { version = "0.12.4", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "postgres-array"] }
+sea-orm = { version = "0.12.5", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "postgres-array"] }
 sentry = { version = "0.31.8", default-features = false, features = ["anyhow", "backtrace", "contexts", "panic", "debug-images", "reqwest", "rustls", "tracing"] }
 serde = { version = "1.0.192", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.108", default-features = false }
