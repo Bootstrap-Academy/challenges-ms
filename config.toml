@@ -1,55 +1,30 @@
-jwt_secret = "changeme"
+jwt_secret = "dev-secret"
 internal_jwt_ttl = 10  # seconds
 cache_ttl = 600  # seconds
 
 [database]
-url = "postgres://academy:academy@database:5432/academy"
+url = "postgres://postgres@localhost:5432/academy-challenges"
 connect_timeout = 5  # seconds
 
 [redis]
-auth = "redis://redis:6379/0"
-skills = "redis://redis:6379/1"
-shop = "redis://redis:6379/2"
-jobs = "redis://redis:6379/3"
-events = "redis://redis:6379/4"
-challenges = "redis://redis:6379/5"
+auth = "redis://localhost:6379/0"
+skills = "redis://localhost:6379/1"
+shop = "redis://localhost:6379/2"
+jobs = "redis://localhost:6379/3"
+events = "redis://localhost:6379/4"
+challenges = "redis://localhost:6379/5"
 
 [services]
-auth = "http://auth:8000"
-skills = "http://skills:8000"
-shop = "http://shop:8000"
-jobs = "http://jobs:8000"
-events = "http://events:8000"
-challenges = "http://challenges:8000"
-
-[auth]
-host = "0.0.0.0"
-port = 8000
-server = "/"
-
-[skills]
-host = "0.0.0.0"
-port = 8000
-server = "/"
-
-[shop]
-host = "0.0.0.0"
-port = 8000
-server = "/"
-
-[jobs]
-host = "0.0.0.0"
-port = 8000
-server = "/"
-
-[events]
-host = "0.0.0.0"
-port = 8000
-server = "/"
+auth = "http://localhost:8000"
+skills = "http://localhost:8001"
+shop = "http://localhost:8002"
+jobs = "http://localhost:8003"
+events = "http://localhost:8004"
+challenges = "http://localhost:8005"
 
 [challenges]
-host = "0.0.0.0"
-port = 8000
+host = "127.0.0.1"
+port = 8005
 server = "/"
 
 # [challenges.sentry]
@@ -77,8 +52,8 @@ hearts = 1
 creator_coins = 1
 
 [challenges.coding_challenges]
-sandkasten_url = "http://sandkasten"
-max_concurrency = 4
+sandkasten_url = "https://sandkasten.bootstrap.academy"
+max_concurrency = 2
 timeout = 10  # seconds
 hearts = 2
 creator_coins = 10
