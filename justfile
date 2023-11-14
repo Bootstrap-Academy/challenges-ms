@@ -9,32 +9,31 @@ alias b := bacon
 _default:
     @just --list
 
+# cargo run
 run *args:
-    cargo run --locked {{args}}
+    cargo run --locked -p challenges {{args}}
 
+# cargo clippy
 check *args:
     cargo clippy {{args}}
 
+# cargo test
 test *args:
     cargo test --locked {{args}}
 
+# connect to database
 psql *args:
     psql "$DATABASE__URL" {{args}}
 
+# connect to redis
 redis ms *args:
     redis-cli -u "$REDIS__{{uppercase(ms)}}" {{args}}
 
-db:
-    docker run -it --rm --name academy-db \
-        -e POSTGRES_DB=academy \
-        -e POSTGRES_USER=academy \
-        -e POSTGRES_PASSWORD=academy \
-        -p 127.0.0.1:5432:5432 \
-        postgres:alpine
-
+# run migrations
 migrate *args:
     sea migrate {{args}}
 
+# generate entities
 entity:
     mv entity/src entity/.src.bak
     mkdir entity/src
@@ -42,9 +41,11 @@ entity:
     if [[ -f entity/src/sea_orm_active_enums.rs ]]; then sed -i -E 's/^(#\[derive\(.*DeriveActiveEnum.*)\)\]$/\1, poem_openapi::Enum, serde::Serialize, serde::Deserialize)]\n#[serde(rename_all = "SCREAMING_SNAKE_CASE")]\n#[oai(rename_all = "SCREAMING_SNAKE_CASE")]/' entity/src/sea_orm_active_enums.rs; fi
     cargo fmt -p entity
 
+# bacon clippy
 bacon *args:
     bacon clippy {{args}}
 
+# run pre-commit checks
 pre-commit:
     cargo fmt --check
     cargo clippy -- -D warnings
