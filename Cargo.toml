@@ -5,7 +5,6 @@ members = [
   "entity",
   "lib",
   "schemas",
-  "client",
   "challenges",
 ]
 
