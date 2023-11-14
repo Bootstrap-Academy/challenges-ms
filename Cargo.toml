@@ -8,11 +8,6 @@ members = [
   "challenges",
 ]
 
-[profile.release]
-strip = true
-lto = true
-codegen-units = 1
-
 [workspace.dependencies]
 anyhow = { version = "1.0.75", default-features = false, features = ["std"] }
 chrono = { version = "0.4.31", default-features = false, features = ["serde"] }
