@@ -23,7 +23,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/bootstrap-academy/backend
+            ghcr.io/bootstrap-academy/challenges-ms
           tags: |
             type=ref,event=branch
             type=ref,event=pr
