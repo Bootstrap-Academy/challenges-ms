@@ -317,7 +317,7 @@ dependencies = [
  "poem",
  "poem-ext",
  "poem-openapi",
- "redis",
+ "redis 0.23.4",
  "sandkasten-client",
  "schemas",
  "sea-orm",
@@ -751,13 +751,13 @@ dependencies = [
 
 [[package]]
 name = "fnct"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "153cc90926a44a0b4ce9081e7aab3fbb23878e020335b14afa9dde1eaca94e00"
+checksum = "a7690e2c880f1bae68c448aec7feb1f76103e2c669ad08186149cc00f472bec0"
 dependencies = [
  "async-trait",
  "postcard",
- "redis",
+ "redis 0.24.0",
  "serde",
  "serde_json",
  "sha2",
@@ -1296,7 +1296,7 @@ dependencies = [
  "poem",
  "poem-ext",
  "poem-openapi",
- "redis",
+ "redis 0.23.4",
  "reqwest",
  "sea-orm",
  "serde",
@@ -1966,6 +1966,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "redis"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c580d9cbbe1d1b479e8d67cf9daf6a62c957e6846048408b80b43ac3f6af84cd"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "combine",
+ "futures-util",
+ "itoa",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2229,9 +2248,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm"
-version = "0.12.7"
+version = "0.12.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a7b021d2dbc5d04a5d9f6a177e7d5ab36e31b3f27d20a3655ac9181366eaad4"
+checksum = "e8e2dd2f8a2d129c1632ec45dcfc15c44cc3d8b969adc8ac58c5f011ca7aecee"
 dependencies = [
  "async-stream",
  "async-trait",
