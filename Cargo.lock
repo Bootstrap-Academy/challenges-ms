@@ -317,7 +317,7 @@ dependencies = [
  "poem",
  "poem-ext",
  "poem-openapi",
- "redis",
+ "redis 0.23.4",
  "sandkasten-client",
  "schemas",
  "sea-orm",
@@ -751,13 +751,13 @@ dependencies = [
 
 [[package]]
 name = "fnct"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "153cc90926a44a0b4ce9081e7aab3fbb23878e020335b14afa9dde1eaca94e00"
+checksum = "a7690e2c880f1bae68c448aec7feb1f76103e2c669ad08186149cc00f472bec0"
 dependencies = [
  "async-trait",
  "postcard",
- "redis",
+ "redis 0.24.0",
  "serde",
  "serde_json",
  "sha2",
@@ -1296,7 +1296,7 @@ dependencies = [
  "poem",
  "poem-ext",
  "poem-openapi",
- "redis",
+ "redis 0.23.4",
  "reqwest",
  "sea-orm",
  "serde",
@@ -1966,6 +1966,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "redis"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c580d9cbbe1d1b479e8d67cf9daf6a62c957e6846048408b80b43ac3f6af84cd"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "combine",
+ "futures-util",
+ "itoa",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2229,9 +2248,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm"
-version = "0.12.7"
+version = "0.12.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a7b021d2dbc5d04a5d9f6a177e7d5ab36e31b3f27d20a3655ac9181366eaad4"
+checksum = "c5181eedee8ad0d002d2a288600140fe9937581c4668426a4ff1295c14c736cf"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2301,9 +2320,9 @@ dependencies = [
 
 [[package]]
 name = "sea-query"
-version = "0.30.2"
+version = "0.30.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb3e6bba153bb198646c8762c48414942a38db27d142e44735a133cabddcc820"
+checksum = "41558fa9bb5f4d73952dac0b9d9c2ce23966493fc9ee0008037b01d709838a68"
 dependencies = [
  "chrono",
  "derivative",
@@ -3027,9 +3046,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.34.0"
+version = "1.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0c014766411e834f7af5b8f4cf46257aab4036ca95e9d2c144a10f59ad6f5b9"
+checksum = "841d45b238a16291a4e1584e61820b8ae57d696cc5015c459c229ccc6990cc1c"
 dependencies = [
  "backtrace",
  "bytes",
