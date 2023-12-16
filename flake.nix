@@ -8,6 +8,7 @@
     nixpkgs,
     ...
   }: let
+    inherit (nixpkgs) lib;
     defaultSystems = [
       "x86_64-linux"
       "x86_64-darwin"
@@ -28,7 +29,18 @@
       challenges = pkgs.rustPlatform.buildRustPackage {
         inherit ((fromTOML (builtins.readFile ./challenges/Cargo.toml)).package) version;
         pname = "academy-challenges";
-        src = ./.;
+        src = lib.fileset.toSource {
+          root = ./.;
+          fileset = lib.fileset.unions [
+            ./Cargo.toml
+            ./Cargo.lock
+            ./migration
+            ./entity
+            ./lib
+            ./schemas
+            ./challenges
+          ];
+        };
         cargoLock.lockFile = ./Cargo.lock;
         doCheck = false;
       };
