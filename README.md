@@ -3,8 +3,8 @@
 [![build](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/build.yml/badge.svg)](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/build.yml) <!--
 https://app.codecov.io/gh/Bootstrap-Academy/challenges-ms/settings/badge
 [![codecov](https://codecov.io/gh/Bootstrap-Academy/challenges-ms/branch/develop/graph/badge.svg?token=changeme)](https://codecov.io/gh/Bootstrap-Academy/challenges-ms) -->
-<!-- ![Version](https://img.shields.io/github/v/tag/Bootstrap-Academy/challenges-ms?include_prereleases&label=version) -->
-<!-- [![dependency status](https://deps.rs/repo/github/Bootstrap-Academy/challenges-ms/status.svg)](https://deps.rs/repo/github/Bootstrap-Academy/challenges-ms) -->
+![Version](https://img.shields.io/github/v/tag/Bootstrap-Academy/challenges-ms?include_prereleases&label=version)
+[![dependency status](https://deps.rs/repo/github/Bootstrap-Academy/challenges-ms/status.svg)](https://deps.rs/repo/github/Bootstrap-Academy/challenges-ms)
 
 # Bootstrap Academy Challenges Microservice
 The official challenges microservice of [Bootstrap Academy](https://bootstrap.academy/).
