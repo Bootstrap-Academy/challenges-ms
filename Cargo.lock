@@ -321,7 +321,7 @@ dependencies = [
  "entity",
  "fnct",
  "futures",
- "itertools 0.11.0",
+ "itertools 0.12.0",
  "key-rwlock",
  "lib",
  "poem",
