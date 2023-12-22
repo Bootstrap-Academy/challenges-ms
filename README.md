@@ -1,6 +1,5 @@
 [![check](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/check.yml/badge.svg)](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/check.yml)
-[![test](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/test.yml/badge.svg)](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/test.yml)
-[![docker](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/docker.yml/badge.svg)](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/docker.yml) <!--
+[![test](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/test.yml/badge.svg)](https://github.com/Bootstrap-Academy/challenges-ms/actions/workflows/test.yml) <!--
 https://app.codecov.io/gh/Bootstrap-Academy/challenges-ms/settings/badge
 [![codecov](https://codecov.io/gh/Bootstrap-Academy/challenges-ms/branch/develop/graph/badge.svg?token=changeme)](https://codecov.io/gh/Bootstrap-Academy/challenges-ms) -->
 <!-- ![Version](https://img.shields.io/github/v/tag/Bootstrap-Academy/challenges-ms?include_prereleases&label=version) -->
