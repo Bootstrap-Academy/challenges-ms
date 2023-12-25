@@ -9,7 +9,7 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 entity = { workspace = true }
 fnct = { workspace = true }
-futures = { version = "0.3.29", default-features = false, features = ["std"] }
+futures = { version = "0.3.30", default-features = false, features = ["std"] }
 itertools = { workspace = true }
 key-rwlock = { version = "0.1.2", default-features = false }
 lib = { workspace = true }
