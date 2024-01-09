@@ -1,11 +1,13 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    fenix.url = "github:nix-community/fenix";
   };
 
   outputs = {
     self,
     nixpkgs,
+    fenix,
     ...
   }: let
     inherit (nixpkgs) lib;
@@ -26,24 +28,30 @@
       pkgs = import nixpkgs {inherit system;};
     in {
       default = self.packages.${system}.challenges;
-      challenges = pkgs.rustPlatform.buildRustPackage {
-        inherit ((fromTOML (builtins.readFile ./challenges/Cargo.toml)).package) version;
-        pname = "academy-challenges";
-        src = lib.fileset.toSource {
-          root = ./.;
-          fileset = lib.fileset.unions [
-            ./Cargo.toml
-            ./Cargo.lock
-            ./migration
-            ./entity
-            ./lib
-            ./schemas
-            ./challenges
-          ];
+      challenges = let
+        toolchain = fenix.packages.${system}.stable;
+        rustPlatform = pkgs.makeRustPlatform {
+          inherit (toolchain) cargo rustc;
         };
-        cargoLock.lockFile = ./Cargo.lock;
-        doCheck = false;
-      };
+      in
+        rustPlatform.buildRustPackage {
+          inherit ((fromTOML (builtins.readFile ./challenges/Cargo.toml)).package) version;
+          pname = "academy-challenges";
+          src = lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.unions [
+              ./Cargo.toml
+              ./Cargo.lock
+              ./migration
+              ./entity
+              ./lib
+              ./schemas
+              ./challenges
+            ];
+          };
+          cargoLock.lockFile = ./Cargo.lock;
+          doCheck = false;
+        };
     });
     nixosModules.default = {
       config,
