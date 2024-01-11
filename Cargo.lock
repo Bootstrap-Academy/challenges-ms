@@ -314,7 +314,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "challenges"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "entity"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "poem-openapi",
  "sea-orm",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "lib"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "config",
  "fnct",
@@ -1447,7 +1447,7 @@ checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
 
 [[package]]
 name = "migration"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "lib",
  "sea-orm",
@@ -2256,7 +2256,7 @@ dependencies = [
 
 [[package]]
 name = "schemas"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "chrono",
  "entity",
