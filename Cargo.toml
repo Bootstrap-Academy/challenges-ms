@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.dependencies]
-anyhow = { version = "1.0.79", default-features = false, features = ["std"] }
+anyhow = { version = "1.0.80", default-features = false, features = ["std"] }
 chrono = { version = "0.4.34", default-features = false, features = ["serde"] }
 config = { version = "0.13.4", default-features = false, features = ["toml"] }
 entity = { version = "2.1.1", path = "./entity" }
