@@ -10,7 +10,7 @@ members = [
 
 [workspace.dependencies]
 anyhow = { version = "1.0.80", default-features = false, features = ["std"] }
-chrono = { version = "0.4.34", default-features = false, features = ["serde"] }
+chrono = { version = "0.4.35", default-features = false, features = ["serde"] }
 config = { version = "0.13.4", default-features = false, features = ["toml"] }
 entity = { version = "2.1.1", path = "./entity" }
 fnct = { version = "0.6.2", default-features = false, features = ["serde_json"] }
