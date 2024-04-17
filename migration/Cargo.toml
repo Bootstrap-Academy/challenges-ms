@@ -7,5 +7,5 @@ publish = false
 [dependencies]
 lib = { workspace = true }
 sea-orm = { workspace = true }
-sea-orm-migration = { version = "0.12.14", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "cli", "with-uuid", "with-chrono" ] }
+sea-orm-migration = { version = "0.12.15", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "cli", "with-uuid", "with-chrono" ] }
 tokio = { workspace = true }
