@@ -23,7 +23,7 @@ poem = { version = "3.0.1", default-features = false, features = ["server"] }
 poem-ext = { version = "0.12.0", default-features = false, features = ["sea-orm", "serde"] }
 poem-openapi = { version = "5.0.2", default-features = false, features = ["swagger-ui", "redoc", "uuid", "chrono"] }
 redis = { version = "0.25.4", default-features = false, features = ["tokio-comp", "connection-manager"] }
-reqwest = { version = "0.12.4", default-features = false, features = ["rustls-tls", "blocking", "json"] }
+reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls", "blocking", "json"] }
 sandkasten-client = { version = "0.2.1", default-features = false, features = ["reqwest", "poem-openapi"] }
 schemas = { version = "2.1.2", path = "./schemas" }
 sea-orm = { version = "0.12.15", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "postgres-array"] }
