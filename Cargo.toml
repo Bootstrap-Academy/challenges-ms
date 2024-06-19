@@ -35,5 +35,5 @@ thiserror = { version = "1.0.61", default-features = false }
 tokio = { version = "1.38.0", default-features = false, features = ["macros", "rt-multi-thread"] }
 tracing = { version = "0.1.40", default-features = false }
 tracing-subscriber = { version = "0.3.18", default-features = false, features = ["fmt", "ansi", "env-filter"] }
-url = { version =  "2.5.1", default-features = false, features = ["serde"] }
+url = { version =  "2.5.2", default-features = false, features = ["serde"] }
 uuid = { version = "1.8.0", default-features = false, features = ["v4", "fast-rng", "serde"] }
