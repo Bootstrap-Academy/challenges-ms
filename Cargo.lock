@@ -747,9 +747,9 @@ dependencies = [
 
 [[package]]
 name = "fnct"
-version = "0.6.3"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f7af65ed64435bd989c61bf176c63fb6f2f6fa3ac613caacb8323c299ba5169"
+checksum = "4264a92a1d8fd9e5f6f19aad6cdcfc7c4906aad6d64e0ccc37f339272c328366"
 dependencies = [
  "async-trait",
  "postcard",
@@ -1471,6 +1471,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "num-bigint-dig"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2001,9 +2011,9 @@ dependencies = [
 
 [[package]]
 name = "redis"
-version = "0.25.4"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0d7a6955c7511f60f3ba9e86c6d02b3c3f144f8c24b288d1f4e18074ab8bbec"
+checksum = "8cc5b667390cb038bc65fc4b18c06e2550469f7e06a02d886f1a018a11f63563"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2012,6 +2022,7 @@ dependencies = [
  "futures",
  "futures-util",
  "itoa",
+ "num-bigint",
  "percent-encoding",
  "pin-project-lite",
  "ryu",
