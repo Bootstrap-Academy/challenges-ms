@@ -329,7 +329,7 @@ dependencies = [
  "redis",
  "sandkasten-client",
  "schemas",
- "sea-orm 0.12.15",
+ "sea-orm 1.0.1",
  "sentry",
  "serde",
  "serde_json",
@@ -687,7 +687,7 @@ name = "entity"
 version = "2.1.2"
 dependencies = [
  "poem-openapi",
- "sea-orm 0.12.15",
+ "sea-orm 1.0.1",
  "serde",
 ]
 
@@ -1330,7 +1330,7 @@ dependencies = [
  "poem-openapi",
  "redis",
  "reqwest",
- "sea-orm 0.12.15",
+ "sea-orm 1.0.1",
  "serde",
  "serde_json",
  "sha2",
@@ -1415,7 +1415,7 @@ name = "migration"
 version = "2.1.2"
 dependencies = [
  "lib",
- "sea-orm 0.12.15",
+ "sea-orm 1.0.1",
  "sea-orm-migration",
  "tokio",
 ]
@@ -2403,20 +2403,16 @@ checksum = "c8814e37dc25de54398ee62228323657520b7f29713b8e238649385dbe473ee0"
 dependencies = [
  "async-stream",
  "async-trait",
- "chrono",
  "futures",
  "log",
  "ouroboros",
  "sea-orm-macros 0.12.15",
  "sea-query 0.30.7",
- "sea-query-binder 0.5.0",
  "serde",
- "sqlx",
  "strum 0.25.0",
  "thiserror",
  "tracing",
  "url",
- "uuid",
 ]
 
 [[package]]
@@ -2433,7 +2429,7 @@ dependencies = [
  "ouroboros",
  "sea-orm-macros 1.0.1",
  "sea-query 0.31.0",
- "sea-query-binder 0.6.0",
+ "sea-query-binder",
  "serde",
  "sqlx",
  "strum 0.26.3",
@@ -2511,11 +2507,9 @@ version = "0.30.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4166a1e072292d46dc91f31617c2a1cdaf55a8be4b5c9f4bf2ba248e3ac4999b"
 dependencies = [
- "chrono",
  "derivative",
  "inherent",
  "ordered-float",
- "uuid",
 ]
 
 [[package]]
@@ -2529,18 +2523,6 @@ dependencies = [
  "inherent",
  "ordered-float",
  "sea-query-derive",
- "uuid",
-]
-
-[[package]]
-name = "sea-query-binder"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36bbb68df92e820e4d5aeb17b4acd5cc8b5d18b2c36a4dd6f4626aabfa7ab1b9"
-dependencies = [
- "chrono",
- "sea-query 0.30.7",
- "sqlx",
  "uuid",
 ]
 
