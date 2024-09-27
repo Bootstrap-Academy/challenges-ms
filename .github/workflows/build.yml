@@ -23,7 +23,7 @@ jobs:
           submodules: true
       # - run: sudo apt-get update && sudo apt-get install -y qemu-user-static
       - name: Setup Nix
-        uses: cachix/install-nix-action@V28
+        uses: cachix/install-nix-action@v29
         with:
           # newer versions result in different store paths
           install_url: https://releases.nixos.org/nix/nix-2.18.5/install
