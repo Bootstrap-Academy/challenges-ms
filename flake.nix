@@ -2,14 +2,12 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     fenix.url = "github:nix-community/fenix";
-    crate2nix.url = "github:nix-community/crate2nix";
   };
 
   outputs = {
     self,
     nixpkgs,
     fenix,
-    crate2nix,
     ...
   }: let
     inherit (nixpkgs) lib;
@@ -27,32 +25,11 @@
 
       toolchain = fenix.packages.${system}.stable;
 
-      src = builtins.path {
-        name = "academy-challenges";
-        path = lib.fileset.toSource {
-          root = ./.;
-          fileset = lib.fileset.unions [
-            ./Cargo.toml
-            ./Cargo.lock
-            ./migration
-            ./entity
-            ./lib
-            ./schemas
-            ./challenges
-          ];
-        };
-      };
-
-      generated = crate2nix.tools.${system}.generatedCargoNix {
-        name = "academy-challenges";
-        inherit src;
-      };
-
-      cargoNix = pkgs.callPackage generated {
+      cargoNix = pkgs.callPackage ./Cargo.nix {
         pkgs = pkgs.extend (final: prev: {
           inherit (toolchain) cargo;
           # workaround for https://github.com/NixOS/nixpkgs/blob/d80a3129b239f8ffb9015473c59b09ac585b378b/pkgs/build-support/rust/build-rust-crate/default.nix#L19-L23
-          rustc = toolchain.rustc // {unwrapped = {configureFlags = ["--target="];};};
+          rustc = toolchain.rustc // {unwrapped.configureFlags = ["--target="];};
         });
       };
     in {
@@ -64,6 +41,9 @@
           cargoNix.workspaceMembers.migration.build
         ];
       };
+      generate = pkgs.writeShellScriptBin "generate" ''
+        ${lib.getExe pkgs.crate2nix} generate
+      '';
     });
 
     nixosModules.default = {
@@ -131,6 +111,8 @@
               sea-orm-cli
               yq
               gnused
+              crate2nix
+              self.packages.${system}.generate
             ];
           RUST_LOG = "info,difft=off,poem_ext,lib,entity,migration,challenges=trace";
         };
