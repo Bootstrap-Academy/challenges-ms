@@ -9,9 +9,9 @@ members = [
 ]
 
 [workspace.dependencies]
-anyhow = { version = "1.0.89", default-features = false, features = ["std"] }
-chrono = { version = "0.4.38", default-features = false, features = ["serde"] }
-config = { version = "0.14.0", default-features = false, features = ["toml"] }
+anyhow = { version = "1.0.94", default-features = false, features = ["std"] }
+chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+config = { version = "0.14.1", default-features = false, features = ["toml"] }
 entity = { version = "2.1.2", path = "./entity" }
 fnct = { version = "0.6.5", default-features = false, features = ["serde_json"] }
 hmac = { version = "0.12.1", default-features = false }
@@ -19,21 +19,21 @@ itertools = { version = "0.12.1", default-features = false, features = ["use_std
 jwt = { version = "0.16.0", default-features = false }
 lib = { version = "2.1.2", path = "./lib" }
 paste = { version = "1.0.15", default-features = false }
-poem = { version = "3.1.1", default-features = false, features = ["server"] }
+poem = { version = "3.1.5", default-features = false, features = ["server"] }
 poem-ext = { version = "0.12.0", default-features = false, features = ["sea-orm", "serde"] }
-poem-openapi = { version = "5.1.2", default-features = false, features = ["swagger-ui", "redoc", "uuid", "chrono"] }
+poem-openapi = { version = "5.1.4", default-features = false, features = ["swagger-ui", "redoc", "uuid", "chrono"] }
 redis = { version = "0.26.1", default-features = false, features = ["tokio-comp", "connection-manager"] }
-reqwest = { version = "0.12.8", default-features = false, features = ["rustls-tls", "blocking", "json"] }
+reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls", "blocking", "json"] }
 sandkasten-client = { version = "0.2.2", default-features = false, features = ["reqwest", "poem-openapi"] }
 schemas = { version = "2.1.2", path = "./schemas" }
 sea-orm = { version = "0.12.15", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "postgres-array"] }
 sentry = { version = "0.32.3", default-features = false, features = ["anyhow", "backtrace", "contexts", "panic", "debug-images", "reqwest", "rustls", "tracing"] }
-serde = { version = "1.0.210", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.128", default-features = false }
+serde = { version = "1.0.215", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0.133", default-features = false }
 sha2 = { version = "0.10.8", default-features = false }
 thiserror = { version = "1.0.64", default-features = false }
-tokio = { version = "1.40.0", default-features = false, features = ["macros", "rt-multi-thread"] }
-tracing = { version = "0.1.40", default-features = false }
-tracing-subscriber = { version = "0.3.18", default-features = false, features = ["fmt", "ansi", "env-filter"] }
-url = { version =  "2.5.2", default-features = false, features = ["serde"] }
+tokio = { version = "1.42.0", default-features = false, features = ["macros", "rt-multi-thread"] }
+tracing = { version = "0.1.41", default-features = false }
+tracing-subscriber = { version = "0.3.19", default-features = false, features = ["fmt", "ansi", "env-filter"] }
+url = { version =  "2.5.4", default-features = false, features = ["serde"] }
 uuid = { version = "1.11.0", default-features = false, features = ["v4", "fast-rng", "serde"] }
