@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/release-23.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     fenix.url = "github:nix-community/fenix";
   };
 
@@ -11,48 +11,41 @@
     ...
   }: let
     inherit (nixpkgs) lib;
+
     defaultSystems = [
       "x86_64-linux"
       "x86_64-darwin"
       "aarch64-linux"
       "aarch64-darwin"
     ];
-    eachDefaultSystem = f:
-      builtins.listToAttrs (map (system: {
-          name = system;
-          value = f system;
-        })
-        defaultSystems);
+    eachDefaultSystem = lib.genAttrs defaultSystems;
   in {
     packages = eachDefaultSystem (system: let
       pkgs = import nixpkgs {inherit system;};
+
+      toolchain = fenix.packages.${system}.stable;
+
+      cargoNix = pkgs.callPackage ./Cargo.nix {
+        pkgs = pkgs.extend (final: prev: {
+          inherit (toolchain) cargo;
+          # workaround for https://github.com/NixOS/nixpkgs/blob/d80a3129b239f8ffb9015473c59b09ac585b378b/pkgs/build-support/rust/build-rust-crate/default.nix#L19-L23
+          rustc = toolchain.rustc // {unwrapped.configureFlags = ["--target="];};
+        });
+      };
     in {
       default = self.packages.${system}.challenges;
-      challenges = let
-        toolchain = fenix.packages.${system}.stable;
-        rustPlatform = pkgs.makeRustPlatform {
-          inherit (toolchain) cargo rustc;
-        };
-      in
-        rustPlatform.buildRustPackage {
-          inherit ((fromTOML (builtins.readFile ./challenges/Cargo.toml)).package) version;
-          pname = "academy-challenges";
-          src = lib.fileset.toSource {
-            root = ./.;
-            fileset = lib.fileset.unions [
-              ./Cargo.toml
-              ./Cargo.lock
-              ./migration
-              ./entity
-              ./lib
-              ./schemas
-              ./challenges
-            ];
-          };
-          cargoLock.lockFile = ./Cargo.lock;
-          doCheck = false;
-        };
+      challenges = pkgs.symlinkJoin {
+        name = "academy-challenges";
+        paths = [
+          cargoNix.workspaceMembers.challenges.build
+          cargoNix.workspaceMembers.migration.build
+        ];
+      };
+      generate = pkgs.writeShellScriptBin "generate" ''
+        ${lib.getExe pkgs.crate2nix} generate
+      '';
     });
+
     nixosModules.default = {
       config,
       lib,
@@ -102,6 +95,7 @@
           };
         };
     };
+
     devShells = eachDefaultSystem (system: let
       inherit (nixpkgs) lib;
       pkgs = import nixpkgs {inherit system;};
@@ -117,6 +111,8 @@
               sea-orm-cli
               yq
               gnused
+              crate2nix
+              self.packages.${system}.generate
             ];
           RUST_LOG = "info,difft=off,poem_ext,lib,entity,migration,challenges=trace";
         };
