@@ -81,7 +81,7 @@ impl Api {
         }
 
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
-        if !user_subtask.can_rate(&auth.0, &subtask) {
+        if !user_subtask.can_report(&auth.0, &subtask) {
             return CreateReport::permission_denied();
         }
 

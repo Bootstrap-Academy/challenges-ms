@@ -259,6 +259,10 @@ pub trait UserSubtaskExt {
         user.id != subtask.creator && self.is_solved() && !self.is_rated()
     }
 
+    fn can_report(&self, user: &User, subtask: &challenges_subtasks::Model) -> bool {
+        user.id != subtask.creator && !self.is_rated()
+    }
+
     fn attempted(&self) -> bool {
         self.last_attempt().is_some()
     }
