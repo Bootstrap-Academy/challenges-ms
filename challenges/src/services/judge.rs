@@ -1,10 +1,11 @@
+use anyhow::{bail, Context};
 use entity::sea_orm_active_enums::ChallengesVerdict;
 use fnct::{format::JsonFormatter, key};
 use lib::{Cache, CacheError};
 use sandkasten_client::{
     schemas::{
         programs::{
-            BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, File, LimitsOpt,
+            BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, EnvVar, File, LimitsOpt,
             MainFile, RunRequest, RunResult,
         },
         ErrorResponse,
@@ -16,8 +17,17 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+use super::verdict_message::{build_message, VerdictMessageContext};
+
 pub const EVALUATOR_TEMPLATE: &str = include_str!("../../assets/evaluator/template.py");
 pub const EVALUATOR_LIBRARY: &str = include_str!("../../assets/evaluator/lib.py");
+const JAVA_SMOKE_TEST: &str = r#"
+class Main {
+    public static void main(String[] args) {
+        System.out.println("ok");
+    }
+}
+"#;
 
 pub struct Judge<'a> {
     pub sandkasten: &'a SandkastenClient,
@@ -159,15 +169,29 @@ impl Judge<'_> {
         let code = match prepare_result.code {
             Some(code) => code,
             None => {
+                let reason = prepare_result.reason;
                 return Ok(CheckResult {
                     verdict: ChallengesVerdict::PreCheckFailed,
-                    reason: Some(prepare_result.reason),
+                    reason: Some(reason.clone()),
                     compile: None,
                     run: None,
-                })
+                    message: build_message(VerdictMessageContext {
+                        verdict: ChallengesVerdict::PreCheckFailed,
+                        reason: Some(reason.as_str()),
+                        compile_status: None,
+                        compile_stderr: None,
+                        run_status: None,
+                        run_stderr: None,
+                        run_time_ms: None,
+                        run_memory_kib: None,
+                        time_limit_ms: time_limit,
+                        memory_limit_mb: memory_limit,
+                    }),
+                });
             }
         };
 
+        let runtime_env = java_env_vars(environment, memory_limit);
         let output = match self
             .sandkasten
             .build_and_run(&BuildRunRequest {
@@ -177,10 +201,12 @@ impl Judge<'_> {
                         content: code,
                         ..Default::default()
                     },
+                    env_vars: runtime_env.clone(),
                     ..Default::default()
                 },
                 run: RunRequest {
                     stdin: Some(input.input.clone()),
+                    env_vars: runtime_env,
                     run_limits: LimitsOpt {
                         time: time_limit.map(|x| x / 1000 + 1),
                         memory: memory_limit,
@@ -196,12 +222,27 @@ impl Judge<'_> {
                     ErrorResponse::Inner(BuildRunError::EnvironmentNotFound) => {
                         Err(Error::EnvironmentNotFound)
                     }
-                    ErrorResponse::Inner(BuildRunError::CompileError(result)) => Ok(CheckResult {
-                        verdict: ChallengesVerdict::CompilationError,
-                        reason: None,
-                        compile: Some(result),
-                        run: None,
-                    }),
+                    ErrorResponse::Inner(BuildRunError::CompileError(result)) => {
+                        let message = build_message(VerdictMessageContext {
+                            verdict: ChallengesVerdict::CompilationError,
+                            reason: None,
+                            compile_status: Some(result.status),
+                            compile_stderr: Some(&result.stderr),
+                            run_status: None,
+                            run_stderr: None,
+                            run_time_ms: None,
+                            run_memory_kib: None,
+                            time_limit_ms: time_limit,
+                            memory_limit_mb: memory_limit,
+                        });
+                        Ok(CheckResult {
+                            verdict: ChallengesVerdict::CompilationError,
+                            reason: None,
+                            compile: Some(result),
+                            run: None,
+                            message,
+                        })
+                    }
                     err => Err(Error::Sandkasten(SandkastenError::ErrorResponse(Box::new(
                         err,
                     )))),
@@ -220,11 +261,24 @@ impl Judge<'_> {
             _ if output.run.stdout.is_empty() => Some(ChallengesVerdict::NoOutput),
             _ => None,
         } {
+            let message = build_message(VerdictMessageContext {
+                verdict,
+                reason: None,
+                compile_status: output.build.as_ref().map(|r| r.status),
+                compile_stderr: output.build.as_ref().map(|r| r.stderr.as_str()),
+                run_status: Some(output.run.status),
+                run_stderr: Some(output.run.stderr.as_str()),
+                run_time_ms: Some(output.run.resource_usage.time),
+                run_memory_kib: Some(output.run.resource_usage.memory),
+                time_limit_ms: time_limit,
+                memory_limit_mb: memory_limit,
+            });
             return Ok(CheckResult {
                 verdict,
                 reason: None,
                 compile: output.build,
                 run: Some(output.run),
+                message,
             });
         }
         let result = self
@@ -236,12 +290,68 @@ impl Judge<'_> {
                 },
             )
             .await?;
+        let verdict = result.verdict;
+        let reason = result.reason;
+        let message = build_message(VerdictMessageContext {
+            verdict,
+            reason: reason.as_deref(),
+            compile_status: output.build.as_ref().map(|r| r.status),
+            compile_stderr: output.build.as_ref().map(|r| r.stderr.as_str()),
+            run_status: Some(output.run.status),
+            run_stderr: Some(output.run.stderr.as_str()),
+            run_time_ms: Some(output.run.resource_usage.time),
+            run_memory_kib: Some(output.run.resource_usage.memory),
+            time_limit_ms: time_limit,
+            memory_limit_mb: memory_limit,
+        });
         Ok(CheckResult {
-            verdict: result.verdict,
-            reason: result.reason,
+            verdict,
+            reason,
             compile: output.build,
             run: Some(output.run),
+            message,
         })
+    }
+}
+
+fn java_env_vars(environment: &str, memory_limit_mb: Option<u64>) -> Vec<EnvVar> {
+    let env = environment.to_ascii_lowercase();
+    if env.starts_with("java") {
+        let mut env_vars = Vec::new();
+
+        let heap_settings = memory_limit_mb.and_then(|limit| {
+            if limit < 64 {
+                None
+            } else {
+                let headroom = limit.saturating_sub(16);
+                let suggested = ((limit as f64) * 0.6).round() as u64;
+                let xmx = suggested.min(headroom).max(32);
+                let xms = (xmx / 2).max(16);
+                Some((xms, xmx))
+            }
+        });
+
+        let tool_options = match heap_settings {
+            Some((xms, xmx)) => format!(
+                "-Xms{}m -Xmx{}m -Xss256k -XX:ThreadStackSize=256 -XX:+UseSerialGC",
+                xms, xmx
+            ),
+            None => "-Xss256k -XX:ThreadStackSize=256 -XX:+UseSerialGC".into(),
+        };
+
+        env_vars.push(EnvVar {
+            name: "JAVA_TOOL_OPTIONS".into(),
+            value: tool_options,
+        });
+
+        env_vars.push(EnvVar {
+            name: "MALLOC_ARENA_MAX".into(),
+            value: "2".into(),
+        });
+
+        env_vars
+    } else {
+        Vec::new()
     }
 }
 
@@ -255,6 +365,39 @@ pub async fn get_executor_config(
         })
         .await??
         .into())
+}
+
+pub async fn smoke_test_java(sandkasten: &SandkastenClient) -> anyhow::Result<()> {
+    let env_vars = java_env_vars("java", Some(256));
+    let result = sandkasten
+        .build_and_run(&BuildRunRequest {
+            build: BuildRequest {
+                environment: "java".into(),
+                main_file: MainFile {
+                    name: Some("Main.java".into()),
+                    content: JAVA_SMOKE_TEST.trim().into(),
+                    ..Default::default()
+                },
+                env_vars: env_vars.clone(),
+                ..Default::default()
+            },
+            run: RunRequest {
+                env_vars,
+                ..Default::default()
+            },
+        })
+        .await
+        .context("java smoke test execution failed")?;
+
+    if result.run.status != 0 {
+        bail!(
+            "java smoke test exited with status {} and stderr: {}",
+            result.run.status,
+            result.run.stderr
+        );
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Error)]

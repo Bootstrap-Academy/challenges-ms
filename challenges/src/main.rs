@@ -75,6 +75,12 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    info!("Running executor smoke checks");
+    match crate::services::judge::smoke_test_java(&sandkasten).await {
+        Ok(_) => info!("Java executor smoke test succeeded"),
+        Err(err) => warn!("Java executor smoke test failed: {err:?}"),
+    }
+
     let jwt_secret = JwtSecret::try_from(config.jwt_secret.as_str())?;
     let services = Services::from_config(
         jwt_secret.clone(),
