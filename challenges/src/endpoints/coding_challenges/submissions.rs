@@ -18,7 +18,9 @@ use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sandkasten_client::{schemas::environments::Environment, SandkastenClient};
-use schemas::challenges::coding_challenges::{QueueStatus, Submission, SubmissionContent};
+use schemas::challenges::coding_challenges::{
+    CheckResult, QueueStatus, RunSummary, Submission, SubmissionContent,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait,
     ModelTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
@@ -37,6 +39,7 @@ use crate::{
             deduct_hearts, get_subtask, get_user_subtask, send_task_rewards, update_user_subtask,
             SendTaskRewardsError, UserSubtaskExt,
         },
+        verdict_message::{build_message, VerdictMessageContext},
     },
 };
 
@@ -48,6 +51,25 @@ pub struct Api {
     pub judge_lock: Arc<Semaphore>,
     pub reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     pub queue_positions: Arc<RwLock<QueuePositions>>,
+}
+
+fn attach_verdict_message(result: &mut CheckResult<RunSummary>, limits: Option<(u64, u64)>) {
+    let (time_limit_ms, memory_limit_mb) = limits
+        .map(|(time, mem)| (Some(time), Some(mem)))
+        .unwrap_or((None, None));
+
+    result.message = build_message(VerdictMessageContext {
+        verdict: result.verdict,
+        reason: result.reason.as_deref(),
+        compile_status: result.compile.as_ref().map(|r| r.status),
+        compile_stderr: result.compile.as_ref().map(|r| r.stderr.as_str()),
+        run_status: result.run.as_ref().map(|r| r.status),
+        run_stderr: result.run.as_ref().map(|r| r.stderr.as_str()),
+        run_time_ms: result.run.as_ref().map(|r| r.resource_usage.time),
+        run_memory_kib: result.run.as_ref().map(|r| r.resource_usage.memory),
+        time_limit_ms,
+        memory_limit_mb,
+    });
 }
 
 #[OpenApi(tag = "Tags::CodingChallenges")]
@@ -96,7 +118,14 @@ impl Api {
                 .into_iter()
                 .map(|(submission, result)| {
                     let position = queue_positions.position(submission.id);
-                    Submission::from(&submission, result.map(Into::into), position)
+                    let mut result = result.map(Into::into);
+                    if let Some(ref mut res) = result {
+                        attach_verdict_message(
+                            res,
+                            Some((cc.time_limit as u64, cc.memory_limit as u64)),
+                        );
+                    }
+                    Submission::from(&submission, result, position)
                 })
                 .collect(),
         )

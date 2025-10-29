@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Utc};
 use entity::{
     challenges_coding_challenge_result, challenges_coding_challenge_submissions,
@@ -186,6 +188,8 @@ pub struct CheckResult<T: Send + Sync + Type + ParseFromJSON + ToJSON> {
     pub reason: Option<String>,
     pub compile: Option<T>,
     pub run: Option<T>,
+    #[oai(skip_serializing_if_is_none)]
+    pub message: Option<VerdictMessage>,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -194,6 +198,21 @@ pub struct ExecutorConfig {
     pub time_limit: u64,
     /// The maximum `memory_limit` in megabytes.
     pub memory_limit: u64,
+}
+
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
+pub struct VerdictMessage {
+    /// Translation key for the localized verdict headline.
+    pub title_key: String,
+    /// Optional translation key for additional descriptive text.
+    #[oai(skip_serializing_if_is_none)]
+    pub body_key: Option<String>,
+    /// Optional translation parameters for the body text.
+    #[oai(skip_serializing_if_is_none)]
+    pub body_params: Option<BTreeMap<String, String>>,
+    /// Optional sanitized technical description for power users.
+    #[oai(skip_serializing_if_is_none)]
+    pub detail: Option<String>,
 }
 
 impl CodingChallengeSummary {
@@ -239,6 +258,7 @@ impl From<CheckResult<RunResult>> for CheckResult<RunSummary> {
             reason: value.reason,
             compile: value.compile.map(Into::into),
             run: value.run.map(Into::into),
+            message: value.message,
         }
     }
 }
@@ -288,6 +308,7 @@ impl From<challenges_coding_challenge_result::Model> for CheckResult<RunSummary>
                 value.run_time,
                 value.run_memory,
             ),
+            message: None,
         }
     }
 }

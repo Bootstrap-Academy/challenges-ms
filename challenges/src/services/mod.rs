@@ -3,3 +3,4 @@ pub mod judge;
 pub mod leaderboard;
 pub mod subtasks;
 pub mod tasks;
+pub mod verdict_message;
