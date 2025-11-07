@@ -73,6 +73,7 @@ impl Api {
                     config.multiple_choice_questions.creator_coins
                 }
                 ChallengesSubtaskType::Question => config.questions.creator_coins,
+                ChallengesSubtaskType::Cloze => config.clozes.creator_coins,
             };
             self.state
                 .services

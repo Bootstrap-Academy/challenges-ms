@@ -13,6 +13,7 @@ pub struct ChallengesConfig {
     pub multiple_choice_questions: MultipleChoiceQuestions,
     pub questions: Questions,
     pub matchings: Matchings,
+    pub clozes: Clozes,
     pub coding_challenges: CodingChallenges,
 }
 
@@ -40,6 +41,13 @@ pub struct Questions {
 
 #[derive(Debug, Deserialize)]
 pub struct Matchings {
+    pub timeout: u64,
+    pub hearts: u32,
+    pub creator_coins: u32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Clozes {
     pub timeout: u64,
     pub hearts: u32,
     pub creator_coins: u32,

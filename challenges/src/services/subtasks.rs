@@ -80,6 +80,7 @@ fn subtask_hearts(config: &Config, ty: ChallengesSubtaskType) -> u32 {
         ChallengesSubtaskType::Matching => config.matchings.hearts,
         ChallengesSubtaskType::MultipleChoiceQuestion => config.multiple_choice_questions.hearts,
         ChallengesSubtaskType::Question => config.questions.hearts,
+        ChallengesSubtaskType::Cloze => config.clozes.hearts,
     }
 }
 

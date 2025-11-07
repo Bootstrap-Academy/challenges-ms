@@ -109,6 +109,8 @@ pub enum ChallengesSubtaskType {
     MultipleChoiceQuestion,
     #[sea_orm(string_value = "question")]
     Question,
+    #[sea_orm(string_value = "cloze")]
+    Cloze,
 }
 #[derive(
     Debug,
