@@ -7,12 +7,13 @@ use sandkasten_client::SandkastenClient;
 use tokio::sync::Semaphore;
 
 use self::{
-    challenges::Challenges, coding_challenges::CodingChallenges, course_tasks::CourseTasks,
-    leaderboard::LeaderboardEndpoints, matchings::Matchings, multiple_choice::MultipleChoice,
-    question::Questions, subtasks::Subtasks,
+    challenges::Challenges, cloze::Clozes, coding_challenges::CodingChallenges,
+    course_tasks::CourseTasks, leaderboard::LeaderboardEndpoints, matchings::Matchings,
+    multiple_choice::MultipleChoice, question::Questions, subtasks::Subtasks,
 };
 
 mod challenges;
+mod cloze;
 pub mod coding_challenges;
 mod course_tasks;
 mod leaderboard;
@@ -33,6 +34,8 @@ pub enum Tags {
     MultipleChoice,
     /// Simple questions with typed answers (subtasks)
     Questions,
+    /// Cloze (fill-in-the-blank) subtasks
+    Cloze,
     /// One to one matchings (subtasks)
     Matchings,
     /// Coding challenges (subtasks)
@@ -64,6 +67,10 @@ pub async fn setup_api(
             config: Arc::clone(&config),
         },
         Questions {
+            state: Arc::clone(&state),
+            config: Arc::clone(&config),
+        },
+        Clozes {
             state: Arc::clone(&state),
             config: Arc::clone(&config),
         },

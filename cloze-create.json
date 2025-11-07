@@ -1,0 +1,14 @@
+{
+  "subtask": {"xp": 5, "coins": 0},
+  "content": "Paris is the capital of {{blank_1}}.",
+  "blanks": [
+    {
+      "placeholder": 1,
+      "answer": "France",
+      "synonyms": ["French Republic"],
+      "option_index": null
+    }
+  ],
+  "options": [],
+  "case_sensitive": false
+}

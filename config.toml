@@ -1,4 +1,4 @@
-jwt_secret = "dev-secret"
+jwt_secret = "changeme"
 internal_jwt_ttl = 10  # seconds
 cache_ttl = 600  # seconds
 
@@ -47,6 +47,11 @@ hearts = 1
 creator_coins = 1
 
 [challenges.matchings]
+timeout = 2  # seconds
+hearts = 1
+creator_coins = 1
+
+[challenges.clozes]
 timeout = 2  # seconds
 hearts = 1
 creator_coins = 1
