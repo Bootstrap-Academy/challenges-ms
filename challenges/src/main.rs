@@ -7,7 +7,7 @@ use anyhow::bail;
 use fnct::{backend::AsyncRedisBackend, format::PostcardFormatter};
 use lib::{
     config::{self, Config},
-    jwt::JwtSecret,
+    jwt::{InternalJwtSecrets, JwtSecret},
     redis::RedisConnection,
     services::Services,
     Cache, SharedState,
@@ -80,14 +80,17 @@ async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
     }
 
     let jwt_secret = JwtSecret::try_from(config.jwt_secret.as_str())?;
+    let internal_jwt_secrets =
+        InternalJwtSecrets::new(jwt_secret.clone(), &config.internal_jwt_secrets)?;
     let services = Services::from_config(
-        jwt_secret.clone(),
+        &internal_jwt_secrets,
         Duration::from_secs(config.internal_jwt_ttl),
         &config.services,
         cache.clone(),
     );
     let shared_state = Arc::new(SharedState {
         jwt_secret,
+        internal_jwt_secrets,
         auth_redis,
         services,
         cache,
@@ -130,8 +133,9 @@ async fn run_sweep(config: Arc<Config>) -> anyhow::Result<()> {
     let cache = connect_cache(&config).await?;
 
     let jwt_secret = JwtSecret::try_from(config.jwt_secret.as_str())?;
+    let internal_jwt_secrets = InternalJwtSecrets::new(jwt_secret, &config.internal_jwt_secrets)?;
     let services = Services::from_config(
-        jwt_secret,
+        &internal_jwt_secrets,
         Duration::from_secs(config.internal_jwt_ttl),
         &config.services,
         cache,

@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    collections::HashMap,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -22,6 +23,41 @@ impl TryFrom<&str> for JwtSecret {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Ok(Self(Hmac::<Sha256>::new_from_slice(value.as_bytes())?))
+    }
+}
+
+/// The secrets used to sign and verify internal auth tokens, one per audience.
+///
+/// An audience without its own secret falls back to the shared jwt secret, so a
+/// deployment which has not rolled out the per audience secrets yet keeps
+/// working.
+#[derive(Debug, Clone)]
+pub struct InternalJwtSecrets {
+    fallback: JwtSecret,
+    per_audience: HashMap<String, JwtSecret>,
+}
+
+impl InternalJwtSecrets {
+    pub fn new(
+        fallback: JwtSecret,
+        secrets: &HashMap<String, String>,
+    ) -> Result<Self, InvalidLength> {
+        Ok(Self {
+            fallback,
+            per_audience: secrets
+                .iter()
+                .filter(|(_, secret)| !secret.is_empty())
+                .map(|(audience, secret)| {
+                    Ok((audience.clone(), JwtSecret::try_from(secret.as_str())?))
+                })
+                .collect::<Result<_, InvalidLength>>()?,
+        })
+    }
+
+    /// Return the secret internal auth tokens for the given audience are signed
+    /// and verified with.
+    pub fn get(&self, audience: &str) -> &JwtSecret {
+        self.per_audience.get(audience).unwrap_or(&self.fallback)
     }
 }
 
@@ -102,4 +138,75 @@ pub enum JwtError {
     NoExpiration,
     #[error("can only sign objects (trying to serialize {0})")]
     NoObject(&'static str),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sign_with(secret: &JwtSecret) -> String {
+        sign_jwt(
+            InternalAuthToken { aud: "auth".into() },
+            secret,
+            Duration::from_secs(10),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn internal_jwt_secrets_fall_back_to_the_shared_secret() {
+        let fallback = JwtSecret::try_from("shared secret").unwrap();
+        let secrets = InternalJwtSecrets::new(fallback.clone(), &HashMap::new()).unwrap();
+
+        let token = sign_with(&fallback);
+
+        assert!(verify_jwt::<InternalAuthToken>(&token, secrets.get("auth")).is_ok());
+    }
+
+    #[test]
+    fn internal_jwt_secrets_ignore_empty_values() {
+        let fallback = JwtSecret::try_from("shared secret").unwrap();
+        let secrets = InternalJwtSecrets::new(
+            fallback.clone(),
+            &HashMap::from([("auth".to_owned(), String::new())]),
+        )
+        .unwrap();
+
+        let token = sign_with(&fallback);
+
+        assert!(verify_jwt::<InternalAuthToken>(&token, secrets.get("auth")).is_ok());
+    }
+
+    #[test]
+    fn internal_jwt_secrets_separate_the_audiences() {
+        let fallback = JwtSecret::try_from("shared secret").unwrap();
+        let secrets = InternalJwtSecrets::new(
+            fallback.clone(),
+            &HashMap::from([
+                ("auth".to_owned(), "auth secret".to_owned()),
+                ("skills".to_owned(), "skills secret".to_owned()),
+            ]),
+        )
+        .unwrap();
+
+        // a token signed with the shared secret is no longer accepted for an
+        // audience which has its own secret
+        assert!(
+            verify_jwt::<InternalAuthToken>(&sign_with(&fallback), secrets.get("auth")).is_err()
+        );
+        assert!(verify_jwt::<InternalAuthToken>(
+            &sign_with(secrets.get("skills")),
+            secrets.get("auth")
+        )
+        .is_err());
+        assert!(verify_jwt::<InternalAuthToken>(
+            &sign_with(secrets.get("auth")),
+            secrets.get("auth")
+        )
+        .is_ok());
+        // an audience without its own secret still uses the shared one
+        assert!(
+            verify_jwt::<InternalAuthToken>(&sign_with(&fallback), secrets.get("shop")).is_ok()
+        );
+    }
 }
