@@ -138,10 +138,10 @@ async fn run_sweep(config: Arc<Config>) -> anyhow::Result<()> {
         &internal_jwt_secrets,
         Duration::from_secs(config.internal_jwt_ttl),
         &config.services,
-        cache,
+        cache.clone(),
     );
 
-    sweep_deleted_users(&db, &services, &config).await
+    sweep_deleted_users(&db, &services, &cache, &config).await
 }
 
 async fn connect_database(config: &Config) -> anyhow::Result<DatabaseConnection> {
