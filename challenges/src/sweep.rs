@@ -3,6 +3,7 @@ use std::{fmt::Display, time::Duration};
 use lib::{
     config::Config,
     services::{auth::User, Services},
+    Cache,
 };
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use tokio::time::{sleep_until, Instant};
@@ -19,6 +20,7 @@ use crate::services::users::{delete_user_data, referenced_user_ids};
 pub async fn sweep_deleted_users(
     db: &DatabaseConnection,
     services: &Services,
+    cache: &Cache,
     config: &Config,
 ) -> anyhow::Result<()> {
     let interval = Duration::from_secs(1)
@@ -47,6 +49,8 @@ pub async fn sweep_deleted_users(
                     let txn = db.begin().await?;
                     delete_user_data(&txn, user_id).await?;
                     txn.commit().await?;
+                    // the same cache entries the internal endpoint invalidates
+                    cache.pop_tag(&user_id.to_string()).await?;
                     stats.deleted += 1;
                 }
                 Decision::Skip => stats.errors += 1,
