@@ -24,7 +24,7 @@ pub struct User {
     pub id: Uuid,
     pub name: String,
     pub display_name: String,
-    pub avatar_url: String,
+    pub avatar_url: Option<String>,
     pub registration: DateTime<Utc>,
     pub admin: bool,
 }
