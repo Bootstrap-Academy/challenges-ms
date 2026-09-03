@@ -7,8 +7,8 @@ use entity::{
 };
 use sea_orm::{
     sea_query::{Alias, Expr, IntoColumnRef, IntoTableRef, Query, SelectStatement, UnionType},
-    ColumnTrait, Condition, ConnectionTrait, DatabaseTransaction, DbErr, EntityTrait, Order,
-    QueryFilter, QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, DeleteMany, EntityTrait, Order,
+    QueryFilter, QuerySelect, UpdateMany,
 };
 use uuid::Uuid;
 
@@ -18,21 +18,15 @@ use uuid::Uuid;
 /// references them (such as attempts and submissions of other users), which the
 /// database takes care of via `ON DELETE CASCADE`. Tasks created by the user
 /// are shared between all users, so they are only deleted if no subtask is left
-/// in them.
+/// in them. Bans the user has issued against somebody else are kept, because
+/// they restrict the banned user and not the creator.
 ///
 /// Returns the number of rows that have been deleted directly.
 pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result<u64, DbErr> {
     let mut rows = 0;
 
-    rows += challenges_ban::Entity::delete_many()
-        .filter(
-            Condition::any()
-                .add(challenges_ban::Column::UserId.eq(user_id))
-                .add(challenges_ban::Column::Creator.eq(user_id)),
-        )
-        .exec(db)
-        .await?
-        .rows_affected;
+    rows += delete_bans_against(user_id).exec(db).await?.rows_affected;
+    reset_creator_of_bans_by(user_id).exec(db).await?;
 
     rows += challenges_subtask_reports::Entity::delete_many()
         .filter(challenges_subtask_reports::Column::UserId.eq(user_id))
@@ -79,6 +73,23 @@ pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result
     rows += delete_empty_tasks(db, user_id).await?;
 
     Ok(rows)
+}
+
+/// Delete the bans that have been issued against a user.
+fn delete_bans_against(user_id: Uuid) -> DeleteMany<challenges_ban::Entity> {
+    challenges_ban::Entity::delete_many().filter(challenges_ban::Column::UserId.eq(user_id))
+}
+
+/// Reset the creator of the bans a user has issued to the nil uuid.
+///
+/// The bans themselves stay in force, because they restrict the banned user and
+/// not the creator. The nil uuid is the same placeholder that bans which have
+/// not been created by a user carry, so the id of the deleted user is gone
+/// afterwards.
+fn reset_creator_of_bans_by(user_id: Uuid) -> UpdateMany<challenges_ban::Entity> {
+    challenges_ban::Entity::update_many()
+        .col_expr(challenges_ban::Column::Creator, Expr::value(Uuid::nil()))
+        .filter(challenges_ban::Column::Creator.eq(user_id))
 }
 
 /// Delete all tasks created by a user that do not contain any subtasks anymore.
@@ -191,7 +202,7 @@ fn select_column(table: impl IntoTableRef, column: impl IntoColumnRef) -> Select
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::sea_query::PostgresQueryBuilder;
+    use sea_orm::{sea_query::PostgresQueryBuilder, QueryTrait};
 
     use super::*;
 
@@ -208,6 +219,40 @@ mod tests {
         ("challenges_subtasks", "creator"),
         ("challenges_tasks", "creator"),
     ];
+
+    #[test]
+    fn test_bans_against_the_user_are_deleted() {
+        let user_id = Uuid::from_u128(0x42);
+        let query = delete_bans_against(user_id)
+            .into_query()
+            .to_string(PostgresQueryBuilder);
+        assert!(
+            query.starts_with(r#"DELETE FROM "challenges_ban""#),
+            "{query}"
+        );
+        assert!(
+            query.contains(&format!(r#""user_id" = '{user_id}'"#)),
+            "{query}"
+        );
+        assert!(!query.contains("creator"), "{query}");
+    }
+
+    #[test]
+    fn test_bans_issued_by_the_user_are_kept_and_anonymized() {
+        let user_id = Uuid::from_u128(0x42);
+        let query = reset_creator_of_bans_by(user_id)
+            .into_query()
+            .to_string(PostgresQueryBuilder);
+        assert!(query.starts_with(r#"UPDATE "challenges_ban""#), "{query}");
+        assert!(
+            query.contains(&format!(r#"SET "creator" = '{}'"#, Uuid::nil())),
+            "{query}"
+        );
+        assert!(
+            query.contains(&format!(r#""creator" = '{user_id}'"#)),
+            "{query}"
+        );
+    }
 
     #[test]
     fn test_referenced_user_ids_query_covers_all_columns() {
