@@ -7,3 +7,4 @@ pub mod matchings;
 pub mod multiple_choice;
 pub mod question;
 pub mod subtasks;
+pub mod user_export;
