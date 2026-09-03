@@ -14,23 +14,28 @@ impl AuthService {
     }
 
     pub async fn get_user_by_id(&self, id: Uuid) -> ServiceResult<Option<User>> {
-        Ok(self
-            .0
+        self.0
             .cache
-            .cached_result(key!(id), &[], None, || async {
-                match self
-                    .0
-                    .get(&format!("/users/{id}"))
-                    .send()
-                    .await?
-                    .error_for_status()
-                {
-                    Ok(resp) => Ok(Some(resp.json().await?)),
-                    Err(err) if err.status() == Some(StatusCode::NOT_FOUND) => Ok(None),
-                    Err(err) => Err(err),
-                }
+            .cached_result(key!(id), &[&format!("{id}")], None, || {
+                self.get_user_by_id_uncached(id)
             })
-            .await??)
+            .await?
+    }
+
+    /// Same as [`get_user_by_id`](Self::get_user_by_id), but always asks the
+    /// auth microservice instead of using the cache.
+    pub async fn get_user_by_id_uncached(&self, id: Uuid) -> ServiceResult<Option<User>> {
+        match self
+            .0
+            .get(&format!("/users/{id}"))
+            .send()
+            .await?
+            .error_for_status()
+        {
+            Ok(resp) => Ok(Some(resp.json().await?)),
+            Err(err) if err.status() == Some(StatusCode::NOT_FOUND) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
     }
 }
 

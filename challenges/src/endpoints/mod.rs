@@ -8,13 +8,14 @@ use tokio::sync::Semaphore;
 
 use self::{
     challenges::Challenges, coding_challenges::CodingChallenges, course_tasks::CourseTasks,
-    leaderboard::LeaderboardEndpoints, matchings::Matchings, multiple_choice::MultipleChoice,
-    question::Questions, subtasks::Subtasks,
+    internal::Internal, leaderboard::LeaderboardEndpoints, matchings::Matchings,
+    multiple_choice::MultipleChoice, question::Questions, subtasks::Subtasks,
 };
 
 mod challenges;
 pub mod coding_challenges;
 mod course_tasks;
+mod internal;
 mod leaderboard;
 mod matchings;
 mod multiple_choice;
@@ -39,6 +40,8 @@ pub enum Tags {
     CodingChallenges,
     /// Leaderboard
     Leaderboard,
+    /// Endpoints that are only used by other microservices
+    Internal,
 }
 
 pub async fn setup_api(
@@ -84,7 +87,8 @@ pub async fn setup_api(
         .await?,
         LeaderboardEndpoints {
             cache: state.cache.with_formatter(Default::default()),
-            state,
+            state: Arc::clone(&state),
         },
+        Internal { state },
     ))
 }

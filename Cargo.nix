@@ -1047,7 +1047,7 @@ rec {
             name = "tokio";
             packageId = "tokio";
             usesDefaultFeatures = false;
-            features = [ "macros" "rt-multi-thread" ];
+            features = [ "macros" "rt-multi-thread" "time" ];
           }
           {
             name = "tracing";
@@ -4365,7 +4365,7 @@ rec {
             name = "tokio";
             packageId = "tokio";
             usesDefaultFeatures = false;
-            features = [ "macros" "rt-multi-thread" ];
+            features = [ "macros" "rt-multi-thread" "time" ];
           }
         ];
 

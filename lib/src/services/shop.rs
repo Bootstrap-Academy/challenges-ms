@@ -46,7 +46,7 @@ impl ShopService {
             .cache
             .cached_result(
                 key!(user_id),
-                &[],
+                &[&format!("{user_id}")],
                 Some(Duration::from_secs(10)),
                 || async {
                     self.0

@@ -77,7 +77,7 @@ impl LeaderboardEndpoints {
             .cache
             .cached_result(
                 key!(task_id.0, user_id.0),
-                &[],
+                &[&format!("{}", user_id.0)],
                 Some(Duration::from_secs(10)),
                 || get_task_leaderboard_user(&db, task_id.0, user_id.0),
             )
@@ -126,7 +126,7 @@ impl LeaderboardEndpoints {
             .cache
             .cached_result(
                 key!(&language.0, user_id.0),
-                &[],
+                &[&format!("{}", user_id.0)],
                 Some(Duration::from_secs(10)),
                 || get_language_leaderboard_user(&db, &language.0, user_id.0),
             )
