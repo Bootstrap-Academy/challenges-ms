@@ -1,23 +1,31 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::dbg_macro, clippy::use_debug, clippy::todo)]
 
-use std::{sync::Arc, time::Duration};
+use std::{env, sync::Arc, time::Duration};
 
+use anyhow::bail;
 use fnct::{backend::AsyncRedisBackend, format::PostcardFormatter};
-use lib::{config, jwt::JwtSecret, redis::RedisConnection, services::Services, Cache, SharedState};
+use lib::{
+    config::{self, Config},
+    jwt::JwtSecret,
+    redis::RedisConnection,
+    services::Services,
+    Cache, SharedState,
+};
 use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
 use poem_ext::{db::DbTransactionMiddleware, panic_handler::PanicHandler};
 use poem_openapi::OpenApiService;
 use sandkasten_client::SandkastenClient;
-use sea_orm::{ConnectOptions, Database};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sentry::integrations::tracing::EventFilter;
 use tracing::{info, warn, Level};
 use tracing_subscriber::{prelude::*, EnvFilter};
 
-use crate::endpoints::setup_api;
+use crate::{endpoints::setup_api, sweep::sweep_deleted_users};
 
 mod endpoints;
 mod services;
+mod sweep;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -46,20 +54,16 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    info!("Connecting to database");
-    let mut db_options = ConnectOptions::new(config.database.url.to_string());
-    db_options.connect_timeout(Duration::from_secs(config.database.connect_timeout));
-    let db = Database::connect(db_options).await?;
+    match env::args().nth(1) {
+        None => serve(config).await,
+        Some(cmd) if cmd == "sweep-deleted-users" => run_sweep(config).await,
+        Some(cmd) => bail!("Unknown subcommand: {cmd}"),
+    }
+}
 
-    info!("Connecting to redis");
-    let cache = Cache::new(
-        AsyncRedisBackend::new(
-            RedisConnection::new(config.redis.challenges.as_str()).await?,
-            "challenges".into(),
-        ),
-        PostcardFormatter,
-        Duration::from_secs(config.cache_ttl),
-    );
+async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
+    let db = connect_database(&config).await?;
+    let cache = connect_cache(&config).await?;
     let auth_redis = RedisConnection::new(config.redis.auth.as_str()).await?;
 
     info!("Connecting to Sandkasten");
@@ -119,4 +123,38 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     Ok(())
+}
+
+async fn run_sweep(config: Arc<Config>) -> anyhow::Result<()> {
+    let db = connect_database(&config).await?;
+    let cache = connect_cache(&config).await?;
+
+    let jwt_secret = JwtSecret::try_from(config.jwt_secret.as_str())?;
+    let services = Services::from_config(
+        jwt_secret,
+        Duration::from_secs(config.internal_jwt_ttl),
+        &config.services,
+        cache,
+    );
+
+    sweep_deleted_users(&db, &services, &config).await
+}
+
+async fn connect_database(config: &Config) -> anyhow::Result<DatabaseConnection> {
+    info!("Connecting to database");
+    let mut db_options = ConnectOptions::new(config.database.url.to_string());
+    db_options.connect_timeout(Duration::from_secs(config.database.connect_timeout));
+    Ok(Database::connect(db_options).await?)
+}
+
+async fn connect_cache(config: &Config) -> anyhow::Result<Cache> {
+    info!("Connecting to redis");
+    Ok(Cache::new(
+        AsyncRedisBackend::new(
+            RedisConnection::new(config.redis.challenges.as_str()).await?,
+            "challenges".into(),
+        ),
+        PostcardFormatter,
+        Duration::from_secs(config.cache_ttl),
+    ))
 }

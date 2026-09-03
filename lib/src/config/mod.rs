@@ -34,6 +34,8 @@ pub struct Config {
     pub redis: Redis,
     pub services: Services,
     pub challenges: ChallengesConfig,
+    #[serde(default)]
+    pub deleted_user_sweep: DeletedUserSweep,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,4 +72,49 @@ pub struct Services {
 #[derive(Debug, Deserialize)]
 pub struct Sentry {
     pub dsn: Url,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeletedUserSweep {
+    #[serde(default = "default_batch_size")]
+    pub batch_size: u64,
+    /// Maximum number of auth microservice requests per second (0 = unlimited).
+    #[serde(default = "default_rate_limit")]
+    pub rate_limit: u32,
+}
+
+impl Default for DeletedUserSweep {
+    fn default() -> Self {
+        Self {
+            batch_size: default_batch_size(),
+            rate_limit: default_rate_limit(),
+        }
+    }
+}
+
+fn default_batch_size() -> u64 {
+    500
+}
+
+fn default_rate_limit() -> u32 {
+    10
+}
+
+#[cfg(test)]
+mod tests {
+    use config::FileFormat;
+
+    use super::*;
+
+    #[test]
+    fn test_deleted_user_sweep_defaults() {
+        let deleted_user_sweep: DeletedUserSweep = config::Config::builder()
+            .add_source(File::from_str("", FileFormat::Toml))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap();
+        assert_eq!(deleted_user_sweep.batch_size, 500);
+        assert_eq!(deleted_user_sweep.rate_limit, 10);
+    }
 }

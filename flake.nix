@@ -66,31 +66,63 @@
         settings = mkOption {
           inherit (settingsFormat) type;
         };
+        sweepDeletedUsers = {
+          enable = mkEnableOption "periodic sweep for data of deleted users";
+          interval = mkOption {
+            type = types.str;
+            default = "daily";
+          };
+          randomizedDelay = mkOption {
+            type = types.str;
+            default = "5m";
+          };
+        };
       };
 
       config = let
         cfg = config.academy.backend.challenges;
+        serviceConfig = {
+          User = "academy-challenges";
+          Group = "academy-challenges";
+          DynamicUser = true;
+          EnvironmentFile = cfg.environmentFiles;
+        };
+        environment = {
+          inherit (cfg) RUST_LOG;
+          CONFIG_PATH = settingsFormat.generate "config.toml" cfg.settings;
+        };
       in
         lib.mkIf cfg.enable {
-          systemd.services = {
-            academy-challenges = {
-              wantedBy = ["multi-user.target"];
-              serviceConfig = {
-                User = "academy-challenges";
-                Group = "academy-challenges";
-                DynamicUser = true;
-                EnvironmentFile = cfg.environmentFiles;
+          systemd.services =
+            {
+              academy-challenges = {
+                wantedBy = ["multi-user.target"];
+                inherit serviceConfig environment;
+                preStart = ''
+                  ${self.packages.${pkgs.system}.default}/bin/migration
+                '';
+                script = ''
+                  ${self.packages.${pkgs.system}.default}/bin/challenges
+                '';
               };
-              environment = {
-                inherit (cfg) RUST_LOG;
-                CONFIG_PATH = settingsFormat.generate "config.toml" cfg.settings;
+            }
+            // lib.optionalAttrs cfg.sweepDeletedUsers.enable {
+              academy-challenges-sweep-deleted-users = {
+                inherit environment;
+                serviceConfig = serviceConfig // {Type = "oneshot";};
+                script = ''
+                  ${self.packages.${pkgs.system}.default}/bin/challenges sweep-deleted-users
+                '';
               };
-              preStart = ''
-                ${self.packages.${pkgs.system}.default}/bin/migration
-              '';
-              script = ''
-                ${self.packages.${pkgs.system}.default}/bin/challenges
-              '';
+            };
+          systemd.timers = lib.optionalAttrs cfg.sweepDeletedUsers.enable {
+            academy-challenges-sweep-deleted-users = {
+              wantedBy = ["timers.target"];
+              timerConfig = {
+                OnCalendar = cfg.sweepDeletedUsers.interval;
+                RandomizedDelaySec = cfg.sweepDeletedUsers.randomizedDelay;
+                Persistent = true;
+              };
             };
           };
         };
