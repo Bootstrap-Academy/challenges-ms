@@ -1,4 +1,4 @@
-use std::env;
+use std::{collections::HashMap, env};
 
 use config::{ConfigError, Environment, File};
 use serde::{de::DeserializeOwned, Deserialize};
@@ -28,6 +28,10 @@ pub fn load_config<T: DeserializeOwned>() -> Result<T, ConfigError> {
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub jwt_secret: String,
+    /// Secrets for the internal auth tokens, one per audience. An audience
+    /// which is missing here falls back to [`Config::jwt_secret`].
+    #[serde(default)]
+    pub internal_jwt_secrets: HashMap<String, String>,
     pub internal_jwt_ttl: u64,
     pub cache_ttl: u64,
     pub database: Database,
