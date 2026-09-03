@@ -5,7 +5,10 @@ use fnct::{backend::AsyncRedisBackend, format::PostcardFormatter, AsyncCache};
 use sea_orm::DatabaseConnection;
 use services::Services;
 
-use crate::{jwt::JwtSecret, redis::RedisConnection};
+use crate::{
+    jwt::{InternalJwtSecrets, JwtSecret},
+    redis::RedisConnection,
+};
 
 pub mod auth;
 pub mod config;
@@ -19,6 +22,7 @@ pub type CacheError<S = PostcardFormatter> = fnct::Error<AsyncRedisBackend<Redis
 #[derive(Debug, Clone)]
 pub struct SharedState {
     pub jwt_secret: JwtSecret,
+    pub internal_jwt_secrets: InternalJwtSecrets,
     pub auth_redis: RedisConnection,
     pub services: Services,
     pub cache: Cache,
