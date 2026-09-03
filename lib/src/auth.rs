@@ -93,7 +93,7 @@ async fn internal_auth_check(
     let data = req
         .data::<Arc<SharedState>>()
         .expect("request does not have a SharedState");
-    match verify_internal_token(&token, &data.jwt_secret) {
+    match verify_internal_token(&token, data.internal_jwt_secrets.get(INTERNAL_AUDIENCE)) {
         true => Ok(()),
         false => Err(InternalAuthError::raw::unauthorized()),
     }

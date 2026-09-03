@@ -7,7 +7,7 @@ use url::Url;
 
 use self::{auth::AuthService, shop::ShopService, skills::SkillsService};
 use crate::{
-    jwt::{sign_jwt, InternalAuthToken, JwtSecret},
+    jwt::{sign_jwt, InternalAuthToken, InternalJwtSecrets, JwtSecret},
     Cache, CacheError,
 };
 
@@ -24,29 +24,38 @@ pub struct Services {
 
 impl Services {
     pub fn from_config(
-        jwt_secret: JwtSecret,
+        internal_jwt_secrets: &InternalJwtSecrets,
         jwt_ttl: Duration,
         conf: &crate::config::Services,
         cache: Cache,
     ) -> Self {
-        let jwt_config = Arc::new(JwtConfig {
-            secret: jwt_secret,
-            ttl: jwt_ttl,
-        });
+        // every service is addressed with the secret that belongs to its own
+        // audience, so the key of one service cannot be used to talk to another
+        let jwt_config = |audience: &str| {
+            Arc::new(JwtConfig {
+                secret: internal_jwt_secrets.get(audience).clone(),
+                ttl: jwt_ttl,
+            })
+        };
         Self {
             auth: AuthService::new(Service::new(
                 "auth",
                 conf.auth.clone(),
-                Arc::clone(&jwt_config),
+                jwt_config("auth"),
                 cache.clone(),
             )),
             skills: SkillsService::new(Service::new(
                 "skills",
                 conf.skills.clone(),
-                Arc::clone(&jwt_config),
+                jwt_config("skills"),
                 cache.clone(),
             )),
-            shop: ShopService::new(Service::new("shop", conf.shop.clone(), jwt_config, cache)),
+            shop: ShopService::new(Service::new(
+                "shop",
+                conf.shop.clone(),
+                jwt_config("shop"),
+                cache,
+            )),
         }
     }
 }
