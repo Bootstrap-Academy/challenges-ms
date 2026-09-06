@@ -14,6 +14,7 @@ use uuid::Uuid;
 use super::Tags;
 use crate::services::leaderboard::{
     global::{get_global_leaderboard, get_global_leaderboard_user},
+    is_rank_visible,
     language::{get_language_leaderboard, get_language_leaderboard_user},
     task::{get_task_leaderboard, get_task_leaderboard_user},
 };
@@ -25,6 +26,12 @@ pub struct LeaderboardEndpoints {
 
 #[OpenApi(tag = "Tags::Leaderboard")]
 impl LeaderboardEndpoints {
+    /// Return the global leaderboard.
+    ///
+    /// Users who asked not to be listed are omitted, so a page may contain
+    /// fewer entries than requested and the ranks of the remaining users may
+    /// have gaps. `total` counts all positions on the leaderboard, including
+    /// the omitted ones, so that pagination by `offset` stays exact.
     #[oai(path = "/leaderboard", method = "get")]
     async fn get_leaderboard(
         &self,
@@ -35,15 +42,23 @@ impl LeaderboardEndpoints {
         GetLeaderboard::ok(get_global_leaderboard(&self.state.services, limit.0, offset.0).await?)
     }
 
+    /// Return the rank of a user on the global leaderboard.
     #[oai(path = "/leaderboard/:user_id", method = "get")]
     async fn get_leaderboard_user(
         &self,
         user_id: Query<Uuid>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> GetLeaderboardUser::Response<VerifiedUserAuth> {
+        if !is_rank_visible(&self.state.services, &auth.0, user_id.0).await? {
+            return GetLeaderboardUser::forbidden();
+        }
         GetLeaderboardUser::ok(get_global_leaderboard_user(&self.state.services, user_id.0).await?)
     }
 
+    /// Return the leaderboard of a task.
+    ///
+    /// Users who asked not to be listed are omitted; see the global
+    /// leaderboard for what that means for `total` and the ranks.
     #[oai(path = "/leaderboard/by-task/:task_id", method = "get")]
     async fn get_task_leaderboard(
         &self,
@@ -65,14 +80,18 @@ impl LeaderboardEndpoints {
         GetTaskLeaderboard::ok(leaderboard)
     }
 
+    /// Return the rank of a user on the leaderboard of a task.
     #[oai(path = "/leaderboard/by-task/:task_id/:user_id", method = "get")]
     async fn get_task_leaderboard_user(
         &self,
         task_id: Path<Uuid>,
         user_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> GetTaskLeaderboardUser::Response<VerifiedUserAuth> {
+        if !is_rank_visible(&self.state.services, &auth.0, user_id.0).await? {
+            return GetTaskLeaderboardUser::forbidden();
+        }
         let rank = self
             .cache
             .cached_result(
@@ -85,6 +104,10 @@ impl LeaderboardEndpoints {
         GetTaskLeaderboardUser::ok(rank)
     }
 
+    /// Return the leaderboard of a programming language.
+    ///
+    /// Users who asked not to be listed are omitted; see the global
+    /// leaderboard for what that means for `total` and the ranks.
     #[oai(path = "/leaderboard/by-language/:language", method = "get")]
     async fn get_language_leaderboard(
         &self,
@@ -114,14 +137,18 @@ impl LeaderboardEndpoints {
         GetLanguageLeaderboard::ok(leaderboard)
     }
 
+    /// Return the rank of a user on the leaderboard of a programming language.
     #[oai(path = "/leaderboard/by-language/:language/:user_id", method = "get")]
     async fn get_language_leaderboard_user(
         &self,
         language: Path<String>,
         user_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        _auth: VerifiedUserAuth,
+        auth: VerifiedUserAuth,
     ) -> GetLanguageLeaderboardUser::Response<VerifiedUserAuth> {
+        if !is_rank_visible(&self.state.services, &auth.0, user_id.0).await? {
+            return GetLanguageLeaderboardUser::forbidden();
+        }
         let rank = self
             .cache
             .cached_result(
@@ -141,6 +168,8 @@ response!(GetLeaderboard = {
 
 response!(GetLeaderboardUser = {
     Ok(200) => Rank,
+    /// The user asked not to be listed on the leaderboards.
+    Forbidden(403, error),
 });
 
 response!(GetTaskLeaderboard = {
@@ -149,6 +178,8 @@ response!(GetTaskLeaderboard = {
 
 response!(GetTaskLeaderboardUser = {
     Ok(200) => Rank,
+    /// The user asked not to be listed on the leaderboards.
+    Forbidden(403, error),
 });
 
 response!(GetLanguageLeaderboard = {
@@ -157,4 +188,6 @@ response!(GetLanguageLeaderboard = {
 
 response!(GetLanguageLeaderboardUser = {
     Ok(200) => Rank,
+    /// The user asked not to be listed on the leaderboards.
+    Forbidden(403, error),
 });
