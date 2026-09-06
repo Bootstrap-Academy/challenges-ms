@@ -1,16 +1,108 @@
 use std::collections::HashSet;
 
 use entity::{
-    challenges_ban, challenges_coding_challenge_submissions, challenges_matching_attempts,
-    challenges_multiple_choice_attempts, challenges_question_attempts, challenges_subtask_reports,
-    challenges_subtasks, challenges_tasks, challenges_user_subtasks,
+    challenges_ban, challenges_coding_challenge_result, challenges_coding_challenge_submissions,
+    challenges_matching_attempts, challenges_multiple_choice_attempts,
+    challenges_question_attempts, challenges_subtask_reports, challenges_subtasks,
+    challenges_tasks, challenges_user_subtasks,
 };
+use schemas::challenges::user_export::{Submission, UserDataExport};
 use sea_orm::{
     sea_query::{Alias, Expr, IntoColumnRef, IntoTableRef, Query, SelectStatement, UnionType},
     ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, DeleteMany, EntityTrait, Order,
-    QueryFilter, QuerySelect, UpdateMany,
+    QueryFilter, QueryOrder, QuerySelect, UpdateMany,
 };
 use uuid::Uuid;
+
+/// Collect everything that is stored about a user.
+///
+/// Only rows that belong to the given user are read and the user ids of other
+/// people are left out, so the export never contains anybody else's data.
+pub async fn export_user_data(
+    db: &DatabaseTransaction,
+    user_id: Uuid,
+) -> Result<UserDataExport, DbErr> {
+    let coding_challenge_submissions = challenges_coding_challenge_submissions::Entity::find()
+        .filter(challenges_coding_challenge_submissions::Column::Creator.eq(user_id))
+        .order_by_asc(challenges_coding_challenge_submissions::Column::CreationTimestamp)
+        .find_also_related(challenges_coding_challenge_result::Entity)
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|(submission, result)| Submission::from(submission, result))
+        .collect();
+
+    Ok(UserDataExport {
+        subtask_progress: challenges_user_subtasks::Entity::find()
+            .filter(challenges_user_subtasks::Column::UserId.eq(user_id))
+            .order_by_asc(challenges_user_subtasks::Column::SubtaskId)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        multiple_choice_attempts: challenges_multiple_choice_attempts::Entity::find()
+            .filter(challenges_multiple_choice_attempts::Column::UserId.eq(user_id))
+            .order_by_asc(challenges_multiple_choice_attempts::Column::Timestamp)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        question_attempts: challenges_question_attempts::Entity::find()
+            .filter(challenges_question_attempts::Column::UserId.eq(user_id))
+            .order_by_asc(challenges_question_attempts::Column::Timestamp)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        matching_attempts: challenges_matching_attempts::Entity::find()
+            .filter(challenges_matching_attempts::Column::UserId.eq(user_id))
+            .order_by_asc(challenges_matching_attempts::Column::Timestamp)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        coding_challenge_submissions,
+        subtask_reports: challenges_subtask_reports::Entity::find()
+            .filter(challenges_subtask_reports::Column::UserId.eq(user_id))
+            .order_by_asc(challenges_subtask_reports::Column::Timestamp)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        // Only bans against the user are exported. The `creator` column holds
+        // the id of the administrator who issued the ban, which is not the
+        // user's own data.
+        bans: challenges_ban::Entity::find()
+            .filter(challenges_ban::Column::UserId.eq(user_id))
+            .order_by_asc(challenges_ban::Column::Start)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        subtasks_created: challenges_subtasks::Entity::find()
+            .filter(challenges_subtasks::Column::Creator.eq(user_id))
+            .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        tasks_created: challenges_tasks::Entity::find()
+            .filter(challenges_tasks::Column::Creator.eq(user_id))
+            .order_by_asc(challenges_tasks::Column::CreationTimestamp)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+    })
+}
 
 /// Delete all rows that belong to a user.
 ///
@@ -219,6 +311,50 @@ mod tests {
         ("challenges_subtasks", "creator"),
         ("challenges_tasks", "creator"),
     ];
+
+    /// Columns of `USER_ID_COLUMNS` that are deliberately left out of the
+    /// export because they identify somebody other than the exported user.
+    const NOT_EXPORTED_COLUMNS: &[(&str, &str)] = &[
+        // A ban names both the banned user and the moderator who issued it, so
+        // only the bans against the exported user are part of their export.
+        ("challenges_ban", "creator"),
+    ];
+
+    /// Guard against a new table with user data being added without being
+    /// added to the export. The source of `export_user_data` is scanned
+    /// because this service has no database in its tests.
+    #[test]
+    fn test_export_reads_every_column_that_contains_a_user_id() {
+        let source = include_str!("users.rs");
+        let body = source
+            .split_once("pub async fn export_user_data")
+            .expect("export_user_data is missing")
+            .1
+            .split_once("\n/// Delete all rows that belong to a user.")
+            .expect("export_user_data is no longer followed by delete_user_data")
+            .0;
+
+        for (table, column) in USER_ID_COLUMNS {
+            if NOT_EXPORTED_COLUMNS.contains(&(table, column)) {
+                continue;
+            }
+            let variant = column
+                .split('_')
+                .map(|part| {
+                    let mut chars = part.chars();
+                    match chars.next() {
+                        Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
+                        None => String::new(),
+                    }
+                })
+                .collect::<String>();
+            let reference = format!("{table}::Column::{variant}");
+            assert!(
+                body.contains(&reference),
+                "{reference} is not read by export_user_data"
+            );
+        }
+    }
 
     #[test]
     fn test_bans_against_the_user_are_deleted() {
