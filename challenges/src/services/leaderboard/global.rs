@@ -19,7 +19,10 @@ pub async fn get_global_leaderboard(
                 .into_iter()
                 .map(|user| resolve_user(services, user.user, user.rank)),
         )
-        .await?,
+        .await?
+        .into_iter()
+        .flatten()
+        .collect(),
         total: leaderboard.total,
     })
 }

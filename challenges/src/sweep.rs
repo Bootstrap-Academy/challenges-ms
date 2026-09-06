@@ -107,6 +107,7 @@ mod tests {
             avatar_url: None,
             registration: 0.0,
             admin: false,
+            leaderboard_opt_out: false,
         }
     }
 
