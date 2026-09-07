@@ -75,6 +75,7 @@ pub struct Attempt {
 
 /// A solution the user has submitted for a coding challenge.
 #[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportSubmission")]
 pub struct Submission {
     /// The unique identifier of the submission.
     pub id: Uuid,
@@ -92,6 +93,7 @@ pub struct Submission {
 
 /// The evaluation result of a submission.
 #[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportSubmissionResult")]
 pub struct SubmissionResult {
     /// The verdict of the evaluation.
     pub verdict: ChallengesVerdict,
@@ -132,6 +134,7 @@ pub struct SubtaskReport {
 
 /// A ban that has been issued against the user.
 #[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportBan")]
 pub struct Ban {
     /// The unique identifier of the ban.
     pub id: Uuid,
@@ -147,6 +150,7 @@ pub struct Ban {
 
 /// A subtask the user has created.
 #[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportSubtask")]
 pub struct Subtask {
     /// The unique identifier of the subtask.
     pub id: Uuid,
@@ -306,9 +310,13 @@ impl From<challenges_tasks::Model> for Task {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use poem_openapi::types::ToJSON;
+    use poem_openapi::{
+        registry::Registry,
+        types::{ToJSON, Type},
+    };
 
     use super::*;
+    use crate::challenges::{coding_challenges, subtasks};
 
     fn timestamp() -> chrono::NaiveDateTime {
         NaiveDate::from_ymd_opt(2026, 9, 3)
@@ -500,5 +508,35 @@ mod tests {
         assert_eq!(task.creation_timestamp, timestamp().and_utc());
         assert!(!subtask.to_json_string().contains(&creator.to_string()));
         assert!(!task.to_json_string().contains(&creator.to_string()));
+    }
+
+    /// All schemas of this service share one OpenAPI registry, and the registry
+    /// panics when two Rust types claim the same name. It is built while the
+    /// server starts up, so such a collision takes the service down before it
+    /// ever listens.
+    #[test]
+    fn export_schema_names_do_not_collide_with_the_public_ones() {
+        let mut registry = Registry::new();
+
+        UserDataExport::register(&mut registry);
+        coding_challenges::Submission::register(&mut registry);
+        subtasks::Subtask::register(&mut registry);
+        subtasks::Ban::register(&mut registry);
+
+        for name in [
+            "UserDataExport",
+            "UserExportSubmission",
+            "UserExportSubmissionResult",
+            "UserExportBan",
+            "UserExportSubtask",
+            "Submission",
+            "Subtask",
+            "Ban",
+        ] {
+            assert!(
+                registry.schemas.contains_key(name),
+                "{name} is not registered"
+            );
+        }
     }
 }
