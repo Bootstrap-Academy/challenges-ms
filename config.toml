@@ -23,10 +23,13 @@ jobs = "redis://localhost:6379/3"
 events = "redis://localhost:6379/4"
 challenges = "redis://localhost:6379/5"
 
+# auth and shop are served by the backend under a path prefix, so the trailing path is part of the url; with a bare
+# host every internal request is joined onto the root and answered 404, which silently degrades the leaderboard
+# visibility check into listing users who asked to be hidden
 [services]
-auth = "http://localhost:8000"
+auth = "http://localhost:8000/auth/"
 skills = "http://localhost:8001"
-shop = "http://localhost:8002"
+shop = "http://localhost:8000/shop/"
 jobs = "http://localhost:8003"
 events = "http://localhost:8004"
 challenges = "http://localhost:8005"

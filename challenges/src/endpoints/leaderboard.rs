@@ -46,7 +46,7 @@ impl LeaderboardEndpoints {
     #[oai(path = "/leaderboard/:user_id", method = "get")]
     async fn get_leaderboard_user(
         &self,
-        user_id: Query<Uuid>,
+        user_id: Path<Uuid>,
         auth: VerifiedUserAuth,
     ) -> GetLeaderboardUser::Response<VerifiedUserAuth> {
         if !is_rank_visible(&self.state.services, &auth.0, user_id.0).await? {
@@ -191,3 +191,51 @@ response!(GetLanguageLeaderboardUser = {
     /// The user asked not to be listed on the leaderboards.
     Forbidden(403, error),
 });
+
+#[cfg(test)]
+mod tests {
+    use poem_openapi::registry::MetaParamIn;
+
+    use super::*;
+
+    /// Every variable of a route has to be read from the path.
+    ///
+    /// A variable that is declared in the path but bound as a [`Query`]
+    /// parameter is still routed, but the value in the path is ignored and the
+    /// request is answered `422` unless the caller repeats the value in the
+    /// query string. `GET /leaderboard/{user_id}` did that, which made the
+    /// endpoint unreachable in its documented shape.
+    #[test]
+    fn every_path_variable_is_read_from_the_path() {
+        let paths = <LeaderboardEndpoints as OpenApi>::meta()
+            .into_iter()
+            .flat_map(|api| api.paths);
+
+        let mut checked = 0;
+        for path in paths {
+            let variables = path
+                .path
+                .split('/')
+                .filter_map(|segment| segment.strip_prefix('{')?.strip_suffix('}'));
+            for variable in variables {
+                for operation in &path.operations {
+                    let param = operation
+                        .params
+                        .iter()
+                        .find(|param| param.name == variable)
+                        .unwrap_or_else(|| {
+                            panic!("{} does not declare a parameter {variable}", path.path)
+                        });
+                    assert_eq!(
+                        param.in_type,
+                        MetaParamIn::Path,
+                        "{} does not read {variable} from the path",
+                        path.path
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, 7);
+    }
+}
