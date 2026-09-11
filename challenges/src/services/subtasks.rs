@@ -477,8 +477,8 @@ fn effective_filter(
     user: &User,
 ) -> bool {
     (user.admin || (!s.moderation_removed && (user.id == s.creator || s.enabled)))
-        && filter.enabled.is_none_or(|value| value == s.enabled)
-        && filter.retired.is_none_or(|value| value == s.retired)
+        && filter.enabled.map_or(true, |value| value == s.enabled)
+        && filter.retired.map_or(true, |value| value == s.retired)
 }
 
 fn subtasks_filter(

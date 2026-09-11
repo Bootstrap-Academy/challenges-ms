@@ -63,7 +63,7 @@ impl ShopService {
         request: &serde_json::Value,
     ) -> ServiceResult<serde_json::Value> {
         // This producer dispatches earned credits, never a new unapproved debit.
-        if request["coins"].as_i64().is_none_or(|coins| coins < 0) {
+        if request["coins"].as_i64().map_or(true, |coins| coins < 0) {
             return Ok(
                 serde_json::json!({"state":"review","reason":"Original configured benefit is not a nonnegative credit"}),
             );
