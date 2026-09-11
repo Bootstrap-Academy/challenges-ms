@@ -81,7 +81,9 @@ impl Api {
         else {
             return ListSubmissions::subtask_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return ListSubmissions::subtask_not_found();
         }
 
@@ -121,7 +123,9 @@ impl Api {
         else {
             return GetSubmission::submission_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return GetSubmission::submission_not_found();
         }
 
@@ -162,7 +166,9 @@ impl Api {
         else {
             return CreateSubmission::subtask_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return CreateSubmission::subtask_not_found();
         }
 
@@ -211,12 +217,58 @@ impl Api {
             reward_lock: Arc::clone(&self.reward_lock),
             state: Arc::clone(&self.state),
             challenge: Arc::new(cc),
-            user_subtask,
             queue_positions: Arc::clone(&self.queue_positions),
         })
         .await;
 
         CreateSubmission::ok(Submission::from(&submission, None, Some(position)))
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/coding_challenges/:subtask_id/submissions",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_submission(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> ListSubmissions::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_submission(task_id, subtask_id, db, VerifiedUserAuth(user))
+            .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/coding_challenges/:subtask_id/submissions/:submission_id",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_submission(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        submission_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> GetSubmission::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_submission(
+            task_id,
+            subtask_id,
+            submission_id,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
     }
 }
 
@@ -258,7 +310,6 @@ struct StartJudgeSubmissionTask {
     reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     state: Arc<SharedState>,
     challenge: Arc<challenges_coding_challenges::Model>,
-    user_subtask: Option<challenges_user_subtasks::Model>,
     queue_positions: Arc<RwLock<QueuePositions>>,
 }
 
@@ -274,7 +325,6 @@ async fn start_judge_submission_task(
         challenge: cc,
         queue_positions,
         subtask,
-        user_subtask,
     }: StartJudgeSubmissionTask,
 ) -> usize {
     let position = queue_positions.write().await.push(submission.id);
@@ -317,7 +367,6 @@ async fn start_judge_submission_task(
                 judge,
                 reward_lock,
                 state,
-                user_subtask,
             })
             .await
             {
@@ -341,7 +390,6 @@ struct JudgeSubmission<'a, 'b> {
     judge: Judge<'b>,
     reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     state: Arc<SharedState>,
-    user_subtask: Option<challenges_user_subtasks::Model>,
 }
 
 async fn judge_submission(
@@ -353,7 +401,6 @@ async fn judge_submission(
         judge,
         reward_lock,
         state,
-        user_subtask,
     }: JudgeSubmission<'_, '_>,
 ) -> Result<(), JudgeSubmissionError> {
     debug!("judging submission {}", submission.id);
@@ -369,12 +416,20 @@ async fn judge_submission(
     })
     .await?;
     trace!("judge result for {}: {result:?}", submission.id);
+    // Both success and failure mutate progress. Serialize with erasure and
+    // reread after judging, rather than using a pre-queue progress snapshot.
+    let _guard = reward_lock
+        .write((submission.subtask_id, submission.creator))
+        .await;
+    crate::services::benefits::lock_attempt(db, submission.creator).await?;
+    let user_subtask = get_user_subtask(db, submission.creator, subtask.id).await?;
+    let last_attempt = user_subtask
+        .as_ref()
+        .and_then(|row| row.last_attempt_timestamp)
+        .unwrap_or(submission.creation_timestamp)
+        .max(submission.creation_timestamp);
     match result {
         Ok(()) => {
-            let _guard = reward_lock
-                .write((submission.subtask_id, submission.creator))
-                .await;
-
             let solved_previously = user_subtask.is_solved();
             if !solved_previously {
                 update_user_subtask(
@@ -384,7 +439,7 @@ async fn judge_submission(
                         user_id: Set(submission.creator),
                         subtask_id: Set(subtask.id),
                         solved_timestamp: Set(Some(submission.creation_timestamp)),
-                        last_attempt_timestamp: Set(Some(submission.creation_timestamp)),
+                        last_attempt_timestamp: Set(Some(last_attempt)),
                         attempts: Set(user_subtask.attempts() as i32 + 1),
                         ..Default::default()
                     },
@@ -436,7 +491,7 @@ async fn judge_submission(
                 challenges_user_subtasks::ActiveModel {
                     user_id: Set(submission.creator),
                     subtask_id: Set(subtask.id),
-                    last_attempt_timestamp: Set(Some(submission.creation_timestamp)),
+                    last_attempt_timestamp: Set(Some(last_attempt)),
                     attempts: Set(user_subtask.attempts() as i32 + 1),
                     ..Default::default()
                 },
@@ -467,13 +522,19 @@ async fn judge_submission(
 #[derive(Debug, Error)]
 enum JudgeSubmissionError {
     #[error("failed to judge submission: {0}")]
-    Judge(#[from] judge::Error),
+    Judge(Box<judge::Error>),
     #[error("database error: {0}")]
     Db(#[from] DbErr),
     #[error("check error: {0:?}")]
     Check(Box<CheckError>),
     #[error("could not send task rewards: {0}")]
     TaskRewards(#[from] SendTaskRewardsError),
+}
+
+impl From<judge::Error> for JudgeSubmissionError {
+    fn from(error: judge::Error) -> Self {
+        Self::Judge(Box::new(error))
+    }
 }
 
 impl Api {
@@ -509,12 +570,6 @@ impl Api {
             .into_iter()
             .map(|x| (x.subtask_id, Arc::new(x)))
             .collect::<HashMap<_, _>>();
-        let user_subtasks = challenges_user_subtasks::Entity::find()
-            .all(db)
-            .await?
-            .into_iter()
-            .map(|x| ((x.user_id, x.subtask_id), x))
-            .collect::<HashMap<_, _>>();
         let submissions = challenges_coding_challenge_submissions::Entity::find()
             .left_join(challenges_coding_challenge_result::Entity)
             .filter(challenges_coding_challenge_result::Column::SubmissionId.is_null())
@@ -538,7 +593,6 @@ impl Api {
                     submission.id
                 );
             };
-            let user_subtask = user_subtasks.get(&(submission.creator, submission.subtask_id));
             start_judge_submission_task(StartJudgeSubmissionTask {
                 submission: Arc::new(submission),
                 subtask: subtask.clone(),
@@ -549,7 +603,6 @@ impl Api {
                 reward_lock: Arc::clone(&self.reward_lock),
                 state: Arc::clone(&self.state),
                 challenge: Arc::clone(challenge),
-                user_subtask: user_subtask.cloned(),
                 queue_positions: Arc::clone(&self.queue_positions),
             })
             .await;

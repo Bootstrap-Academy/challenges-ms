@@ -18,8 +18,8 @@ use schemas::challenges::subtasks::{
     CreateSubtaskRequest, Subtask, SubtaskStats, UpdateSubtaskRequest,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, QueryOrder, Related, Set, Unchanged,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait,
+    ModelTrait, QueryFilter, QueryOrder, Related, Set, Unchanged,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -93,28 +93,14 @@ pub async fn send_task_rewards(
         return Ok(());
     }
 
-    if subtask.xp != 0 {
-        let skills = get_skills(
-            services,
-            get_parent_task(db, subtask)
-                .await?
-                .ok_or(SendTaskRewardsError::NoParentTask)?
-                .1,
-        )
-        .await?;
-        for skill in &skills {
-            services
-                .skills
-                .add_skill_progress(user_id, skill, subtask.xp / skills.len() as i64)
-                .await??;
-        }
-    }
-    if subtask.coins != 0 {
-        services
-            .shop
-            .add_coins(user_id, subtask.coins, "Challenges / Aufgaben", true)
-            .await??;
-    }
+    let skills = if subtask.xp != 0 {
+        get_skills(services, get_parent_task(db, subtask).await?
+            .ok_or(SendTaskRewardsError::NoParentTask)?.1).await?
+    } else { Vec::new() };
+    // No remote side effect until the first completion and this exact outbox
+    // commit together. Empty skill resolution preserves the former zero awards.
+    super::benefits::record(db,user_id,subtask.id,subtask.xp,subtask.coins,skills).await?;
+
     Ok(())
 }
 
@@ -174,6 +160,9 @@ pub async fn get_active_ban(
     let bans = challenges_ban::Entity::find()
         .filter(challenges_ban::Column::UserId.eq(user.id))
         .filter(challenges_ban::Column::Action.eq(action))
+        .filter(challenges_ban::Column::Rescinded.eq(false))
+        .filter(Expr::cust("NOT EXISTS (SELECT 1 FROM moderation_holds h WHERE h.case_id=challenges_ban.id AND NOT h.active)"))
+        .filter(challenges_ban::Column::Start.lte(Utc::now().naive_utc()))
         .all(db)
         .await?;
     let now = Utc::now().naive_utc();
@@ -360,12 +349,15 @@ pub async fn query_subtasks_only(
     if let Some(task_id) = task_id {
         query = query.filter(challenges_subtasks::Column::TaskId.eq(task_id));
     }
-    Ok(prepare_query(query, &filter, user)
-        .all(db)
-        .await?
-        .into_iter()
-        .filter_map(|subtask| subtasks_filter_map(subtask, &filter, &user_subtasks))
-        .collect())
+    Ok(super::moderation::effective_subtasks(
+        db,
+        prepare_query(query, &filter, user).all(db).await?,
+    )
+    .await?
+    .into_iter()
+    .filter(|subtask| effective_filter(subtask, &filter, user))
+    .filter_map(|subtask| subtasks_filter_map(subtask, &filter, &user_subtasks))
+    .collect())
 }
 
 pub async fn stat_subtasks_prepare(
@@ -378,7 +370,16 @@ pub async fn stat_subtasks_prepare(
     if let Some(task_ids) = task_ids {
         query = query.filter(challenges_subtasks::Column::TaskId.is_in(task_ids));
     }
-    prepare_query(query, filter, user).all(db).await
+    Ok(
+        super::moderation::effective_subtasks(
+            db,
+            prepare_query(query, filter, user).all(db).await?,
+        )
+        .await?
+        .into_iter()
+        .filter(|s| effective_filter(s, filter, user))
+        .collect(),
+    )
 }
 
 pub fn stat_subtasks(
@@ -422,7 +423,7 @@ where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
 {
     let user_subtasks = get_user_subtasks(db, user.id).await?;
-    Ok(prepare_query(
+    let pairs = prepare_query(
         E::find()
             .find_also_related(challenges_subtasks::Entity)
             .filter(challenges_subtasks::Column::TaskId.eq(task_id)),
@@ -430,32 +431,37 @@ where
         user,
     )
     .all(db)
+    .await?;
+    let mut effective: HashMap<_, _> = super::moderation::effective_subtasks(
+        db,
+        pairs.iter().filter_map(|(_, s)| s.clone()).collect(),
+    )
     .await?
     .into_iter()
-    .filter_map(|(specific, subtask)| {
-        let subtask = subtasks_filter_map(subtask?, &filter, &user_subtasks)?;
-        Some(map(specific, subtask))
-    })
-    .collect())
+    .map(|s| (s.id, s))
+    .collect();
+    Ok(pairs
+        .into_iter()
+        .filter_map(|(specific, subtask)| {
+            let subtask = effective.remove(&subtask?.id)?;
+            if !effective_filter(&subtask, &filter, user) {
+                return None;
+            }
+            Some(map(
+                specific,
+                subtasks_filter_map(subtask, &filter, &user_subtasks)?,
+            ))
+        })
+        .collect())
 }
 
-fn prepare_query<Q>(mut query: Q, filter: &QuerySubtasksFilter, user: &User) -> Q
+fn prepare_query<Q>(mut query: Q, filter: &QuerySubtasksFilter, _user: &User) -> Q
 where
     Q: QueryFilter + QueryOrder,
 {
-    if !user.admin {
-        query = query.filter(
-            Condition::any()
-                .add(challenges_subtasks::Column::Creator.eq(user.id))
-                .add(challenges_subtasks::Column::Enabled.eq(true)),
-        );
-    }
-    if let Some(enabled) = filter.enabled {
-        query = query.filter(challenges_subtasks::Column::Enabled.eq(enabled));
-    }
-    if let Some(retired) = filter.retired {
-        query = query.filter(challenges_subtasks::Column::Retired.eq(retired));
-    }
+    // Candidate selection is deliberately independent of mutable moderation.
+    // These existing lists are unpaginated. Project all candidates once, then
+    // apply both membership and flags at that same final read boundary.
     if let Some(creator) = filter.creator {
         query = query.filter(challenges_subtasks::Column::Creator.eq(creator));
     }
@@ -463,6 +469,16 @@ where
         query = query.filter(challenges_subtasks::Column::Ty.eq(ty));
     }
     query.order_by_asc(challenges_subtasks::Column::CreationTimestamp)
+}
+
+fn effective_filter(
+    s: &challenges_subtasks::Model,
+    filter: &QuerySubtasksFilter,
+    user: &User,
+) -> bool {
+    (user.admin || (!s.moderation_removed && (user.id == s.creator || s.enabled)))
+        && filter.enabled.is_none_or(|value| value == s.enabled)
+        && filter.retired.is_none_or(|value| value == s.retired)
 }
 
 fn subtasks_filter(
@@ -508,7 +524,9 @@ where
     let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
         return Ok(None);
     };
-    if !user.admin && user.id != subtask.creator && !subtask.enabled {
+    if !user.admin
+        && (subtask.moderation_removed || (user.id != subtask.creator && !subtask.enabled))
+    {
         return Ok(None);
     }
 
@@ -567,7 +585,10 @@ where
             .one(db)
             .await?
         {
-            Some((specific, Some(subtask))) => Some((specific, subtask)),
+            Some((specific, Some(subtask))) => Some((
+                specific,
+                super::moderation::effective_subtask(db, subtask).await?,
+            )),
             _ => None,
         },
     )
@@ -621,6 +642,7 @@ pub async fn create_subtask(
         coins: Set(coins as _),
         enabled: Set(true),
         retired: Set(false),
+        moderation_removed: Set(false),
     }
     .insert(db)
     .await?;
@@ -647,6 +669,7 @@ where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
 {
+    super::moderation::lock_subtask(db, subtask_id).await?;
     let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
         return Ok(Err(UpdateSubtaskError::SubtaskNotFound));
     };
@@ -668,6 +691,7 @@ where
         coins: data.coins.map(|x| x as _).update(subtask.coins),
         enabled: data.enabled.update(subtask.enabled),
         retired: data.retired.update(subtask.retired),
+        moderation_removed: Unchanged(subtask.moderation_removed),
     }
     .update(db)
     .await?;

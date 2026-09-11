@@ -39,10 +39,13 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> PostFeedback::Response<VerifiedUserAuth> {
+        crate::services::moderation::lock_subtask(&db, subtask_id.0).await?;
         let Some((subtask, _)) = get_subtask(&db, task_id.0, subtask_id.0).await? else {
             return PostFeedback::subtask_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return PostFeedback::subtask_not_found();
         }
 
@@ -84,16 +87,24 @@ impl Api {
         if data.0.rating == ChallengesRating::Negative {
             let ratings = subtask_ratings(subtask.id).all(&***db).await?;
             let (positive, negative) = count_ratings(ratings.iter().map(|x| x.rating));
-            if should_auto_hide(positive, negative) {
+            // A dismissed rating cohort must not be replayed as a fresh restriction.
+            // A changed cohort is retained as a genuinely new notice for review.
+            let prior = crate::services::moderation::value(&db,
+                "SELECT to_jsonb(EXISTS(SELECT 1 FROM moderation_cases WHERE target_kind='subtask' AND target_id=$1 AND source='rating_threshold' AND private_evidence->'rating_counts'->>'cohort'=(SELECT md5(coalesce(jsonb_agg(jsonb_build_array(user_id,rating) ORDER BY user_id) FILTER(WHERE rating IS NOT NULL),'[]')::text) FROM challenges_user_subtasks WHERE subtask_id=$1) AND coalesce((private_evidence->>'content_revision')::bigint,0)=coalesce((SELECT content_revision FROM moderation_targets WHERE kind='subtask' AND id=$1),0))) AS value",
+                vec![subtask.id.into()]).await?;
+            if should_auto_hide(positive, negative) && prior == serde_json::Value::Bool(false) {
+                let basis=self.state.services.auth.moderation_basis(subtask.creator).await.unwrap_or_else(|_|serde_json::json!({"automatic_quality_basis_confirmed":false,"recorded_acceptance":"unavailable"}));
                 create_report(
                     &db,
                     None,
+                    Uuid::new_v4(),
                     subtask,
                     None,
                     ChallengesReportReason::Dislike,
                     format!(
-                        "Subtask has received more dislikes ({negative}) than likes ({positive})."
+                        "{negative} negative und {positive} positive Bewertungen (mindestens 10 negative und mehr negative als positive Bewertungen)."
                     ),
+                    basis,
                 )
                 .await?;
             }

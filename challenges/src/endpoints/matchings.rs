@@ -265,7 +265,9 @@ impl Matchings {
         else {
             return SolveMatching::subtask_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return SolveMatching::subtask_not_found();
         }
 
@@ -273,6 +275,7 @@ impl Matchings {
             return SolveMatching::solution_different_length();
         }
 
+        crate::services::benefits::lock_attempt(&db, auth.0.id).await?;
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
 
         let solved_previously = user_subtask.is_solved();
@@ -344,6 +347,58 @@ impl Matchings {
         }
 
         SolveMatching::ok(SolveMatchingFeedback { solved, correct })
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/tasks/:task_id/matchings", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_matchings(
+        &self,
+        task_id: Path<Uuid>,
+        attempted: Query<Option<bool>>,
+        solved: Query<Option<bool>>,
+        rated: Query<Option<bool>>,
+        enabled: Query<Option<bool>>,
+        retired: Query<Option<bool>>,
+        creator: Query<Option<Uuid>>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> ListMatchings::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_matchings(
+            task_id,
+            attempted,
+            solved,
+            rated,
+            enabled,
+            retired,
+            creator,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/matchings/:subtask_id",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_matching(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> GetMatching::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_matching(task_id, subtask_id, db, VerifiedUserAuth(user))
+            .await
     }
 }
 

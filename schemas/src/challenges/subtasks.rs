@@ -99,6 +99,8 @@ pub struct Report {
 
 #[derive(Debug, Clone, Object)]
 pub struct CreateReportRequest {
+    /// Stable client intent for exact retry after an uncertain response.
+    pub request_id: Option<Uuid>,
     pub task_id: Uuid,
     pub subtask_id: Uuid,
     pub reason: ChallengesReportReason,
@@ -226,7 +228,8 @@ impl From<challenges_ban::Model> for Ban {
             creator: value.creator,
             start: value.start.and_utc(),
             end: value.end.map(|ts| ts.and_utc()),
-            active: value.start <= now
+            active: !value.rescinded
+                && value.start <= now
                 && (value.end.is_none() || value.end.is_some_and(|end| now < end)),
             action: value.action,
             reason: value.reason,

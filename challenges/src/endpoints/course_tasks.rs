@@ -182,6 +182,63 @@ impl CourseTasks {
 
         CreateCourseTask::created(CourseTask::from(course_task, task))
     }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/skills/:skill_id/tasks", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_tasks_in_skill(
+        &self,
+        skill_id: Path<String>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> ListTasksInSkill::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_tasks_in_skill(skill_id, db, VerifiedUserAuth(user))
+            .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/courses/:course_id/tasks", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_course_tasks(
+        &self,
+        course_id: Path<String>,
+        section_id: Query<Option<String>>,
+        lecture_id: Query<Option<String>>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> ListCourseTasks::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_course_tasks(
+            course_id,
+            section_id,
+            lecture_id,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/courses/:course_id/tasks/:task_id", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_course_task(
+        &self,
+        course_id: Path<String>,
+        task_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> GetCourseTask::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_course_task(course_id, task_id, db, VerifiedUserAuth(user))
+            .await
+    }
 }
 
 response!(ListTasksInSkill = {

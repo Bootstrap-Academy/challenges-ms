@@ -6,7 +6,9 @@ use entity::{
     challenges_question_attempts, challenges_subtask_reports, challenges_subtasks,
     challenges_tasks, challenges_user_subtasks,
 };
-use schemas::challenges::user_export::{Submission, UserDataExport};
+use schemas::challenges::user_export::{Submission, Subtask, Task, UserDataExport};
+
+use super::authored_export::{inconsistent_content, subtask_content, task_content};
 use sea_orm::{
     sea_query::{Alias, Expr, IntoColumnRef, IntoTableRef, Query, SelectStatement, UnionType},
     ColumnTrait, ConnectionTrait, DatabaseTransaction, DbErr, DeleteMany, EntityTrait, Order,
@@ -32,7 +34,12 @@ pub async fn export_user_data(
         .map(|(submission, result)| Submission::from(submission, result))
         .collect();
 
+    let mut subtask_definitions = subtask_content(db, user_id).await?;
+    let mut task_definitions = task_content(db, user_id).await?;
+
     Ok(UserDataExport {
+        benefits: super::moderation::value(db,"SELECT challenge_benefit_export($1) AS value",vec![user_id.into()]).await?,
+        moderation: super::moderation::inbox(db, user_id).await?,
         subtask_progress: challenges_user_subtasks::Entity::find()
             .filter(challenges_user_subtasks::Column::UserId.eq(user_id))
             .order_by_asc(challenges_user_subtasks::Column::SubtaskId)
@@ -85,22 +92,41 @@ pub async fn export_user_data(
             .into_iter()
             .map(Into::into)
             .collect(),
-        subtasks_created: challenges_subtasks::Entity::find()
-            .filter(challenges_subtasks::Column::Creator.eq(user_id))
-            .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
-            .all(db)
-            .await?
-            .into_iter()
-            .map(Into::into)
-            .collect(),
+        subtasks_created: super::moderation::effective_subtasks(
+            db,
+            challenges_subtasks::Entity::find()
+                .filter(challenges_subtasks::Column::Creator.eq(user_id))
+                .order_by_asc(challenges_subtasks::Column::CreationTimestamp)
+                .order_by_asc(challenges_subtasks::Column::Id)
+                .all(db)
+                .await?,
+        )
+        .await?
+        .into_iter()
+        .map(|row| {
+            let content = subtask_definitions
+                .remove(&row.id)
+                .ok_or_else(inconsistent_content)?;
+            if content.subtask_type() != row.ty {
+                return Err(inconsistent_content());
+            }
+            Ok(Subtask::from(row, content))
+        })
+        .collect::<Result<_, DbErr>>()?,
         tasks_created: challenges_tasks::Entity::find()
             .filter(challenges_tasks::Column::Creator.eq(user_id))
             .order_by_asc(challenges_tasks::Column::CreationTimestamp)
+            .order_by_asc(challenges_tasks::Column::Id)
             .all(db)
             .await?
             .into_iter()
-            .map(Into::into)
-            .collect(),
+            .map(|row| {
+                let content = task_definitions
+                    .remove(&row.id)
+                    .ok_or_else(inconsistent_content)?;
+                Ok(Task::from(row, content))
+            })
+            .collect::<Result<_, DbErr>>()?,
     })
 }
 
@@ -115,6 +141,14 @@ pub async fn export_user_data(
 ///
 /// Returns the number of rows that have been deleted directly.
 pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result<u64, DbErr> {
+    super::benefits::lock_subject(db,user_id).await?;
+    super::moderation::erasure_marker(db, user_id).await?;
+    super::moderation::value(
+        db,
+        "SELECT to_jsonb(moderation_erase($1)) AS value",
+        vec![user_id.into()],
+    )
+    .await?;
     let mut rows = 0;
 
     rows += delete_bans_against(user_id).exec(db).await?.rows_affected;
@@ -408,3 +442,7 @@ mod tests {
         assert!(query.contains(r#"ORDER BY "user_id" ASC LIMIT 500"#));
     }
 }
+
+#[cfg(test)]
+#[path = "users_export_tests.rs"]
+mod export_tests;

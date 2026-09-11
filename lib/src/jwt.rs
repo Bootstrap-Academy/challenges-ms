@@ -70,7 +70,9 @@ pub struct UserAccessToken {
 
 impl UserAccessToken {
     pub async fn is_revoked(&self, redis: &mut RedisConnection) -> RedisResult<bool> {
-        redis.exists(format!("session_logout:{}", self.rt)).await
+        redis
+            .exists(format!("access_token_invalidated:{}", self.rt))
+            .await
     }
 }
 

@@ -12,6 +12,56 @@ use super::{Service, ServiceResult};
 pub struct SkillsService(Service);
 
 impl SkillsService {
+    pub async fn apply_benefit(
+        &self,
+        operation: Uuid,
+        user: Uuid,
+        request: &serde_json::Value,
+    ) -> ServiceResult<serde_json::Value> {
+        let Some(skill) = request["skill_id"].as_str() else {
+            return Ok(serde_json::json!({"state":"review","reason":"Missing original skill"}));
+        };
+        // Push the skill as one path segment; a configured skill is not a URL.
+        let path = format!("/xp-operations/{operation}/{user}/");
+        let mut url = self
+            .0
+            .base_url
+            .join(&format!("_internal/{}", path.trim_start_matches('/')))
+            .expect("fixed benefit URL");
+        url.path_segments_mut()
+            .expect("service URL supports paths")
+            .pop_if_empty()
+            .push(skill);
+        let body = serde_json::json!({"xp":request["xp"],"earning_id":request["earning_id"]});
+        let response = self
+            .0
+            .request_url(reqwest::Method::POST, url)
+            .json(&body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(
+                serde_json::json!({"state":"review","reason":"Exact benefit payload conflict"}),
+            );
+        }
+        if response.status() != StatusCode::OK {
+            return Err(super::ServiceError::UnexpectedStatusCode(response.status()));
+        }
+        let result: serde_json::Value = response.json().await?;
+        let expected = serde_json::json!({"user_id":user,"skill_id":skill,"xp":request["xp"],"earning_id":request["earning_id"]});
+        if result["operation_id"] != serde_json::json!(operation)
+            || result["request"] != expected
+            || !((result["state"] == "applied" && result["applied"] == true)
+                || (result["state"] == "recipient_erased" && result["applied"] == false))
+        {
+            return Ok(
+                serde_json::json!({"state":"uncertain","reason":"Unrecognized exact benefit receipt"}),
+            );
+        }
+        Ok(result)
+    }
+
     pub(super) fn new(service: Service) -> Self {
         Self(service)
     }
