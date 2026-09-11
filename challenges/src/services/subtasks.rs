@@ -94,12 +94,20 @@ pub async fn send_task_rewards(
     }
 
     let skills = if subtask.xp != 0 {
-        get_skills(services, get_parent_task(db, subtask).await?
-            .ok_or(SendTaskRewardsError::NoParentTask)?.1).await?
-    } else { Vec::new() };
+        get_skills(
+            services,
+            get_parent_task(db, subtask)
+                .await?
+                .ok_or(SendTaskRewardsError::NoParentTask)?
+                .1,
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
     // No remote side effect until the first completion and this exact outbox
     // commit together. Empty skill resolution preserves the former zero awards.
-    super::benefits::record(db,user_id,subtask.id,subtask.xp,subtask.coins,skills).await?;
+    super::benefits::record(db, user_id, subtask.id, subtask.xp, subtask.coins, skills).await?;
 
     Ok(())
 }

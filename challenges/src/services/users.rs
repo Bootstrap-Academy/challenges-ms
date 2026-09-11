@@ -38,7 +38,12 @@ pub async fn export_user_data(
     let mut task_definitions = task_content(db, user_id).await?;
 
     Ok(UserDataExport {
-        benefits: super::moderation::value(db,"SELECT challenge_benefit_export($1) AS value",vec![user_id.into()]).await?,
+        benefits: super::moderation::value(
+            db,
+            "SELECT challenge_benefit_export($1) AS value",
+            vec![user_id.into()],
+        )
+        .await?,
         moderation: super::moderation::inbox(db, user_id).await?,
         subtask_progress: challenges_user_subtasks::Entity::find()
             .filter(challenges_user_subtasks::Column::UserId.eq(user_id))
@@ -141,7 +146,7 @@ pub async fn export_user_data(
 ///
 /// Returns the number of rows that have been deleted directly.
 pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result<u64, DbErr> {
-    super::benefits::lock_subject(db,user_id).await?;
+    super::benefits::lock_subject(db, user_id).await?;
     super::moderation::erasure_marker(db, user_id).await?;
     super::moderation::value(
         db,

@@ -1,9 +1,9 @@
 mod authored_export;
 pub mod benefits;
-pub mod learning;
 pub mod course_tasks;
 pub mod judge;
 pub mod leaderboard;
+pub mod learning;
 pub mod moderation;
 pub mod subtasks;
 pub mod tasks;

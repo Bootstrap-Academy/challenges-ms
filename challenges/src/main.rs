@@ -97,7 +97,10 @@ async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
         db: db.clone(),
     });
 
-    tokio::spawn(services::benefits::run(db.clone(),shared_state.services.clone()));
+    tokio::spawn(services::benefits::run(
+        db.clone(),
+        shared_state.services.clone(),
+    ));
 
     let api_service = OpenApiService::new(
         setup_api(shared_state.clone(), Arc::clone(&config), sandkasten).await?,
