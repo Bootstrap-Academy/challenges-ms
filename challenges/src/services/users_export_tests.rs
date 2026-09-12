@@ -156,11 +156,16 @@ async fn authored_export_postgres() {
         .unwrap()
         .to_json()
         .unwrap();
+    assert_eq!(
+        empty["benefits"],
+        json!({"earnings": [], "components": [], "observations": []})
+    );
     assert!(empty
         .as_object()
         .unwrap()
-        .values()
-        .all(|v| v.as_array().unwrap().is_empty()));
+        .iter()
+        .filter(|(key, _)| key.as_str() != "benefits")
+        .all(|(_, value)| value.as_array().unwrap().is_empty()));
     println!("PASS unrelated corruption isolated and unknown author empty");
     txn.rollback().await.unwrap();
     db.close().await.unwrap();

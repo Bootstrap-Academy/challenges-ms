@@ -27,10 +27,9 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
-    query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
-    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
-    UserSubtaskExt,
+    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
+    QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
 };
 
 pub struct MultipleChoice {
@@ -247,6 +246,7 @@ impl MultipleChoice {
         data: Json<SolveMCQRequest>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
+        settlement: Data<&crate::services::hearts::PendingHeartOperations>,
     ) -> SolveMCQ::Response<VerifiedUserAuth> {
         let Some((mcq, subtask)) =
             get_subtask::<challenges_multiple_choice_quizes::Entity>(&db, task_id.0, subtask_id.0)
@@ -276,9 +276,11 @@ impl MultipleChoice {
             }
         }
 
-        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+        let Some(heart_exempt) =
+            crate::services::hearts::admit(&self.state.services, &auth.0, &subtask).await?
+        else {
             return SolveMCQ::not_enough_hearts();
-        }
+        };
 
         let correct_cnt = check_answers(&data.0.answers, mcq.correct_answers);
         let solved = correct_cnt == mcq.answers.len();
@@ -319,7 +321,24 @@ impl MultipleChoice {
             }
         }
 
+        let attempt_id = Uuid::new_v4();
+        entity::challenges_multiple_choice_attempts::ActiveModel {
+            id: Set(attempt_id),
+            question_id: Set(mcq.subtask_id),
+            user_id: Set(auth.0.id),
+            timestamp: Set(Utc::now().naive_utc()),
+            solved: Set(solved),
+        }
+        .insert(&***db)
+        .await?;
+        if !solved && !heart_exempt {
+            crate::services::hearts::record(&db, attempt_id, auth.0.id, subtask.id).await?;
+            settlement.add(attempt_id);
+        }
+
         SolveMCQ::ok(SolveMCQFeedback {
+            attempt_id,
+            hearts_pending: false,
             solved,
             correct: correct_cnt,
         })

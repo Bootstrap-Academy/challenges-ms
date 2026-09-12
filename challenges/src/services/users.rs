@@ -38,6 +38,9 @@ pub async fn export_user_data(
     let mut task_definitions = task_content(db, user_id).await?;
 
     Ok(UserDataExport {
+        heart_operations: super::moderation::value(db,
+            "SELECT coalesce(jsonb_agg(to_jsonb(h) ORDER BY h.created_at,h.id),'[]') AS value FROM challenge_heart_operations h WHERE h.user_id=$1",
+            vec![user_id.into()]).await?,
         benefits: super::moderation::value(
             db,
             "SELECT challenge_benefit_export($1) AS value",
@@ -155,6 +158,14 @@ pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result
     )
     .await?;
     let mut rows = 0;
+    rows += db
+        .execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Postgres,
+            "DELETE FROM challenge_heart_operations WHERE user_id=$1",
+            [user_id.into()],
+        ))
+        .await?
+        .rows_affected();
 
     rows += delete_bans_against(user_id).exec(db).await?.rows_affected;
     reset_creator_of_bans_by(user_id).exec(db).await?;

@@ -77,6 +77,10 @@ pub struct SolveMatchingRequest {
 
 #[derive(Debug, Clone, Object)]
 pub struct SolveMatchingFeedback {
+    /// The server's unique evidence for this attempt, including repetitions.
+    pub attempt_id: uuid::Uuid,
+    /// The accepted result is final; a heart settlement is still being retried.
+    pub hearts_pending: bool,
     /// Whether the user has successfully solved the question.
     pub solved: bool,
     /// The number of correct matches.

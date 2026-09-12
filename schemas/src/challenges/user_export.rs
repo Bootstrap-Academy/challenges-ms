@@ -22,6 +22,8 @@ use uuid::Uuid;
 /// Everything this service stores about a single user.
 #[derive(Debug, Clone, Object)]
 pub struct UserDataExport {
+    /// The user's own prospective wrong-answer heart operations and receipts.
+    pub heart_operations: serde_json::Value,
     /// Immutable earning facts and individual applied or unresolved benefit receipts.
     pub benefits: serde_json::Value,
     /// Recipient-safe decisions and complaint receipts; no reporter identity or private evidence.
@@ -91,6 +93,8 @@ pub struct Submission {
     pub environment: String,
     /// The source code of the solution.
     pub code: String,
+    /// Whether this new submission uses outcome-based heart charging.
+    pub charge_on_failure: bool,
     /// The evaluation result of the submission.
     pub result: Option<SubmissionResult>,
 }
@@ -353,6 +357,7 @@ impl Submission {
             creation_timestamp: submission.creation_timestamp.and_utc(),
             environment: submission.environment,
             code: submission.code,
+            charge_on_failure: submission.charge_on_failure,
             result: result.map(Into::into),
         }
     }
@@ -510,6 +515,7 @@ mod tests {
 
         let exported = Submission::from(
             challenges_coding_challenge_submissions::Model {
+                charge_on_failure: false,
                 id,
                 subtask_id,
                 creator,
@@ -544,6 +550,7 @@ mod tests {
     fn submission_without_a_result() {
         let exported = Submission::from(
             challenges_coding_challenge_submissions::Model {
+                charge_on_failure: false,
                 id: Uuid::new_v4(),
                 subtask_id: Uuid::new_v4(),
                 creator: Uuid::new_v4(),

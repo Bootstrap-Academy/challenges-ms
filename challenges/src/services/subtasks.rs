@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use entity::{
     challenges_ban, challenges_subtasks, challenges_tasks, challenges_user_subtasks,
@@ -31,56 +30,13 @@ use super::{
 
 pub async fn check_hearts(
     services: &Services,
-    config: &Config,
+    _config: &Config,
     user: &User,
     subtask: &challenges_subtasks::Model,
 ) -> anyhow::Result<bool> {
-    if subtask.retired
-        || user.admin
-        || user.id == subtask.creator
-        || services.shop.has_premium(user.id).await?
-    {
-        return Ok(true);
-    }
-
-    let hearts = services
-        .shop
-        .get_hearts(user.id)
-        .await
-        .with_context(|| format!("failed to get hearts of user {}", user.id))?;
-    Ok(hearts >= subtask_hearts(config, subtask.ty))
-}
-
-pub async fn deduct_hearts(
-    services: &Services,
-    config: &Config,
-    user: &User,
-    subtask: &challenges_subtasks::Model,
-) -> anyhow::Result<bool> {
-    if subtask.retired
-        || user.admin
-        || user.id == subtask.creator
-        || services.shop.has_premium(user.id).await?
-    {
-        return Ok(true);
-    }
-
-    let hearts = subtask_hearts(config, subtask.ty);
-    services
-        .shop
-        .add_hearts(user.id, -(hearts as i32))
-        .await
-        .with_context(|| format!("failed to deduct {hearts} hearts for user {}", user.id))
-}
-
-fn subtask_hearts(config: &Config, ty: ChallengesSubtaskType) -> u32 {
-    let config = &config.challenges;
-    match ty {
-        ChallengesSubtaskType::CodingChallenge => config.coding_challenges.hearts,
-        ChallengesSubtaskType::Matching => config.matchings.hearts,
-        ChallengesSubtaskType::MultipleChoiceQuestion => config.multiple_choice_questions.hearts,
-        ChallengesSubtaskType::Question => config.questions.hearts,
-    }
+    Ok(super::hearts::admit(services, user, subtask)
+        .await?
+        .is_some())
 }
 
 pub async fn send_task_rewards(
