@@ -16,12 +16,18 @@ use entity::{
         ChallengesVerdict,
     },
 };
-use poem_openapi::Object;
+use poem_openapi::{Object, Union};
 use uuid::Uuid;
 
 /// Everything this service stores about a single user.
 #[derive(Debug, Clone, Object)]
 pub struct UserDataExport {
+    /// The user's own prospective wrong-answer heart operations and receipts.
+    pub heart_operations: serde_json::Value,
+    /// Immutable earning facts and individual applied or unresolved benefit receipts.
+    pub benefits: serde_json::Value,
+    /// Recipient-safe decisions and complaint receipts; no reporter identity or private evidence.
+    pub moderation: serde_json::Value,
     /// The progress of the user on the subtasks they have worked on.
     pub subtask_progress: Vec<UserSubtask>,
     /// The attempts of the user at multiple choice questions.
@@ -87,6 +93,8 @@ pub struct Submission {
     pub environment: String,
     /// The source code of the solution.
     pub code: String,
+    /// Whether this new submission uses outcome-based heart charging.
+    pub charge_on_failure: bool,
     /// The evaluation result of the submission.
     pub result: Option<SubmissionResult>,
 }
@@ -146,6 +154,7 @@ pub struct Ban {
     pub action: ChallengesBanAction,
     /// The reason of the ban.
     pub reason: String,
+    pub rescinded: bool,
 }
 
 /// A subtask the user has created.
@@ -169,11 +178,122 @@ pub struct Subtask {
     pub enabled: bool,
     /// Whether the subtask is retired.
     pub retired: bool,
+    /// The stored definition, including the author's answers and source code.
+    pub content: SubtaskContent,
 }
 
-/// A task the user has created.
+/// Stored subtype definitions. Strings and arrays are exported without rendering,
+/// normalization or narrowing casts. Source code is inert text, never executed.
+#[derive(Debug, Clone, Union)]
+#[oai(
+    rename = "UserExportSubtaskContent",
+    discriminator_name = "type",
+    rename_all = "SCREAMING_SNAKE_CASE"
+)]
+pub enum SubtaskContent {
+    CodingChallenge(CodingContent),
+    Question(QuestionContent),
+    MultipleChoiceQuestion(MultipleChoiceContent),
+    Matching(MatchingContent),
+}
+
+impl SubtaskContent {
+    pub fn subtask_type(&self) -> ChallengesSubtaskType {
+        match self {
+            Self::CodingChallenge(_) => ChallengesSubtaskType::CodingChallenge,
+            Self::Question(_) => ChallengesSubtaskType::Question,
+            Self::MultipleChoiceQuestion(_) => ChallengesSubtaskType::MultipleChoiceQuestion,
+            Self::Matching(_) => ChallengesSubtaskType::Matching,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportCodingContent")]
+pub struct CodingContent {
+    pub description: String,
+    /// Authored Python evaluator, including its test definitions.
+    pub evaluator: String,
+    pub solution_environment: String,
+    pub solution_code: String,
+    /// Milliseconds, as stored.
+    pub time_limit: i64,
+    /// Megabytes, as stored.
+    pub memory_limit: i64,
+    pub static_tests: i32,
+    pub random_tests: i32,
+}
+
+#[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportQuestionContent")]
+pub struct QuestionContent {
+    pub question: String,
+    pub answers: Vec<String>,
+    pub case_sensitive: bool,
+    pub ascii_letters: bool,
+    pub digits: bool,
+    pub punctuation: bool,
+    pub blocks: Vec<String>,
+}
+
+#[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportMultipleChoiceContent")]
+pub struct MultipleChoiceContent {
+    pub question: String,
+    /// Original ordered answers, including duplicates and empty strings.
+    pub answers: Vec<String>,
+    /// Exact stored signed 64-bit bitmask as decimal text (avoids JSON number
+    /// precision loss). Bit i marks answers[i] correct, with bit zero first.
+    /// Interpret negative values as 64-bit two's complement.
+    pub correct_answers_bitmask: String,
+    /// Zero-based correct indices within the stored answer list and 64-bit mask.
+    pub correct_answer_indices: Vec<u8>,
+    pub single_choice: bool,
+}
+
+#[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportMatchingContent")]
+pub struct MatchingContent {
+    pub left: Vec<String>,
+    pub right: Vec<String>,
+    /// For each left item, the zero-based index of its matching right item.
+    /// Retains signed stored values even for invalid legacy definitions.
+    pub solution: Vec<i16>,
+}
+
+#[derive(Debug, Clone, Union)]
+#[oai(
+    rename = "UserExportTaskContent",
+    discriminator_name = "type",
+    rename_all = "SCREAMING_SNAKE_CASE"
+)]
+pub enum TaskContent {
+    Challenge(ChallengeContent),
+    CourseTask(CourseTaskContent),
+}
+
+#[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportChallengeContent")]
+pub struct ChallengeContent {
+    pub category_id: Uuid,
+    pub skill_ids: Vec<String>,
+    pub title: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Object)]
+#[oai(rename = "UserExportCourseTaskContent")]
+pub struct CourseTaskContent {
+    pub course_id: String,
+    pub section_id: Option<String>,
+    pub lecture_id: Option<String>,
+}
+
+/// A task the user has created. Ownership of a task does not establish
+/// ownership of the subtasks that other users have added to it.
 #[derive(Debug, Clone, Object)]
 pub struct Task {
+    pub content: TaskContent,
     /// The unique identifier of the task.
     pub id: Uuid,
     /// The point in time at which the task was created.
@@ -237,6 +357,7 @@ impl Submission {
             creation_timestamp: submission.creation_timestamp.and_utc(),
             environment: submission.environment,
             code: submission.code,
+            charge_on_failure: submission.charge_on_failure,
             result: result.map(Into::into),
         }
     }
@@ -279,13 +400,15 @@ impl From<challenges_ban::Model> for Ban {
             end: value.end.map(|ts| ts.and_utc()),
             action: value.action,
             reason: value.reason,
+            rescinded: value.rescinded,
         }
     }
 }
 
-impl From<challenges_subtasks::Model> for Subtask {
-    fn from(value: challenges_subtasks::Model) -> Self {
+impl Subtask {
+    pub fn from(value: challenges_subtasks::Model, content: SubtaskContent) -> Self {
         Self {
+            content,
             id: value.id,
             task_id: value.task_id,
             ty: value.ty,
@@ -298,9 +421,10 @@ impl From<challenges_subtasks::Model> for Subtask {
     }
 }
 
-impl From<challenges_tasks::Model> for Task {
-    fn from(value: challenges_tasks::Model) -> Self {
+impl Task {
+    pub fn from(value: challenges_tasks::Model, content: TaskContent) -> Self {
         Self {
+            content,
             id: value.id,
             creation_timestamp: value.creation_timestamp.and_utc(),
         }
@@ -391,6 +515,7 @@ mod tests {
 
         let exported = Submission::from(
             challenges_coding_challenge_submissions::Model {
+                charge_on_failure: false,
                 id,
                 subtask_id,
                 creator,
@@ -425,6 +550,7 @@ mod tests {
     fn submission_without_a_result() {
         let exported = Submission::from(
             challenges_coding_challenge_submissions::Model {
+                charge_on_failure: false,
                 id: Uuid::new_v4(),
                 subtask_id: Uuid::new_v4(),
                 creator: Uuid::new_v4(),
@@ -469,6 +595,7 @@ mod tests {
             end: None,
             action: ChallengesBanAction::Create,
             creator,
+            rescinded: false,
             reason: "reason".into(),
         });
 
@@ -485,22 +612,41 @@ mod tests {
         let creator = Uuid::new_v4();
         let task_id = Uuid::new_v4();
 
-        let subtask = Subtask::from(challenges_subtasks::Model {
-            id: Uuid::new_v4(),
-            task_id,
-            creator,
-            creation_timestamp: timestamp(),
-            xp: 10,
-            coins: 20,
-            enabled: true,
-            ty: ChallengesSubtaskType::Question,
-            retired: false,
-        });
-        let task = Task::from(challenges_tasks::Model {
-            id: task_id,
-            creator,
-            creation_timestamp: timestamp(),
-        });
+        let subtask = Subtask::from(
+            challenges_subtasks::Model {
+                id: Uuid::new_v4(),
+                task_id,
+                creator,
+                creation_timestamp: timestamp(),
+                xp: 10,
+                coins: 20,
+                enabled: true,
+                ty: ChallengesSubtaskType::Question,
+                retired: false,
+                moderation_removed: false,
+            },
+            SubtaskContent::Question(QuestionContent {
+                question: "q".into(),
+                answers: vec!["a".into()],
+                case_sensitive: false,
+                ascii_letters: true,
+                digits: false,
+                punctuation: false,
+                blocks: vec![],
+            }),
+        );
+        let task = Task::from(
+            challenges_tasks::Model {
+                id: task_id,
+                creator,
+                creation_timestamp: timestamp(),
+            },
+            TaskContent::CourseTask(CourseTaskContent {
+                course_id: "course".into(),
+                section_id: None,
+                lecture_id: None,
+            }),
+        );
 
         assert_eq!(subtask.task_id, task_id);
         assert_eq!(subtask.xp, 10);

@@ -333,6 +333,99 @@ impl Challenges {
             None => DeleteChallenge::challenge_not_found(),
         }
     }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/categories", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_categories(
+        &self,
+        title: Query<Option<String>>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> ListCategories::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_categories(title, db, VerifiedUserAuth(user))
+            .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/categories/:category_id", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_category(
+        &self,
+        category_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> GetCategory::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_category(category_id, db, VerifiedUserAuth(user))
+            .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/categories/:category_id/stats", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_category_stats(
+        &self,
+        category_id: Path<Uuid>,
+        subtask_type: Query<Option<ChallengesSubtaskType>>,
+        creator: Query<Option<Uuid>>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> GetCategoryStats::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_category_stats(
+            Query(category_id.0),
+            subtask_type,
+            creator,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/categories/:category_id/challenges", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_challenges(
+        &self,
+        category_id: Path<Uuid>,
+        title: Query<Option<String>>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> ListChallenges::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_challenges(category_id, title, db, VerifiedUserAuth(user))
+            .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/categories/:category_id/challenges/:challenge_id",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_challenge(
+        &self,
+        category_id: Path<Uuid>,
+        challenge_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> GetChallenge::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_challenge(category_id, challenge_id, db, VerifiedUserAuth(user))
+            .await
+    }
 }
 
 response!(ListCategories = {

@@ -33,6 +33,41 @@ impl AuthService {
             .await?
     }
 
+    /// Minimum case-specific provenance. This is deliberately uncached and
+    /// never treats an account's recorded version as a legal-capacity finding.
+    pub async fn moderation_basis(&self, id: Uuid) -> ServiceResult<serde_json::Value> {
+        let response = self
+            .0
+            .get(&format!("/moderation/rule-evidence/{id}"))
+            .send()
+            .await?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(
+                serde_json::json!({"recorded_acceptance":"unknown","automatic_quality_basis_confirmed":false}),
+            );
+        }
+        Ok(response.error_for_status()?.json().await?)
+    }
+
+    /// Fresh ordinary authority, separate from the internal identity endpoint.
+    pub async fn ordinary_authority(
+        &self,
+        token: &str,
+    ) -> ServiceResult<Option<OrdinaryAuthority>> {
+        let response = self
+            .0
+            .post("/ordinary-authority")
+            .json(&serde_json::json!({"access_token":token}))
+            .send()
+            .await?;
+        if response.status() == StatusCode::UNAUTHORIZED
+            || response.status() == StatusCode::FORBIDDEN
+        {
+            return Ok(None);
+        }
+        Ok(Some(response.error_for_status()?.json().await?))
+    }
+
     /// Same as [`get_user_by_id`](Self::get_user_by_id), but always asks the
     /// auth microservice instead of using the cache.
     pub async fn get_user_by_id_uncached(&self, id: Uuid) -> ServiceResult<Option<User>> {
@@ -63,4 +98,11 @@ pub struct User {
     /// versions of the auth microservice do not send this field.
     #[serde(default)]
     pub leaderboard_opt_out: bool,
+}
+
+#[derive(Deserialize)]
+pub struct OrdinaryAuthority {
+    pub id: Uuid,
+    pub admin: bool,
+    pub email_verified: bool,
 }

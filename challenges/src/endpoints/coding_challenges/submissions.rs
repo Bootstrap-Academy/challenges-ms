@@ -34,7 +34,7 @@ use crate::{
     services::{
         judge::{self, Judge},
         subtasks::{
-            deduct_hearts, get_subtask, get_user_subtask, send_task_rewards, update_user_subtask,
+            get_subtask, get_user_subtask, send_task_rewards, update_user_subtask,
             SendTaskRewardsError, UserSubtaskExt,
         },
     },
@@ -75,31 +75,8 @@ impl Api {
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> ListSubmissions::Response<VerifiedUserAuth> {
-        let Some((cc, subtask)) =
-            get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0)
-                .await?
-        else {
-            return ListSubmissions::subtask_not_found();
-        };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
-            return ListSubmissions::subtask_not_found();
-        }
-
-        let queue_positions = self.queue_positions.read().await;
-        ListSubmissions::ok(
-            cc.find_related(challenges_coding_challenge_submissions::Entity)
-                .filter(challenges_coding_challenge_submissions::Column::Creator.eq(auth.0.id))
-                .find_also_related(challenges_coding_challenge_result::Entity)
-                .order_by_desc(challenges_coding_challenge_submissions::Column::CreationTimestamp)
-                .all(&***db)
-                .await?
-                .into_iter()
-                .map(|(submission, result)| {
-                    let position = queue_positions.position(submission.id);
-                    Submission::from(&submission, result.map(Into::into), position)
-                })
-                .collect(),
-        )
+        self.list_submission_result(task_id, subtask_id, db, auth, true)
+            .await
     }
 
     /// Get a submission of a coding challenge by id.
@@ -121,7 +98,9 @@ impl Api {
         else {
             return GetSubmission::submission_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return GetSubmission::submission_not_found();
         }
 
@@ -162,7 +141,9 @@ impl Api {
         else {
             return CreateSubmission::subtask_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return CreateSubmission::subtask_not_found();
         }
 
@@ -174,6 +155,7 @@ impl Api {
             return CreateSubmission::environment_not_found();
         }
 
+        crate::services::benefits::lock_attempt(&db, auth.0.id).await?;
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
 
         if let Some(last_attempt) = user_subtask.last_attempt() {
@@ -184,9 +166,11 @@ impl Api {
             }
         }
 
-        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+        let Some(heart_exempt) =
+            crate::services::hearts::admit(&self.state.services, &auth.0, &subtask).await?
+        else {
             return CreateSubmission::not_enough_hearts();
-        }
+        };
 
         let submission = Arc::new(
             challenges_coding_challenge_submissions::ActiveModel {
@@ -196,6 +180,7 @@ impl Api {
                 creation_timestamp: Set(Utc::now().naive_utc()),
                 environment: Set(data.0.environment),
                 code: Set(data.0.code),
+                charge_on_failure: Set(!heart_exempt),
             }
             .insert(&***db)
             .await?,
@@ -211,12 +196,58 @@ impl Api {
             reward_lock: Arc::clone(&self.reward_lock),
             state: Arc::clone(&self.state),
             challenge: Arc::new(cc),
-            user_subtask,
             queue_positions: Arc::clone(&self.queue_positions),
         })
         .await;
 
         CreateSubmission::ok(Submission::from(&submission, None, Some(position)))
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/coding_challenges/:subtask_id/submissions",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_submission(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> ListSubmissions::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_submission_result(task_id, subtask_id, db, VerifiedUserAuth(user), false)
+            .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/coding_challenges/:subtask_id/submissions/:submission_id",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_submission(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        submission_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> GetSubmission::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_submission(
+            task_id,
+            subtask_id,
+            submission_id,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
     }
 }
 
@@ -248,6 +279,66 @@ response!(CreateSubmission = {
     NotEnoughHearts(403, error),
 });
 
+impl Api {
+    async fn list_submission_result(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: VerifiedUserAuth,
+        settle_hearts: bool,
+    ) -> ListSubmissions::Response<VerifiedUserAuth> {
+        let Some((cc, subtask)) =
+            get_subtask::<challenges_coding_challenges::Entity>(&db, task_id.0, subtask_id.0)
+                .await?
+        else {
+            return ListSubmissions::subtask_not_found();
+        };
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
+            return ListSubmissions::subtask_not_found();
+        }
+
+        if settle_hearts {
+            // A visible final verdict must reconcile its committed debit before
+            // the frontend performs its normal server-authoritative heart refresh.
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                crate::services::hearts::settle_user(
+                    &self.state.db,
+                    &self.state.services,
+                    auth.0.id,
+                ),
+            )
+            .await;
+        }
+        let submissions = cc
+            .find_related(challenges_coding_challenge_submissions::Entity)
+            .filter(challenges_coding_challenge_submissions::Column::Creator.eq(auth.0.id))
+            .find_also_related(challenges_coding_challenge_result::Entity)
+            .order_by_desc(challenges_coding_challenge_submissions::Column::CreationTimestamp)
+            .all(&***db)
+            .await?;
+        // Read settlement after the verdict snapshot. Its operation commits in
+        // the same transaction; a newly visible wrong verdict cannot look free.
+        let pending = crate::services::hearts::unsettled_user(&db, auth.0.id).await?;
+        let queue_positions = self.queue_positions.read().await;
+        ListSubmissions::ok(
+            submissions
+                .into_iter()
+                .map(|(submission, result)| {
+                    let position = queue_positions.position(submission.id);
+                    let mut response =
+                        Submission::from(&submission, result.map(Into::into), position);
+                    response.hearts_pending = pending.contains(&submission.id);
+                    response
+                })
+                .collect(),
+        )
+    }
+}
+
 struct StartJudgeSubmissionTask {
     submission: Arc<challenges_coding_challenge_submissions::Model>,
     subtask: challenges_subtasks::Model,
@@ -258,7 +349,6 @@ struct StartJudgeSubmissionTask {
     reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     state: Arc<SharedState>,
     challenge: Arc<challenges_coding_challenges::Model>,
-    user_subtask: Option<challenges_user_subtasks::Model>,
     queue_positions: Arc<RwLock<QueuePositions>>,
 }
 
@@ -274,7 +364,6 @@ async fn start_judge_submission_task(
         challenge: cc,
         queue_positions,
         subtask,
-        user_subtask,
     }: StartJudgeSubmissionTask,
 ) -> usize {
     let position = queue_positions.write().await.push(submission.id);
@@ -316,8 +405,7 @@ async fn start_judge_submission_task(
                 submission,
                 judge,
                 reward_lock,
-                state,
-                user_subtask,
+                state: Arc::clone(&state),
             })
             .await
             {
@@ -325,6 +413,10 @@ async fn start_judge_submission_task(
                 db.rollback().await.ok();
             } else if let Err(err) = db.commit().await {
                 error!("judge task for {submission_id} failed to commit db transaction: {err}");
+            } else if let Err(err) =
+                crate::services::hearts::settle(&state.db, &state.services, submission_id).await
+            {
+                error!("heart settlement for {submission_id} remains pending: {err}");
             }
             pop().await;
         }
@@ -341,7 +433,6 @@ struct JudgeSubmission<'a, 'b> {
     judge: Judge<'b>,
     reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     state: Arc<SharedState>,
-    user_subtask: Option<challenges_user_subtasks::Model>,
 }
 
 async fn judge_submission(
@@ -353,7 +444,6 @@ async fn judge_submission(
         judge,
         reward_lock,
         state,
-        user_subtask,
     }: JudgeSubmission<'_, '_>,
 ) -> Result<(), JudgeSubmissionError> {
     debug!("judging submission {}", submission.id);
@@ -369,12 +459,38 @@ async fn judge_submission(
     })
     .await?;
     trace!("judge result for {}: {result:?}", submission.id);
+    record_judgment(db, subtask, &submission, result, reward_lock, state).await
+}
+
+async fn record_judgment(
+    db: &DatabaseTransaction,
+    subtask: &challenges_subtasks::Model,
+    submission: &challenges_coding_challenge_submissions::Model,
+    result: Result<(), CheckError>,
+    reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
+    state: Arc<SharedState>,
+) -> Result<(), JudgeSubmissionError> {
+    // Both success and failure mutate progress. Serialize with erasure and
+    // reread after judging, rather than using a pre-queue progress snapshot.
+    let _guard = reward_lock
+        .write((submission.subtask_id, submission.creator))
+        .await;
+    crate::services::benefits::lock_attempt(db, submission.creator).await?;
+    if challenges_coding_challenge_result::Entity::find_by_id(submission.id)
+        .one(db)
+        .await?
+        .is_some()
+    {
+        return Ok(());
+    }
+    let user_subtask = get_user_subtask(db, submission.creator, subtask.id).await?;
+    let last_attempt = user_subtask
+        .as_ref()
+        .and_then(|row| row.last_attempt_timestamp)
+        .unwrap_or(submission.creation_timestamp)
+        .max(submission.creation_timestamp);
     match result {
         Ok(()) => {
-            let _guard = reward_lock
-                .write((submission.subtask_id, submission.creator))
-                .await;
-
             let solved_previously = user_subtask.is_solved();
             if !solved_previously {
                 update_user_subtask(
@@ -384,7 +500,7 @@ async fn judge_submission(
                         user_id: Set(submission.creator),
                         subtask_id: Set(subtask.id),
                         solved_timestamp: Set(Some(submission.creation_timestamp)),
-                        last_attempt_timestamp: Set(Some(submission.creation_timestamp)),
+                        last_attempt_timestamp: Set(Some(last_attempt)),
                         attempts: Set(user_subtask.attempts() as i32 + 1),
                         ..Default::default()
                     },
@@ -436,12 +552,16 @@ async fn judge_submission(
                 challenges_user_subtasks::ActiveModel {
                     user_id: Set(submission.creator),
                     subtask_id: Set(subtask.id),
-                    last_attempt_timestamp: Set(Some(submission.creation_timestamp)),
+                    last_attempt_timestamp: Set(Some(last_attempt)),
                     attempts: Set(user_subtask.attempts() as i32 + 1),
                     ..Default::default()
                 },
             )
             .await?;
+            if submission.charge_on_failure && result.verdict != ChallengesVerdict::Ok {
+                crate::services::hearts::record(db, submission.id, submission.creator, subtask.id)
+                    .await?;
+            }
             challenges_coding_challenge_result::ActiveModel {
                 submission_id: Set(submission.id),
                 verdict: Set(result.verdict),
@@ -467,13 +587,277 @@ async fn judge_submission(
 #[derive(Debug, Error)]
 enum JudgeSubmissionError {
     #[error("failed to judge submission: {0}")]
-    Judge(#[from] judge::Error),
+    Judge(Box<judge::Error>),
     #[error("database error: {0}")]
     Db(#[from] DbErr),
     #[error("check error: {0:?}")]
     Check(Box<CheckError>),
     #[error("could not send task rewards: {0}")]
     TaskRewards(#[from] SendTaskRewardsError),
+}
+
+impl From<judge::Error> for JudgeSubmissionError {
+    fn from(error: judge::Error) -> Self {
+        Self::Judge(Box::new(error))
+    }
+}
+
+#[cfg(test)]
+mod heart_tests {
+    use super::*;
+    use crate::endpoints::heart_tests::Fixture;
+    use poem::IntoResponse;
+    use schemas::challenges::coding_challenges::CheckResult;
+    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+    async fn submission(
+        f: &Fixture,
+        subtask: Uuid,
+        user: Uuid,
+        charge: bool,
+    ) -> challenges_coding_challenge_submissions::Model {
+        challenges_coding_challenge_submissions::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            subtask_id: Set(subtask),
+            creator: Set(user),
+            creation_timestamp: Set(Utc::now().naive_utc()),
+            environment: Set("python".into()),
+            code: Set("synthetic solution".into()),
+            charge_on_failure: Set(charge),
+        }
+        .insert(&f.state.db)
+        .await
+        .unwrap()
+    }
+
+    fn wrong(verdict: ChallengesVerdict) -> CheckError {
+        CheckError::TestcaseFailed(CheckTestcaseError {
+            seed: "synthetic".into(),
+            result: CheckResult {
+                verdict,
+                reason: None,
+                compile: None,
+                run: None,
+            },
+        })
+    }
+
+    async fn count(f: &Fixture, table: &str, user: Uuid) -> i64 {
+        f.state
+            .db
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                format!("SELECT count(*) AS n FROM {table} WHERE user_id=$1"),
+                [user.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "n")
+            .unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+    async fn coding_heart_outcomes_postgres() {
+        let f = Fixture::new().await;
+        let (_, id) = f.seed("coding_challenge").await;
+        let subtask = challenges_subtasks::Entity::find_by_id(id)
+            .one(&f.state.db)
+            .await
+            .unwrap()
+            .unwrap();
+        let lock = Arc::new(KeyRwLock::default());
+        let user = Uuid::new_v4();
+        for result in [Ok(()), Ok(())] {
+            let submission = submission(&f, id, user, true).await;
+            let tx = f.state.db.begin().await.unwrap();
+            record_judgment(
+                &tx,
+                &subtask,
+                &submission,
+                result,
+                lock.clone(),
+                f.state.clone(),
+            )
+            .await
+            .unwrap();
+            tx.commit().await.unwrap();
+        }
+        assert_eq!(count(&f, "challenge_heart_operations", user).await, 0);
+        assert_eq!(count(&f, "challenge_benefit_earnings", user).await, 1);
+        for verdict in [
+            ChallengesVerdict::CompilationError,
+            ChallengesVerdict::InvalidOutputFormat,
+            ChallengesVerdict::MemoryLimitExceeded,
+            ChallengesVerdict::NoOutput,
+            ChallengesVerdict::PreCheckFailed,
+            ChallengesVerdict::RuntimeError,
+            ChallengesVerdict::TimeLimitExceeded,
+            ChallengesVerdict::WrongAnswer,
+        ] {
+            let user = Uuid::new_v4();
+            let submission = submission(&f, id, user, true).await;
+            let tx = f.state.db.begin().await.unwrap();
+            record_judgment(
+                &tx,
+                &subtask,
+                &submission,
+                Err(wrong(verdict)),
+                lock.clone(),
+                f.state.clone(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(count(&f, "challenge_heart_operations", user).await, 0); // not committed yet
+            tx.commit().await.unwrap();
+            assert_eq!(count(&f, "challenge_heart_operations", user).await, 1);
+            assert!(
+                crate::services::hearts::settle(&f.state.db, &f.state.services, submission.id)
+                    .await
+                    .unwrap()
+            );
+            assert_eq!(f.shop.lock().unwrap().balances[&user], 4);
+            assert_eq!(count(&f, "challenge_benefit_earnings", user).await, 0);
+        }
+        // Already-paid historical jobs and admission exemptions stay free.
+        let exempt = Uuid::new_v4();
+        let old = submission(&f, id, exempt, false).await;
+        let tx = f.state.db.begin().await.unwrap();
+        record_judgment(
+            &tx,
+            &subtask,
+            &old,
+            Err(wrong(ChallengesVerdict::WrongAnswer)),
+            lock.clone(),
+            f.state.clone(),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(count(&f, "challenge_heart_operations", exempt).await, 0);
+        // Author/evaluator/environment failures are not learner mistakes.
+        let evaluator_failure = serde_json::from_value(serde_json::json!({
+            "program_id":Uuid::nil(),"ttl":0,"cached":false,"build":null,
+            "run":{"status":1,"stdout":"","stderr":"synthetic evaluator error","resource_usage":{"time":0,"memory":0},"limits":{"cpus":1,"time":1,"memory":16,"tmpfs":0,"filesize":1,"file_descriptors":8,"processes":1,"stdout_max_size":100,"stderr_max_size":100,"network":false}}
+        })).unwrap();
+        for error in [
+            CheckError::NoExamples,
+            CheckError::EnvironmentNotFound,
+            CheckError::EvaluatorFailed(evaluator_failure),
+        ] {
+            let user = Uuid::new_v4();
+            let submission = submission(&f, id, user, true).await;
+            let tx = f.state.db.begin().await.unwrap();
+            assert!(record_judgment(
+                &tx,
+                &subtask,
+                &submission,
+                Err(error),
+                lock.clone(),
+                f.state.clone()
+            )
+            .await
+            .is_err());
+            tx.rollback().await.unwrap();
+            assert_eq!(count(&f, "challenge_heart_operations", user).await, 0);
+            assert!(
+                challenges_coding_challenge_result::Entity::find_by_id(submission.id)
+                    .one(&f.state.db)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+    async fn coding_duplicate_workers_postgres() {
+        let f = Fixture::new().await;
+        let (_, id) = f.seed("coding_challenge").await;
+        let subtask = challenges_subtasks::Entity::find_by_id(id)
+            .one(&f.state.db)
+            .await
+            .unwrap()
+            .unwrap();
+        let user = Uuid::new_v4();
+        let submission = submission(&f, id, user, true).await;
+        let worker = || async {
+            let tx = f.state.db.begin().await.unwrap();
+            // Distinct process-local locks: the database lock is the authority.
+            record_judgment(
+                &tx,
+                &subtask,
+                &submission,
+                Err(wrong(ChallengesVerdict::WrongAnswer)),
+                Arc::new(KeyRwLock::default()),
+                f.state.clone(),
+            )
+            .await
+            .unwrap();
+            tx.commit().await.unwrap();
+        };
+        tokio::join!(worker(), worker());
+        assert_eq!(count(&f, "challenge_heart_operations", user).await, 1);
+        let progress = get_user_subtask(&f.state.db.begin().await.unwrap(), user, id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(progress.attempts, 1);
+        let api = Api {
+            state: f.state.clone(),
+            config: f.config.clone(),
+            sandkasten: SandkastenClient::new("http://127.0.0.1:9/unused".parse().unwrap()),
+            judge_cache: f.state.cache.with_formatter(JsonFormatter),
+            judge_lock: Arc::new(Semaphore::new(1)),
+            reward_lock: Arc::new(KeyRwLock::default()),
+            queue_positions: Arc::new(RwLock::new(QueuePositions::new(1))),
+        };
+        let list = |settle| {
+            let f = &f;
+            let api = &api;
+            let task_id = subtask.task_id;
+            async move {
+                let tx = Arc::new(f.state.db.begin().await.unwrap());
+                let response = api
+                    .list_submission_result(
+                        Path(task_id),
+                        Path(id),
+                        Data(&tx),
+                        VerifiedUserAuth(lib::auth::User {
+                            id: user,
+                            email_verified: true,
+                            admin: false,
+                        }),
+                        settle,
+                    )
+                    .await
+                    .unwrap()
+                    .into_response();
+                response
+                    .into_body()
+                    .into_json::<serde_json::Value>()
+                    .await
+                    .unwrap()
+            }
+        };
+        let pending = list(false).await;
+        assert_eq!(pending[0]["id"], serde_json::json!(submission.id));
+        assert_eq!(pending[0]["result"]["verdict"], "WRONG_ANSWER");
+        assert_eq!(pending[0]["hearts_pending"], true);
+        assert_eq!(f.shop.lock().unwrap().calls, 0); // retained read has no debit authority
+        f.shop.lock().unwrap().lose_reply = true;
+        assert_eq!(list(true).await[0]["hearts_pending"], true);
+        let (a, b) = tokio::join!(
+            crate::services::hearts::settle(&f.state.db, &f.state.services, submission.id),
+            crate::services::hearts::settle(&f.state.db, &f.state.services, submission.id)
+        );
+        assert!(a.unwrap() && b.unwrap());
+        assert_eq!(f.shop.lock().unwrap().balances[&user], 4);
+        assert_eq!(f.shop.lock().unwrap().calls, 2);
+        assert_eq!(list(true).await[0]["hearts_pending"], false);
+    }
 }
 
 impl Api {
@@ -509,12 +893,6 @@ impl Api {
             .into_iter()
             .map(|x| (x.subtask_id, Arc::new(x)))
             .collect::<HashMap<_, _>>();
-        let user_subtasks = challenges_user_subtasks::Entity::find()
-            .all(db)
-            .await?
-            .into_iter()
-            .map(|x| ((x.user_id, x.subtask_id), x))
-            .collect::<HashMap<_, _>>();
         let submissions = challenges_coding_challenge_submissions::Entity::find()
             .left_join(challenges_coding_challenge_result::Entity)
             .filter(challenges_coding_challenge_result::Column::SubmissionId.is_null())
@@ -538,7 +916,6 @@ impl Api {
                     submission.id
                 );
             };
-            let user_subtask = user_subtasks.get(&(submission.creator, submission.subtask_id));
             start_judge_submission_task(StartJudgeSubmissionTask {
                 submission: Arc::new(submission),
                 subtask: subtask.clone(),
@@ -549,7 +926,6 @@ impl Api {
                 reward_lock: Arc::clone(&self.reward_lock),
                 state: Arc::clone(&self.state),
                 challenge: Arc::clone(challenge),
-                user_subtask: user_subtask.cloned(),
                 queue_positions: Arc::clone(&self.queue_positions),
             })
             .await;

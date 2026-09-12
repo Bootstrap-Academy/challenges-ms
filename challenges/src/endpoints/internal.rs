@@ -5,6 +5,7 @@ use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::Response};
 use poem_openapi::{param::Path, ApiResponse, OpenApi};
 use schemas::challenges::user_export::UserDataExport;
+use sea_orm::ConnectionTrait;
 use tracing::info;
 use uuid::Uuid;
 
@@ -27,6 +28,10 @@ impl Internal {
         db: Data<&DbTxn>,
         _auth: InternalAuth,
     ) -> ExportUser::Response<InternalAuth> {
+        // Definitions and ownership must come from one snapshot, including
+        // while another request edits or deletes the authored content.
+        db.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            .await?;
         ExportUser::ok(export_user_data(&db, user_id.0).await?)
     }
 

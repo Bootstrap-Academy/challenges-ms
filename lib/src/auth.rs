@@ -31,6 +31,38 @@ pub struct UserAuth(pub User);
 #[derive(Debug)]
 pub struct VerifiedUserAuth(pub User);
 
+/// Only explicit learning routes consume this principal. It is never an
+/// ordinary session and carries no purchase, publication or administrator power.
+pub struct LearningPrincipal {
+    pub user: User,
+    pub digest: String,
+}
+
+pub struct LearningAuth(pub LearningPrincipal);
+
+async fn learning_auth_check(
+    req: &Request,
+    _: Option<Bearer>,
+) -> Result<LearningPrincipal, UserAuthError::raw::Response> {
+    use sha2::{Digest, Sha256};
+    let key = req
+        .headers()
+        .get("x-learning-key")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| (43..=256).contains(&v.len()))
+        .ok_or_else(UserAuthError::raw::unauthorized)?;
+    let digest = format!("{:x}", Sha256::digest(key.as_bytes()));
+    let state = req.data::<Arc<SharedState>>().expect("request SharedState");
+    let user = state
+        .services
+        .shop
+        .learning_authority(&digest)
+        .await
+        .map_err(|_| UserAuthError::raw::unavailable())?
+        .ok_or_else(UserAuthError::raw::unauthorized)?;
+    Ok(LearningPrincipal { user, digest })
+}
+
 #[derive(Debug)]
 pub struct AdminAuth(pub User);
 
@@ -52,14 +84,22 @@ async fn user_auth_check(
     if user
         .is_revoked(&mut data.auth_redis.clone())
         .await
-        .expect("token verification via auth redis failed")
+        .map_err(|_| UserAuthError::raw::unavailable())?
     {
         return Err(UserAuthError::raw::unauthorized());
     }
+    let authority = data
+        .services
+        .auth
+        .ordinary_authority(&token)
+        .await
+        .map_err(|_| UserAuthError::raw::unavailable())?
+        .filter(|a| a.id == user.uid)
+        .ok_or_else(UserAuthError::raw::unauthorized)?;
     Ok(User {
-        id: user.uid,
-        email_verified: user.data.email_verified,
-        admin: user.data.admin,
+        id: authority.id,
+        email_verified: authority.email_verified,
+        admin: authority.admin,
     })
 }
 
@@ -114,7 +154,8 @@ fn verify_internal_token(token: &str, secret: &JwtSecret) -> bool {
 custom_auth!(PublicAuth, |req, token| async move {
     match user_auth_check(req, token).await {
         Ok(user) => Ok::<_, UserAuthError::raw::Response>(Some(user)),
-        Err(_) => Ok(None),
+        Err(UserAuthError::raw::Response::Unauthorized(_)) => Ok(None),
+        Err(error) => Err(error),
     }
 });
 add_response_schemas!(PublicAuth);
@@ -125,6 +166,41 @@ add_response_schemas!(UserAuth, UserAuthError::raw::Response);
 custom_auth!(VerifiedUserAuth, verified_user_auth_check);
 add_response_schemas!(VerifiedUserAuth, VerifiedUserAuthError::raw::Response);
 
+// The API description exposes the same dedicated header that the extractor
+// actually consumes. No ordinary bearer scheme is advertised for this route.
+impl<'a> poem_openapi::ApiExtractor<'a> for LearningAuth {
+    const TYPES: &'static [poem_openapi::ApiExtractorType] =
+        &[poem_openapi::ApiExtractorType::SecurityScheme];
+    type ParamType = ();
+    type ParamRawType = ();
+    async fn from_request(
+        request: &'a poem::Request,
+        _body: &mut poem::RequestBody,
+        _options: poem_openapi::ExtractParamOptions<Self::ParamType>,
+    ) -> poem::Result<Self> {
+        Ok(Self(learning_auth_check(request, None).await?))
+    }
+    fn register(registry: &mut poem_openapi::registry::Registry) {
+        registry.create_security_scheme(
+            "LearningAuth",
+            poem_openapi::registry::MetaSecurityScheme {
+                ty: "apiKey",
+                description: Some("Scoped retained learning credential"),
+                name: Some("x-learning-key"),
+                key_in: Some("header"),
+                scheme: None,
+                bearer_format: None,
+                flows: None,
+                openid_connect_url: None,
+            },
+        );
+    }
+    fn security_schemes() -> Vec<&'static str> {
+        vec!["LearningAuth"]
+    }
+}
+add_response_schemas!(LearningAuth, UserAuthError::raw::Response);
+
 custom_auth!(AdminAuth, admin_auth_check);
 add_response_schemas!(AdminAuth, AdminAuthError::raw::Response);
 
@@ -134,6 +210,8 @@ add_response_schemas!(InternalAuth, InternalAuthError::raw::Response);
 response!(UserAuthError = {
     /// The user is unauthenticated.
     Unauthorized(401, error),
+    /// The authoritative account check is unavailable. No ordinary authority is granted.
+    Unavailable(503, error),
 });
 
 response!(VerifiedUserAuthError = {

@@ -151,6 +151,8 @@ pub struct Submission {
     pub result: Option<CheckResult<RunSummary>>,
     /// The number of submissions in the judge's queue before this one.
     pub queue_position: Option<usize>,
+    /// The verdict is final; its heart operation is still being reconciled.
+    pub hearts_pending: bool,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -257,6 +259,7 @@ impl Submission {
             environment: submission.environment.clone(),
             result,
             queue_position,
+            hearts_pending: false,
         }
     }
 }

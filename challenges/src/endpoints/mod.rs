@@ -12,15 +12,24 @@ use self::{
     multiple_choice::MultipleChoice, question::Questions, subtasks::Subtasks,
 };
 
+mod attempts;
 mod challenges;
 pub mod coding_challenges;
 mod course_tasks;
 mod internal;
 mod leaderboard;
 mod matchings;
+mod moderation;
 mod multiple_choice;
 mod question;
 mod subtasks;
+
+#[cfg(test)]
+mod creator_tests;
+#[cfg(test)]
+pub(crate) mod heart_tests;
+#[cfg(test)]
+mod scoped_release_tests;
 
 #[derive(poem_openapi::Tags)]
 pub enum Tags {
@@ -50,12 +59,14 @@ pub async fn setup_api(
     sandkasten: SandkastenClient,
 ) -> anyhow::Result<impl OpenApi> {
     Ok((
+        attempts::Attempts {
+            state: Arc::clone(&state),
+        },
         Challenges {
             state: Arc::clone(&state),
         },
         CourseTasks {
             state: Arc::clone(&state),
-            config: Arc::clone(&config),
         },
         Subtasks {
             state: Arc::clone(&state),
@@ -87,6 +98,9 @@ pub async fn setup_api(
         .await?,
         LeaderboardEndpoints {
             cache: state.cache.with_formatter(Default::default()),
+            state: Arc::clone(&state),
+        },
+        moderation::Api {
             state: Arc::clone(&state),
         },
         Internal { state },

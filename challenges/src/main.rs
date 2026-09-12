@@ -97,6 +97,15 @@ async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
         db: db.clone(),
     });
 
+    tokio::spawn(services::benefits::run(
+        db.clone(),
+        shared_state.services.clone(),
+    ));
+    tokio::spawn(services::hearts::run(
+        db.clone(),
+        shared_state.services.clone(),
+    ));
+
     let api_service = OpenApiService::new(
         setup_api(shared_state.clone(), Arc::clone(&config), sandkasten).await?,
         "Bootstrap Academy Backend: Challenges Microservice",
@@ -112,6 +121,7 @@ async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
         .with(Tracing)
         .with(PanicHandler::middleware())
         .with(DbTransactionMiddleware::new(db))
+        .with(services::hearts::SettlementMiddleware(shared_state.clone()))
         .data(shared_state);
 
     info!(

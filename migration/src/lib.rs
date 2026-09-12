@@ -4,6 +4,7 @@
 pub use sea_orm_migration::prelude::*;
 
 pub struct Migrator;
+mod m20260912_170000_heart_outcomes;
 
 mod m20230322_163425_challenges_init;
 mod m20230326_074819_multiple_choice_attempts;
@@ -35,6 +36,11 @@ mod m20230815_162457_remove_subtask_fee;
 mod m20230815_203544_remove_subtask_unlocked;
 mod m20230816_173651_retire_subtasks;
 mod m20231014_142202_category_creation_timestamp;
+mod m20260908_120000_moderation;
+mod m20260908_170000_moderation_review_corrections;
+mod m20260908_180000_moderation_retained_work;
+mod m20260909_030000_benefit_delivery;
+mod m20260912_070000_legacy_moderation_email;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -70,6 +76,12 @@ impl MigratorTrait for Migrator {
             Box::new(m20230815_203544_remove_subtask_unlocked::Migration),
             Box::new(m20230816_173651_retire_subtasks::Migration),
             Box::new(m20231014_142202_category_creation_timestamp::Migration),
+            Box::new(m20260908_120000_moderation::Migration),
+            Box::new(m20260908_170000_moderation_review_corrections::Migration),
+            Box::new(m20260908_180000_moderation_retained_work::Migration),
+            Box::new(m20260909_030000_benefit_delivery::Migration),
+            Box::new(m20260912_070000_legacy_moderation_email::Migration),
+            Box::new(m20260912_170000_heart_outcomes::Migration),
         ]
     }
 }

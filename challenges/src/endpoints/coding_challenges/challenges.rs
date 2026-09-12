@@ -237,11 +237,10 @@ impl Api {
         task_id: Path<Uuid>,
         data: Json<CreateCodingChallengeRequest>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> CreateCodingChallenge::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> CreateCodingChallenge::Response<AdminAuth> {
         let subtask = match create_subtask(
             &db,
-            &self.state.services,
             &self.config,
             &auth.0,
             task_id.0,
@@ -256,9 +255,6 @@ impl Api {
             }
             Err(CreateSubtaskError::Forbidden) => return CreateCodingChallenge::forbidden(),
             Err(CreateSubtaskError::Banned(until)) => return CreateCodingChallenge::banned(until),
-            Err(CreateSubtaskError::XpLimitExceeded(x)) => {
-                return CreateCodingChallenge::xp_limit_exceeded(x)
-            }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateCodingChallenge::coin_limit_exceeded(x)
             }
@@ -327,6 +323,7 @@ impl Api {
         .await?
         {
             Ok(x) => x,
+            Err(UpdateSubtaskError::Forbidden) => return UpdateCodingChallenge::forbidden(),
             Err(UpdateSubtaskError::SubtaskNotFound) => {
                 return UpdateCodingChallenge::subtask_not_found()
             }
@@ -376,6 +373,78 @@ impl Api {
         .await?;
 
         UpdateCodingChallenge::ok(CodingChallenge::from(cc, subtask))
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/tasks/:task_id/coding_challenges", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_challenges(
+        &self,
+        task_id: Path<Uuid>,
+        attempted: Query<Option<bool>>,
+        solved: Query<Option<bool>>,
+        rated: Query<Option<bool>>,
+        enabled: Query<Option<bool>>,
+        retired: Query<Option<bool>>,
+        creator: Query<Option<Uuid>>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> ListCodingChallenges::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_challenges(
+            task_id,
+            attempted,
+            solved,
+            rated,
+            enabled,
+            retired,
+            creator,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/coding_challenges/:subtask_id",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_challenge(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> GetCodingChallenge::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_challenge(task_id, subtask_id, db, VerifiedUserAuth(user))
+            .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/coding_challenges/:subtask_id/examples",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_examples(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> GetExamples::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_examples(task_id, subtask_id, db, VerifiedUserAuth(user))
+            .await
     }
 }
 
@@ -435,6 +504,8 @@ response!(CreateCodingChallenge = {
 });
 
 response!(UpdateCodingChallenge = {
+    /// Content is maintained by Academy administrators.
+    Forbidden(403, error),
     Ok(200) => CodingChallenge,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
