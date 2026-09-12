@@ -2,8 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use entity::{
-    challenges_matching_attempts, challenges_matchings, challenges_user_subtasks,
-    sea_orm_active_enums::ChallengesSubtaskType,
+    challenges_matchings, challenges_user_subtasks, sea_orm_active_enums::ChallengesSubtaskType,
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
@@ -26,10 +25,9 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
-    query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
-    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
-    UserSubtaskExt,
+    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
+    QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
 };
 
 pub struct Matchings {
@@ -259,6 +257,7 @@ impl Matchings {
         data: Json<SolveMatchingRequest>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
+        settlement: Data<&crate::services::hearts::PendingHeartOperations>,
     ) -> SolveMatching::Response<VerifiedUserAuth> {
         let Some((matching, subtask)) =
             get_subtask::<challenges_matchings::Entity>(&db, task_id.0, subtask_id.0).await?
@@ -287,9 +286,11 @@ impl Matchings {
             }
         }
 
-        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+        let Some(heart_exempt) =
+            crate::services::hearts::admit(&self.state.services, &auth.0, &subtask).await?
+        else {
             return SolveMatching::not_enough_hearts();
-        }
+        };
 
         let correct = data
             .0
@@ -334,19 +335,29 @@ impl Matchings {
                 )
                 .await?;
             }
-
-            challenges_matching_attempts::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                matching_id: Set(matching.subtask_id),
-                user_id: Set(auth.0.id),
-                timestamp: Set(now),
-                solved: Set(solved),
-            }
-            .insert(&***db)
-            .await?;
         }
 
-        SolveMatching::ok(SolveMatchingFeedback { solved, correct })
+        let attempt_id = Uuid::new_v4();
+        entity::challenges_matching_attempts::ActiveModel {
+            id: Set(attempt_id),
+            matching_id: Set(matching.subtask_id),
+            user_id: Set(auth.0.id),
+            timestamp: Set(Utc::now().naive_utc()),
+            solved: Set(solved),
+        }
+        .insert(&***db)
+        .await?;
+        if !solved && !heart_exempt {
+            crate::services::hearts::record(&db, attempt_id, auth.0.id, subtask.id).await?;
+            settlement.add(attempt_id);
+        }
+
+        SolveMatching::ok(SolveMatchingFeedback {
+            attempt_id,
+            hearts_pending: false,
+            solved,
+            correct,
+        })
     }
 
     /// Scoped retained learning only; no ordinary session or publication authority.

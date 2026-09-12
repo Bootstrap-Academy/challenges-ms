@@ -4,6 +4,7 @@
 pub use sea_orm_migration::prelude::*;
 
 pub struct Migrator;
+mod m20260912_170000_heart_outcomes;
 
 mod m20230322_163425_challenges_init;
 mod m20230326_074819_multiple_choice_attempts;
@@ -80,6 +81,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260908_180000_moderation_retained_work::Migration),
             Box::new(m20260909_030000_benefit_delivery::Migration),
             Box::new(m20260912_070000_legacy_moderation_email::Migration),
+            Box::new(m20260912_170000_heart_outcomes::Migration),
         ]
     }
 }

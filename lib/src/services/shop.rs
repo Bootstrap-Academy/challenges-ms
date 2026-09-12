@@ -9,6 +9,44 @@ use super::{Service, ServiceResult};
 pub struct ShopService(Service);
 
 impl ShopService {
+    /// An immutable wrong-answer operation; retries use the original UUID.
+    pub async fn apply_heart_operation(
+        &self,
+        operation: Uuid,
+        user: Uuid,
+    ) -> ServiceResult<serde_json::Value> {
+        let response = self
+            .0
+            .put(&format!("/heart-operations/{operation}/{user}"))
+            .json(&serde_json::json!({"half_hearts":2,"reason":"incorrect_challenge_attempt"}))
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(serde_json::json!({"outcome":"conflict"}));
+        }
+        if response.status() != StatusCode::OK {
+            return Err(super::ServiceError::UnexpectedStatusCode(response.status()));
+        }
+        let receipt: serde_json::Value = response.json().await?;
+        if receipt["operation_id"] != serde_json::json!(operation)
+            || receipt["user_id"] != serde_json::json!(user)
+            || receipt["hearts"].as_u64().is_none()
+            || !matches!(
+                (
+                    receipt["outcome"].as_str(),
+                    receipt["charged_half_hearts"].as_u64()
+                ),
+                (Some("charged"), Some(2)) | (Some("premium" | "insufficient"), Some(0))
+            )
+        {
+            return Err(super::ServiceError::MalformedResponse(
+                "Invalid heart operation receipt",
+            ));
+        }
+        Ok(receipt)
+    }
+
     pub async fn learning_authority(
         &self,
         digest: &str,

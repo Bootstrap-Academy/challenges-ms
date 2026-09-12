@@ -12,6 +12,7 @@ use self::{
     multiple_choice::MultipleChoice, question::Questions, subtasks::Subtasks,
 };
 
+mod attempts;
 mod challenges;
 pub mod coding_challenges;
 mod course_tasks;
@@ -23,6 +24,8 @@ mod multiple_choice;
 mod question;
 mod subtasks;
 
+#[cfg(test)]
+pub(crate) mod heart_tests;
 #[cfg(test)]
 mod scoped_release_tests;
 
@@ -54,6 +57,9 @@ pub async fn setup_api(
     sandkasten: SandkastenClient,
 ) -> anyhow::Result<impl OpenApi> {
     Ok((
+        attempts::Attempts {
+            state: Arc::clone(&state),
+        },
         Challenges {
             state: Arc::clone(&state),
         },

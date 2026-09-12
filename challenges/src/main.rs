@@ -101,6 +101,10 @@ async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
         db.clone(),
         shared_state.services.clone(),
     ));
+    tokio::spawn(services::hearts::run(
+        db.clone(),
+        shared_state.services.clone(),
+    ));
 
     let api_service = OpenApiService::new(
         setup_api(shared_state.clone(), Arc::clone(&config), sandkasten).await?,
@@ -117,6 +121,7 @@ async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
         .with(Tracing)
         .with(PanicHandler::middleware())
         .with(DbTransactionMiddleware::new(db))
+        .with(services::hearts::SettlementMiddleware(shared_state.clone()))
         .data(shared_state);
 
     info!(
