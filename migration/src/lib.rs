@@ -39,6 +39,7 @@ mod m20260908_120000_moderation;
 mod m20260908_170000_moderation_review_corrections;
 mod m20260908_180000_moderation_retained_work;
 mod m20260909_030000_benefit_delivery;
+mod m20260912_070000_legacy_moderation_email;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -78,6 +79,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260908_170000_moderation_review_corrections::Migration),
             Box::new(m20260908_180000_moderation_retained_work::Migration),
             Box::new(m20260909_030000_benefit_delivery::Migration),
+            Box::new(m20260912_070000_legacy_moderation_email::Migration),
         ]
     }
 }
