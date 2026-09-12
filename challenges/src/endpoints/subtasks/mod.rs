@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use entity::{challenges_subtasks, challenges_tasks, sea_orm_active_enums::ChallengesSubtaskType};
-use lib::{auth::VerifiedUserAuth, config::Config, SharedState};
+use lib::{
+    auth::{AdminAuth, VerifiedUserAuth},
+    config::Config,
+    SharedState,
+};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{
@@ -39,7 +43,6 @@ impl Subtasks {
             self.clone(),
             feedback::Api {
                 state: Arc::clone(&self.state),
-                config: Arc::clone(&self.config),
             },
             reports::Api {
                 state: Arc::clone(&self.state),
@@ -125,8 +128,8 @@ impl Subtasks {
         task_id: Path<Uuid>,
         subtask_id: Path<Uuid>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> DeleteSubtask::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> DeleteSubtask::Response<AdminAuth> {
         let Some(subtask) = challenges_subtasks::Entity::find_by_id(subtask_id.0)
             .filter(challenges_subtasks::Column::TaskId.eq(task_id.0))
             .one(&***db)
@@ -135,10 +138,11 @@ impl Subtasks {
             return DeleteSubtask::subtask_not_found();
         };
 
+        // Administrator access does not impersonate an old author withdrawal.
+        // Changes to another author's visibility keep their reasoned owning path.
         if auth.0.id != subtask.creator {
             return DeleteSubtask::forbidden();
         }
-
         crate::services::moderation::lock_subtask(&db, subtask.id).await?;
         crate::services::moderation::erasure_marker(&db, auth.0.id).await?;
         subtask.delete(&***db).await?;

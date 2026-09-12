@@ -40,11 +40,14 @@ pub async fn record(
     user: Uuid,
     subtask: Uuid,
     xp: i64,
-    coins: i64,
+    configured_coins: i64,
     skills: Vec<String>,
 ) -> Result<(), DbErr> {
     let earning = Uuid::new_v4();
-    let original = json!({"xp":xp,"coins":coins,"skills":skills,"description":"Challenges / Aufgaben","credit_note":true});
+    // The prospective rule is enforced at the owning producer, even when an
+    // old task still contains a configured coin reward. Existing immutable
+    // earnings and queued components are untouched and remain deliverable.
+    let original = json!({"xp":xp,"coins":0,"configured_coins":configured_coins,"coin_policy":"purchase_only","skills":skills,"description":"Challenges / Aufgaben","credit_note":true});
     let inserted = db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
         "INSERT INTO challenge_benefit_earnings(id,user_id,subtask_id,original) VALUES($1,$2,$3,$4) ON CONFLICT(user_id,subtask_id) DO NOTHING",
         vec![earning.into(),user.into(),subtask.into(),original.into()])).await?;
@@ -65,17 +68,6 @@ pub async fn record(
             .await?;
             ordinal += 1;
         }
-    }
-    if coins != 0 {
-        component(
-            db,
-            earning,
-            user,
-            ordinal,
-            "coins",
-            json!({"coins":coins,"description":"Challenges / Aufgaben","credit_note":true}),
-        )
-        .await?;
     }
     Ok(())
 }
@@ -219,10 +211,16 @@ mod tests {
         tx.commit().await.unwrap();
         let original = read(user).await;
         assert_eq!(original["earnings"].as_array().unwrap().len(), 1);
-        assert_eq!(original["components"].as_array().unwrap().len(), 3);
+        assert_eq!(original["components"].as_array().unwrap().len(), 2);
         assert_eq!(original["components"][0]["request"]["xp"], 8);
         assert_eq!(original["components"][1]["request"]["xp"], 8);
-        assert_eq!(original["components"][2]["request"]["coins"], 5);
+        assert_eq!(original["earnings"][0]["original"]["coins"], 0);
+        assert_eq!(original["earnings"][0]["original"]["configured_coins"], 5);
+        assert!(original["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["kind"] == "xp"));
         let tx = db.begin().await.unwrap();
         lock_subject(&tx, user).await.unwrap();
         record(&tx, user, subtask, 999, 999, vec!["changed-skill".into()])
@@ -231,6 +229,9 @@ mod tests {
         tx.commit().await.unwrap();
         assert_eq!(read(user).await, original);
         assert_eq!(read(Uuid::new_v4()).await["components"], json!([]));
+        // An already earned, still pending historical credit remains payable.
+        // Seed its original pre-cutover payload, not a new reward producer call.
+        legacy_coin_fixture(&db, user, 5).await;
         // Actual dispatcher transactions, with an idempotent destination stub.
         // One remote reply is lost; the later exact command must not repeat its effect.
         let effects = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::<
@@ -269,16 +270,31 @@ mod tests {
             4
         );
         // A local outcome transaction fails after the destination has committed.
-        let tx = db.begin().await.unwrap();
-        record(&tx, user, Uuid::new_v4(), 0, 7, Vec::new())
-            .await
-            .unwrap();
-        tx.commit().await.unwrap();
+        legacy_coin_fixture(&db, user, 7).await;
         db.execute_unprepared("CREATE FUNCTION fixture_reject_benefit_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Synthetic outcome transaction failure'; END $$; CREATE TRIGGER fixture_reject_benefit_update BEFORE UPDATE ON challenge_benefit_components FOR EACH ROW EXECUTE FUNCTION fixture_reject_benefit_update()").await.unwrap();
         assert!(dispatch_with(&db, destination).await.is_err());
         db.execute_unprepared("DROP TRIGGER fixture_reject_benefit_update ON challenge_benefit_components; DROP FUNCTION fixture_reject_benefit_update()").await.unwrap();
         assert_eq!(dispatch_with(&db, destination).await.unwrap(), 1);
         assert_eq!(effects.lock().unwrap().len(), 4);
         db.close().await.unwrap();
+    }
+
+    async fn legacy_coin_fixture(db: &DatabaseConnection, user: Uuid, coins: i64) {
+        let tx = db.begin().await.unwrap();
+        let earning = Uuid::new_v4();
+        tx.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+            "INSERT INTO challenge_benefit_earnings(id,user_id,subtask_id,original) VALUES($1,$2,$3,$4)",
+            vec![earning.into(),user.into(),Uuid::new_v4().into(),json!({"xp":0,"coins":coins,"skills":[],"description":"Challenges / Aufgaben","credit_note":true}).into()])).await.unwrap();
+        component(
+            &tx,
+            earning,
+            user,
+            0,
+            "coins",
+            json!({"coins":coins,"description":"Challenges / Aufgaben","credit_note":true}),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
     }
 }

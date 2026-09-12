@@ -137,11 +137,10 @@ impl MultipleChoice {
         task_id: Path<Uuid>,
         data: Json<CreateMultipleChoiceQuestionRequest>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> CreateMCQ::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> CreateMCQ::Response<AdminAuth> {
         let subtask = match create_subtask(
             &db,
-            &self.state.services,
             &self.config,
             &auth.0,
             task_id.0,
@@ -154,7 +153,6 @@ impl MultipleChoice {
             Err(CreateSubtaskError::TaskNotFound) => return CreateMCQ::task_not_found(),
             Err(CreateSubtaskError::Forbidden) => return CreateMCQ::forbidden(),
             Err(CreateSubtaskError::Banned(until)) => return CreateMCQ::banned(until),
-            Err(CreateSubtaskError::XpLimitExceeded(x)) => return CreateMCQ::xp_limit_exceeded(x),
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateMCQ::coin_limit_exceeded(x)
             }
@@ -201,6 +199,7 @@ impl MultipleChoice {
         .await?
         {
             Ok(x) => x,
+            Err(UpdateSubtaskError::Forbidden) => return UpdateMCQ::forbidden(),
             Err(UpdateSubtaskError::SubtaskNotFound) => return UpdateMCQ::subtask_not_found(),
             Err(UpdateSubtaskError::TaskNotFound) => return UpdateMCQ::task_not_found(),
         };
@@ -434,6 +433,8 @@ response!(CreateMCQ = {
 });
 
 response!(UpdateMCQ = {
+    /// Content is maintained by Academy administrators.
+    Forbidden(403, error),
     Ok(200) => MultipleChoiceQuestion<Answer>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),

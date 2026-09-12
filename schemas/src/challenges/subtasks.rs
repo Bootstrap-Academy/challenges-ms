@@ -25,7 +25,7 @@ pub struct Subtask {
     pub creation_timestamp: DateTime<Utc>,
     /// The number of xp a user gets for completing this subtask.
     pub xp: u64,
-    /// The number of morphcoins a user gets for completing this subtask.
+    /// New completions award no MorphCoins. This compatibility field is zero.
     pub coins: u64,
     /// Whether the user has completed this subtask.
     pub solved: bool,
@@ -43,9 +43,8 @@ pub struct CreateSubtaskRequest {
     /// the configured default value.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub xp: Option<u64>,
-    /// The number of morphcoins a user gets for completing this subtask. Omit
-    /// to use the configured default value.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
+    /// Compatibility field. New content cannot award MorphCoins.
+    #[oai(validator(maximum(value = "0")), default)]
     pub coins: Option<u64>,
 }
 
@@ -56,8 +55,8 @@ pub struct UpdateSubtaskRequest {
     /// The number of xp a user gets for completing this subtask.
     #[oai(validator(maximum(value = "9223372036854775807")), default)]
     pub xp: PatchValue<u64>,
-    /// The number of morphcoins a user gets for completing this subtask.
-    #[oai(validator(maximum(value = "9223372036854775807")), default)]
+    /// Compatibility field. Omit to preserve historical metadata; new rewards are zero.
+    #[oai(validator(maximum(value = "0")), default)]
     pub coins: PatchValue<u64>,
     /// Whether the subtask is enabled and visible to normal users.
     pub enabled: PatchValue<bool>,
@@ -210,7 +209,7 @@ impl Subtask {
             creator: subtask.creator,
             creation_timestamp: subtask.creation_timestamp.and_utc(),
             xp: subtask.xp as _,
-            coins: subtask.coins as _,
+            coins: 0,
             solved,
             rated,
             enabled: subtask.enabled,

@@ -269,7 +269,10 @@ impl Fixture {
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
             .body(body.to_string());
-        let mut response = app.call(request).await.unwrap().into_response();
+        let mut response = match app.call(request).await {
+            Ok(response) => response.into_response(),
+            Err(error) => error.into_response(),
+        };
         let status = response.status().as_u16();
         let bytes = response.take_body().into_bytes().await.unwrap();
         (

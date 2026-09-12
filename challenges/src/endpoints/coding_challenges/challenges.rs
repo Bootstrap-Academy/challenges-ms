@@ -237,11 +237,10 @@ impl Api {
         task_id: Path<Uuid>,
         data: Json<CreateCodingChallengeRequest>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> CreateCodingChallenge::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> CreateCodingChallenge::Response<AdminAuth> {
         let subtask = match create_subtask(
             &db,
-            &self.state.services,
             &self.config,
             &auth.0,
             task_id.0,
@@ -256,9 +255,6 @@ impl Api {
             }
             Err(CreateSubtaskError::Forbidden) => return CreateCodingChallenge::forbidden(),
             Err(CreateSubtaskError::Banned(until)) => return CreateCodingChallenge::banned(until),
-            Err(CreateSubtaskError::XpLimitExceeded(x)) => {
-                return CreateCodingChallenge::xp_limit_exceeded(x)
-            }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateCodingChallenge::coin_limit_exceeded(x)
             }
@@ -327,6 +323,7 @@ impl Api {
         .await?
         {
             Ok(x) => x,
+            Err(UpdateSubtaskError::Forbidden) => return UpdateCodingChallenge::forbidden(),
             Err(UpdateSubtaskError::SubtaskNotFound) => {
                 return UpdateCodingChallenge::subtask_not_found()
             }
@@ -507,6 +504,8 @@ response!(CreateCodingChallenge = {
 });
 
 response!(UpdateCodingChallenge = {
+    /// Content is maintained by Academy administrators.
+    Forbidden(403, error),
     Ok(200) => CodingChallenge,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),

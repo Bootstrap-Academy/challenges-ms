@@ -119,3 +119,48 @@ fn scoped_release_ordinary_writes_and_scoped_reads_keep_their_authentication() {
         "bearer"
     );
 }
+
+#[test]
+fn academy_content_publication_requires_administrator_authority() {
+    let value = assembled(super::setup_api);
+    for family in [
+        "multiple_choice",
+        "matchings",
+        "questions",
+        "coding_challenges",
+    ] {
+        for key in [
+            format!("POST /tasks/{{task_id}}/{family}"),
+            format!("PATCH /tasks/{{task_id}}/{family}/{{subtask_id}}"),
+        ] {
+            assert_eq!(
+                value["operations"][&key]["security"],
+                json!([{"AdminAuth": []}]),
+                "{key}"
+            );
+        }
+    }
+    for key in [
+        "POST /courses/{course_id}/tasks",
+        "DELETE /tasks/{task_id}/subtasks/{subtask_id}",
+        "POST /categories/{category_id}/challenges",
+        "PATCH /categories/{category_id}/challenges/{challenge_id}",
+    ] {
+        assert_eq!(
+            value["operations"][key]["security"],
+            json!([{"AdminAuth": []}]),
+            "{key}"
+        );
+    }
+    for key in [
+        "GET /tasks/{task_id}/questions/{subtask_id}/solution",
+        "GET /tasks/{task_id}/coding_challenges/{subtask_id}/submissions",
+        "POST /tasks/{task_id}/subtasks/{subtask_id}/feedback",
+    ] {
+        assert_eq!(
+            value["operations"][key]["security"],
+            json!([{"VerifiedUserAuth": []}]),
+            "{key}"
+        );
+    }
+}
