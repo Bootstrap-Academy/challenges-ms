@@ -9,7 +9,7 @@ use sea_orm::{
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub const REDRESS: &str = "Du kannst ab Information über diese Entscheidung mindestens sechs Kalendermonate kostenlos eine menschliche Überprüfung unter /moderation oder über hallo@bootstrap.academy verlangen und eigene Tatsachen oder eine Korrektur vorschlagen. Die Überprüfung erfolgt nicht allein automatisiert. Gesetzliche außergerichtliche Rechtsbehelfe, soweit anwendbar, und der Rechtsweg bleiben unberührt.";
+pub const REDRESS: &str = "Du kannst ab dieser Mitteilung mindestens sechs Kalendermonate lang kostenlos eine Überprüfung anfordern: /moderation oder hallo@bootstrap.academy. Dabei kannst du Fehler erklären oder neue Informationen ergänzen. Deine Beschwerde wird nicht allein automatisch entschieden. Andere Beschwerdewege und der Rechtsweg bleiben offen.";
 pub const SUBTASK_SCOPE: &str = "Diese Teilaufgabe auf Bootstrap Academy";
 
 pub async fn value(
@@ -133,18 +133,18 @@ pub async fn report(
     open_subtask(db,id,notifier,subtask,source,notifier,
         json!({"reason":format!("{reason:?}"),"comment":private_comment,"urgent_triage": reason==ChallengesReportReason::Abuse,"rule_evidence":basis,"author_contact":basis["contact"],"rating_counts":ratings})).await?;
     let rationale = match reason {
-        ChallengesReportReason::Wrong => Some("Für diese Teilaufgabe ist eine Meldung über eine sachlich falsche Aufgabe oder Lösung eingegangen. Sie ist vorläufig ausgeblendet, bis ein Mensch die konkrete Aufgabe geprüft hat. Die Meldung allein ist kein festgestellter Regelverstoß.".to_owned()),
-        ChallengesReportReason::UnrelatedSkill => Some("Für diese Teilaufgabe ist eine Meldung über einen fehlenden Bezug zur zugeordneten Fähigkeit eingegangen. Sie ist vorläufig ausgeblendet, bis ein Mensch diesen Bezug geprüft hat. Die Meldung allein ist kein festgestellter Regelverstoß.".to_owned()),
-        ChallengesReportReason::Dislike => Some(format!("Die Bewertungen dieser Teilaufgabe haben die veröffentlichte Prüfschwelle erreicht: {} negative und {} positive Bewertungen (mindestens 10 negative und mehr negative als positive Bewertungen). Sie ist vorläufig ausgeblendet, bis ein Mensch die Qualität geprüft hat. Negative Bewertungen belegen für sich keinen Regelverstoß.",ratings["negative"],ratings["positive"])),
+        ChallengesReportReason::Wrong => Some("Die Aufgabe oder ihre Lösung wurde als fachlich falsch gemeldet. Das ist noch keine abschließende Bewertung.".to_owned()),
+        ChallengesReportReason::UnrelatedSkill => Some("Die Aufgabe wurde gemeldet, weil sie nicht zur zugeordneten Fähigkeit passen soll. Das ist noch keine abschließende Bewertung.".to_owned()),
+        ChallengesReportReason::Dislike => Some(format!("Die Aufgabe hat {} negative und {} positive Bewertungen. Damit ist die Grenze für eine automatische Qualitätsprüfung erreicht: mindestens 10 negative und mehr negative als positive Bewertungen.",ratings["negative"],ratings["positive"])),
         _ => None,
     };
     // A free-text allegation cannot safely be turned into a finding. Keep it in
     // the human (including urgent) queue without an unexplained auto-restriction.
     if let Some(rationale) = rationale.filter(|_| may_apply_automatically) {
         decide(db,Uuid::nil(),json!({"request_key":id,"case_id":id,"expected_revision":0,"outcome":"provisional",
-            "rationale":rationale,"notifier_rationale":"Die Teilaufgabe ist vorläufig bis zur menschlichen Prüfung ausgeblendet. Damit ist noch kein Regelverstoß festgestellt.",
-            "ground":"Vorläufige Qualitätsprüfung nach AGB 14.3 und 14.4; keine Feststellung rechtswidriger Inhalte",
-            "rule_version":basis["rule_identity"],"automation":"Die strukturierte Meldung beziehungsweise Bewertungsschwelle löste diese vorläufige Ausblendung automatisch aus. Eine menschliche Entscheidung steht aus.",
+            "rationale":rationale,"notifier_rationale":"Die gemeldete Aufgabe ist bis zur Überprüfung vorläufig ausgeblendet.",
+            "ground":"Qualitätsprüfung nach AGB 14.3 und 14.4",
+            "rule_version":basis["rule_identity"],"automation":"Automatisch vorläufig ausgeblendet; die Überprüfung ist noch offen.",
             "reviewed_content_revision":value(db,"SELECT to_jsonb(content_revision) AS value FROM moderation_targets WHERE kind='subtask' AND id=$1",vec![subtask.id.into()]).await?,"scope":SUBTASK_SCOPE,"redress":REDRESS})).await?;
     }
     Ok(())
