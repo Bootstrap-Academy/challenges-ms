@@ -135,11 +135,10 @@ impl Matchings {
         task_id: Path<Uuid>,
         data: Json<CreateMatchingRequest>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> CreateMatching::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> CreateMatching::Response<AdminAuth> {
         let subtask = match create_subtask(
             &db,
-            &self.state.services,
             &self.config,
             &auth.0,
             task_id.0,
@@ -152,9 +151,6 @@ impl Matchings {
             Err(CreateSubtaskError::TaskNotFound) => return CreateMatching::task_not_found(),
             Err(CreateSubtaskError::Forbidden) => return CreateMatching::forbidden(),
             Err(CreateSubtaskError::Banned(until)) => return CreateMatching::banned(until),
-            Err(CreateSubtaskError::XpLimitExceeded(x)) => {
-                return CreateMatching::xp_limit_exceeded(x)
-            }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateMatching::coin_limit_exceeded(x)
             }
@@ -205,6 +201,7 @@ impl Matchings {
         .await?
         {
             Ok(x) => x,
+            Err(UpdateSubtaskError::Forbidden) => return UpdateMatching::forbidden(),
             Err(UpdateSubtaskError::SubtaskNotFound) => return UpdateMatching::subtask_not_found(),
             Err(UpdateSubtaskError::TaskNotFound) => return UpdateMatching::task_not_found(),
         };
@@ -454,6 +451,8 @@ response!(CreateMatching = {
 });
 
 response!(UpdateMatching = {
+    /// Content is maintained by Academy administrators.
+    Forbidden(403, error),
     Ok(200) => MatchingWithSolution,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),

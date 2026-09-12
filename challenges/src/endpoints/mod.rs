@@ -25,6 +25,8 @@ mod question;
 mod subtasks;
 
 #[cfg(test)]
+mod creator_tests;
+#[cfg(test)]
 pub(crate) mod heart_tests;
 #[cfg(test)]
 mod scoped_release_tests;
@@ -65,7 +67,6 @@ pub async fn setup_api(
         },
         CourseTasks {
             state: Arc::clone(&state),
-            config: Arc::clone(&config),
         },
         Subtasks {
             state: Arc::clone(&state),

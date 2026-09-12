@@ -23,7 +23,7 @@ impl Api {
         GetUserConfig::ok(SubtasksUserConfig {
             min_level: self.config.challenges.quizzes.min_level,
             max_xp: self.config.challenges.quizzes.max_xp,
-            max_coins: self.config.challenges.quizzes.max_coins,
+            max_coins: 0,
         })
     }
 }

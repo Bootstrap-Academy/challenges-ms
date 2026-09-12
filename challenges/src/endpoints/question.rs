@@ -135,11 +135,10 @@ impl Questions {
         task_id: Path<Uuid>,
         data: Json<CreateQuestionRequest>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> CreateQuestion::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> CreateQuestion::Response<AdminAuth> {
         let subtask = match create_subtask(
             &db,
-            &self.state.services,
             &self.config,
             &auth.0,
             task_id.0,
@@ -152,9 +151,6 @@ impl Questions {
             Err(CreateSubtaskError::TaskNotFound) => return CreateQuestion::task_not_found(),
             Err(CreateSubtaskError::Forbidden) => return CreateQuestion::forbidden(),
             Err(CreateSubtaskError::Banned(until)) => return CreateQuestion::banned(until),
-            Err(CreateSubtaskError::XpLimitExceeded(x)) => {
-                return CreateQuestion::xp_limit_exceeded(x)
-            }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateQuestion::coin_limit_exceeded(x)
             }
@@ -204,6 +200,7 @@ impl Questions {
         .await?
         {
             Ok(x) => x,
+            Err(UpdateSubtaskError::Forbidden) => return UpdateQuestion::forbidden(),
             Err(UpdateSubtaskError::SubtaskNotFound) => return UpdateQuestion::subtask_not_found(),
             Err(UpdateSubtaskError::TaskNotFound) => return UpdateQuestion::task_not_found(),
         };
@@ -428,6 +425,8 @@ response!(CreateQuestion = {
 });
 
 response!(UpdateQuestion = {
+    /// Content is maintained by Academy administrators.
+    Forbidden(403, error),
     Ok(200) => QuestionWithSolution,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),

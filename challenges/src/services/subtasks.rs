@@ -148,37 +148,6 @@ pub enum ActiveBan {
     Permanent,
 }
 
-pub async fn can_create(
-    services: &Services,
-    config: &Config,
-    task: &Task,
-    user: &User,
-) -> Result<bool, CheckPermissionsError> {
-    Ok(match task {
-        Task::Challenge(_) => user.admin,
-        Task::CourseTask(t) => can_create_for_course(services, config, &t.course_id, user).await?,
-    })
-}
-
-pub async fn can_create_for_course(
-    services: &Services,
-    config: &Config,
-    course_id: &str,
-    user: &User,
-) -> Result<bool, CheckPermissionsError> {
-    if user.admin {
-        return Ok(true);
-    }
-
-    let skills = get_skills_of_course(services, course_id).await?;
-    let levels = services.skills.get_skill_levels(user.id).await?;
-    Ok(skills.iter().all(|skill| {
-        levels
-            .get(skill)
-            .is_some_and(|&level| level >= config.challenges.quizzes.min_level)
-    }))
-}
-
 pub async fn get_parent_task(
     db: &DatabaseTransaction,
     subtask: &challenges_subtasks::Model,
@@ -281,14 +250,6 @@ pub enum SendTaskRewardsError {
     AddCoins(#[from] AddCoinsError),
     #[error("could not add xp: {0}")]
     AddXp(#[from] AddSkillProgressError),
-}
-
-#[derive(Debug, Error)]
-pub enum CheckPermissionsError {
-    #[error("service error: {0}")]
-    ServiceError(#[from] ServiceError),
-    #[error("database error: {0}")]
-    DbErr(#[from] DbErr),
 }
 
 #[derive(Default)]
@@ -560,36 +521,26 @@ where
 
 pub async fn create_subtask(
     db: &DatabaseTransaction,
-    services: &Services,
     config: &Config,
     user: &User,
     task_id: Uuid,
     data: CreateSubtaskRequest,
     ty: ChallengesSubtaskType,
 ) -> Result<Result<Subtask, CreateSubtaskError>, ErrorResponse> {
-    let (task, specific) = match get_task_with_specific(db, task_id).await? {
+    if !user.admin {
+        return Ok(Err(CreateSubtaskError::Forbidden));
+    }
+    let (task, _specific) = match get_task_with_specific(db, task_id).await? {
         Some(task) => task,
         None => return Ok(Err(CreateSubtaskError::TaskNotFound)),
     };
-    if !can_create(services, config, &specific, user).await? {
-        return Ok(Err(CreateSubtaskError::Forbidden));
-    }
 
     let xp = data.xp.unwrap_or(config.challenges.quizzes.max_xp);
-    let coins = data.coins.unwrap_or(config.challenges.quizzes.max_coins);
-    if matches!(specific, Task::CourseTask(_)) && !user.admin {
-        if xp > config.challenges.quizzes.max_xp {
-            return Ok(Err(CreateSubtaskError::XpLimitExceeded(
-                config.challenges.quizzes.max_xp,
-            )));
-        }
-        if coins > config.challenges.quizzes.max_coins {
-            return Ok(Err(CreateSubtaskError::CoinLimitExceeded(
-                config.challenges.quizzes.max_coins,
-            )));
-        }
+    // Rewards are XP only, regardless of an older configured coin default.
+    let coins = data.coins.unwrap_or(0);
+    if coins != 0 {
+        return Ok(Err(CreateSubtaskError::CoinLimitExceeded(0)));
     }
-
     match get_active_ban(db, user, ChallengesBanAction::Create).await? {
         ActiveBan::NotBanned => {}
         ActiveBan::Temporary(end) => return Ok(Err(CreateSubtaskError::Banned(Some(end)))),
@@ -618,7 +569,6 @@ pub enum CreateSubtaskError {
     TaskNotFound,
     Forbidden,
     Banned(Option<DateTime<Utc>>),
-    XpLimitExceeded(u64),
     CoinLimitExceeded(u64),
 }
 
@@ -633,6 +583,9 @@ where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
 {
+    if !user.admin {
+        return Ok(Err(UpdateSubtaskError::Forbidden));
+    }
     super::moderation::lock_subtask(db, subtask_id).await?;
     let Some((specific, subtask)) = get_subtask::<E>(db, task_id, subtask_id).await? else {
         return Ok(Err(UpdateSubtaskError::SubtaskNotFound));
@@ -668,6 +621,7 @@ where
 }
 
 pub enum UpdateSubtaskError {
+    Forbidden,
     SubtaskNotFound,
     TaskNotFound,
 }
