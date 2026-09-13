@@ -27,10 +27,9 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
-    query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
-    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
-    UserSubtaskExt,
+    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
+    QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
 };
 
 pub struct MultipleChoice {
@@ -138,11 +137,10 @@ impl MultipleChoice {
         task_id: Path<Uuid>,
         data: Json<CreateMultipleChoiceQuestionRequest>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> CreateMCQ::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> CreateMCQ::Response<AdminAuth> {
         let subtask = match create_subtask(
             &db,
-            &self.state.services,
             &self.config,
             &auth.0,
             task_id.0,
@@ -155,7 +153,6 @@ impl MultipleChoice {
             Err(CreateSubtaskError::TaskNotFound) => return CreateMCQ::task_not_found(),
             Err(CreateSubtaskError::Forbidden) => return CreateMCQ::forbidden(),
             Err(CreateSubtaskError::Banned(until)) => return CreateMCQ::banned(until),
-            Err(CreateSubtaskError::XpLimitExceeded(x)) => return CreateMCQ::xp_limit_exceeded(x),
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateMCQ::coin_limit_exceeded(x)
             }
@@ -202,6 +199,7 @@ impl MultipleChoice {
         .await?
         {
             Ok(x) => x,
+            Err(UpdateSubtaskError::Forbidden) => return UpdateMCQ::forbidden(),
             Err(UpdateSubtaskError::SubtaskNotFound) => return UpdateMCQ::subtask_not_found(),
             Err(UpdateSubtaskError::TaskNotFound) => return UpdateMCQ::task_not_found(),
         };
@@ -247,6 +245,7 @@ impl MultipleChoice {
         data: Json<SolveMCQRequest>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
+        settlement: Data<&crate::services::hearts::PendingHeartOperations>,
     ) -> SolveMCQ::Response<VerifiedUserAuth> {
         let Some((mcq, subtask)) =
             get_subtask::<challenges_multiple_choice_quizes::Entity>(&db, task_id.0, subtask_id.0)
@@ -254,7 +253,9 @@ impl MultipleChoice {
         else {
             return SolveMCQ::subtask_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return SolveMCQ::subtask_not_found();
         }
 
@@ -262,6 +263,7 @@ impl MultipleChoice {
             return SolveMCQ::wrong_length();
         }
 
+        crate::services::benefits::lock_attempt(&db, auth.0.id).await?;
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
 
         let solved_previously = user_subtask.is_solved();
@@ -273,9 +275,11 @@ impl MultipleChoice {
             }
         }
 
-        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
+        let Some(heart_exempt) =
+            crate::services::hearts::admit(&self.state.services, &auth.0, &subtask).await?
+        else {
             return SolveMCQ::not_enough_hearts();
-        }
+        };
 
         let correct_cnt = check_answers(&data.0.answers, mcq.correct_answers);
         let solved = correct_cnt == mcq.answers.len();
@@ -316,10 +320,79 @@ impl MultipleChoice {
             }
         }
 
+        let attempt_id = Uuid::new_v4();
+        entity::challenges_multiple_choice_attempts::ActiveModel {
+            id: Set(attempt_id),
+            question_id: Set(mcq.subtask_id),
+            user_id: Set(auth.0.id),
+            timestamp: Set(Utc::now().naive_utc()),
+            solved: Set(solved),
+        }
+        .insert(&***db)
+        .await?;
+        if !solved && !heart_exempt {
+            crate::services::hearts::record(&db, attempt_id, auth.0.id, subtask.id).await?;
+            settlement.add(attempt_id);
+        }
+
         SolveMCQ::ok(SolveMCQFeedback {
+            attempt_id,
+            hearts_pending: false,
             solved,
             correct: correct_cnt,
         })
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/tasks/:task_id/multiple_choice", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_questions(
+        &self,
+        task_id: Path<Uuid>,
+        attempted: Query<Option<bool>>,
+        solved: Query<Option<bool>>,
+        rated: Query<Option<bool>>,
+        enabled: Query<Option<bool>>,
+        retired: Query<Option<bool>>,
+        creator: Query<Option<Uuid>>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> ListMCQs::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_questions(
+            task_id,
+            attempted,
+            solved,
+            rated,
+            enabled,
+            retired,
+            creator,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/multiple_choice/:subtask_id",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_question(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> GetMCQ::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_question(task_id, subtask_id, db, VerifiedUserAuth(user))
+            .await
     }
 }
 
@@ -360,6 +433,8 @@ response!(CreateMCQ = {
 });
 
 response!(UpdateMCQ = {
+    /// Content is maintained by Academy administrators.
+    Forbidden(403, error),
     Ok(200) => MultipleChoiceQuestion<Answer>,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),

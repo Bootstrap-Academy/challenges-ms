@@ -2,17 +2,14 @@ use chrono::Utc;
 use entity::{challenges_ban, sea_orm_active_enums::ChallengesBanAction};
 use lib::auth::{AdminAuth, VerifiedUserAuth};
 use poem::web::Data;
-use poem_ext::{db::DbTxn, patch_value::PatchValue, response};
+use poem_ext::{db::DbTxn, response};
 use poem_openapi::{
     param::{Path, Query},
     payload::Json,
     OpenApi,
 };
 use schemas::challenges::subtasks::{Ban, CreateBanRequest, UpdateBanRequest};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, Set, Unchanged,
-};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::endpoints::Tags;
@@ -49,6 +46,7 @@ impl Api {
         if let Some(active) = active.0 {
             let now = Utc::now();
             let mut cond = Condition::all()
+                .add(challenges_ban::Column::Rescinded.eq(false))
                 .add(challenges_ban::Column::Start.lte(now))
                 .add(
                     Condition::any()
@@ -81,25 +79,8 @@ impl Api {
         db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> CreateBan::Response<AdminAuth> {
-        let start = data.0.start.unwrap_or(Utc::now());
-        if data.0.end.is_some_and(|ts| ts <= start) {
-            return CreateBan::negative_duration();
-        }
-
-        CreateBan::created(
-            challenges_ban::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                user_id: Set(data.0.user_id),
-                creator: Set(auth.0.id),
-                start: Set(start.naive_utc()),
-                end: Set(data.0.end.map(|ts| ts.naive_utc())),
-                action: Set(data.0.action),
-                reason: Set(data.0.reason),
-            }
-            .insert(&***db)
-            .await?
-            .into(),
-        )
+        let _ = (data, db, auth);
+        CreateBan::decision_required()
     }
 
     /// Update a ban.
@@ -111,35 +92,8 @@ impl Api {
         db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> UpdateBan::Response<AdminAuth> {
-        let Some(ban) = get_ban(&db, ban_id.0).await? else {
-            return UpdateBan::ban_not_found();
-        };
-
-        let mut data = data.0;
-        if data.permanent {
-            data.end = PatchValue::Set(None);
-        }
-
-        let start = *data.start.get_new(&ban.start.and_utc());
-        let end = *data.end.get_new(&ban.end.map(|ts| ts.and_utc()));
-        if end.is_some_and(|ts| ts <= start) {
-            return UpdateBan::negative_duration();
-        }
-
-        UpdateBan::ok(
-            challenges_ban::ActiveModel {
-                id: Unchanged(ban.id),
-                user_id: Unchanged(ban.user_id),
-                creator: Unchanged(ban.creator),
-                start: data.start.map(|ts| ts.naive_utc()).update(ban.start),
-                end: data.end.map(|x| x.map(|ts| ts.naive_utc())).update(ban.end),
-                action: data.action.update(ban.action),
-                reason: data.reason.update(ban.reason),
-            }
-            .update(&***db)
-            .await?
-            .into(),
-        )
+        let _ = (ban_id, data, db);
+        UpdateBan::decision_required()
     }
 
     /// Delete a ban.
@@ -150,12 +104,8 @@ impl Api {
         db: Data<&DbTxn>,
         _auth: AdminAuth,
     ) -> DeleteBan::Response<AdminAuth> {
-        let Some(ban) = get_ban(&db, ban_id.0).await? else {
-            return DeleteBan::ban_not_found();
-        };
-
-        ban.delete(&***db).await?;
-        DeleteBan::ok()
+        let _ = (ban_id, db);
+        DeleteBan::decision_required()
     }
 }
 
@@ -166,12 +116,14 @@ response!(ListBans = {
 });
 
 response!(CreateBan = {
+    DecisionRequired(409, error),
     Created(201) => Ban,
     /// `end` cannot be before `start`
     NegativeDuration(400, error),
 });
 
 response!(UpdateBan = {
+    DecisionRequired(409, error),
     Ok(200) => Ban,
     /// Ban does not exist.
     BanNotFound(404, error),
@@ -180,14 +132,8 @@ response!(UpdateBan = {
 });
 
 response!(DeleteBan = {
+    DecisionRequired(409, error),
     Ok(200),
     /// Ban does not exist.
     BanNotFound(404, error),
 });
-
-async fn get_ban(
-    db: &DatabaseTransaction,
-    ban_id: Uuid,
-) -> Result<Option<challenges_ban::Model>, DbErr> {
-    challenges_ban::Entity::find_by_id(ban_id).one(db).await
-}

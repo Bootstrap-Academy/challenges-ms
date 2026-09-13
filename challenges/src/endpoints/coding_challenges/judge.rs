@@ -51,7 +51,9 @@ impl Api {
         else {
             return TestExample::example_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return TestExample::example_not_found();
         }
 
@@ -137,6 +139,63 @@ impl Api {
     #[oai(path = "/executor/config", method = "get")]
     async fn get_config(&self, _auth: VerifiedUserAuth) -> GetConfig::Response<VerifiedUserAuth> {
         GetConfig::ok(get_executor_config(&self.judge_cache, &self.sandkasten).await?)
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/coding_challenges/:subtask_id/examples/:example_id/test",
+        method = "post"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_test_example(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        example_id: Path<String>,
+        data: Json<SubmissionContent>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> TestExample::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.test_example(
+            task_id,
+            subtask_id,
+            example_id,
+            data,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/executor/environments", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_environments(
+        &self,
+        _auth: lib::auth::LearningAuth,
+        db: Data<&DbTxn>,
+    ) -> ListEnvironments::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_environments(VerifiedUserAuth(user)).await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/executor/config", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_config(
+        &self,
+        _auth: lib::auth::LearningAuth,
+        db: Data<&DbTxn>,
+    ) -> GetConfig::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_config(VerifiedUserAuth(user)).await
     }
 }
 

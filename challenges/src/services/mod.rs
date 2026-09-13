@@ -1,6 +1,12 @@
+mod authored_export;
+pub mod benefits;
+pub mod coding_execution;
 pub mod course_tasks;
+pub mod hearts;
 pub mod judge;
 pub mod leaderboard;
+pub mod learning;
+pub mod moderation;
 pub mod subtasks;
 pub mod tasks;
 pub mod users;

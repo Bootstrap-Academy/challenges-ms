@@ -1,28 +1,21 @@
-use std::sync::Arc;
-
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use entity::{
-    challenges_ban, challenges_subtask_reports, challenges_subtasks, challenges_user_subtasks,
+    challenges_subtask_reports, challenges_subtasks, challenges_user_subtasks,
     sea_orm_active_enums::{ChallengesBanAction, ChallengesReportReason},
 };
-use lib::{
-    auth::{AdminAuth, VerifiedUserAuth},
-    config::Config,
-};
+use lib::auth::{AdminAuth, VerifiedUserAuth};
+use lib::SharedState;
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{
     param::{Path, Query},
     payload::Json,
+    types::{ParseFromJSON, ToJSON},
     OpenApi,
 };
-use schemas::challenges::subtasks::{
-    CreateReportRequest, Report, ResolveReportAction, ResolveReportRequest,
-};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, ModelTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
-};
+use schemas::challenges::subtasks::{CreateReportRequest, Report, ResolveReportRequest};
+use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, QueryOrder, QuerySelect, Set};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use super::get_subtask;
@@ -34,7 +27,7 @@ use crate::{
 };
 
 pub struct Api {
-    pub config: Arc<Config>,
+    pub state: Arc<SharedState>,
 }
 
 #[OpenApi(tag = "Tags::Subtasks")]
@@ -67,16 +60,37 @@ impl Api {
 
     /// Report a subtask.
     #[oai(path = "/subtask_reports", method = "post")]
+    #[allow(clippy::too_many_arguments)] // One authenticated report command and its owning transaction.
     pub async fn create_report(
         &self,
         data: Json<CreateReportRequest>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
     ) -> CreateReport::Response<VerifiedUserAuth> {
+        if data.0.reason == ChallengesReportReason::Dislike {
+            return CreateReport::permission_denied();
+        }
+        let intent_id = data.0.request_id.unwrap_or_else(Uuid::new_v4);
+        let request = serde_json::json!({"task_id":data.0.task_id,"subtask_id":data.0.subtask_id,"reason":format!("{:?}",data.0.reason),"comment":data.0.comment});
+        crate::services::moderation::value(&db,"SELECT to_jsonb(true) AS value FROM pg_advisory_xact_lock(hashtextextended('report-intent:'||$1::uuid,0))",vec![intent_id.into()]).await?;
+        let prior=crate::services::moderation::value(&db,"SELECT coalesce((SELECT jsonb_build_object('actor',actor,'matches',request_hash=encode(sha256(convert_to($2::jsonb::text,'UTF8')),'hex'),'receipt',receipt) FROM moderation_report_receipts WHERE id=$1),'null') AS value",vec![intent_id.into(),request.clone().into()]).await?;
+        if !prior.is_null() {
+            if prior["actor"] != serde_json::json!(auth.0.id) || prior["matches"] != true {
+                return CreateReport::conflicting_request();
+            }
+            let mut receipt = prior["receipt"].clone();
+            receipt["comment"] = serde_json::json!(data.0.comment);
+            let report = Report::parse_from_json(Some(receipt))
+                .map_err(|_| sea_orm::DbErr::Custom("Stored report receipt unavailable".into()))?;
+            return CreateReport::created(report);
+        }
+        crate::services::moderation::lock_subtask(&db, data.0.subtask_id).await?;
         let Some((subtask, _)) = get_subtask(&db, data.0.task_id, data.0.subtask_id).await? else {
             return CreateReport::subtask_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return CreateReport::subtask_not_found();
         }
 
@@ -91,16 +105,25 @@ impl Api {
             ActiveBan::Permanent => return CreateReport::banned(None),
         }
 
+        let basis=self.state.services.auth.moderation_basis(subtask.creator).await
+            .unwrap_or_else(|_|serde_json::json!({"recorded_acceptance":"unavailable","automatic_quality_basis_confirmed":false}));
         let (report, _) = create_report(
             &db,
             Some(auth.0.id),
+            intent_id,
             subtask,
             user_subtask.as_ref(),
             data.0.reason,
             data.0.comment,
+            basis,
         )
         .await?;
 
+        let mut receipt = report
+            .to_json()
+            .ok_or_else(|| sea_orm::DbErr::Custom("Report receipt unavailable".into()))?;
+        receipt.as_object_mut().unwrap().remove("comment");
+        crate::services::moderation::value(&db,"WITH saved AS (INSERT INTO moderation_report_receipts(id,actor,request_hash,receipt) VALUES($1,$2,encode(sha256(convert_to($3::jsonb::text,'UTF8')),'hex'),$4) RETURNING id) SELECT to_jsonb(id) AS value FROM saved",vec![intent_id.into(),auth.0.id.into(),request.into(),receipt.into()]).await?;
         CreateReport::created(report)
     }
 
@@ -113,58 +136,10 @@ impl Api {
         db: Data<&DbTxn>,
         auth: AdminAuth,
     ) -> ResolveReport::Response<AdminAuth> {
-        let Some((report, Some(subtask))) =
-            challenges_subtask_reports::Entity::find_by_id(report_id.0)
-                .find_also_related(challenges_subtasks::Entity)
-                .one(&***db)
-                .await?
-        else {
-            return ResolveReport::report_not_found();
-        };
-
-        let subtask_deleted = match data.0.action {
-            ResolveReportAction::Revise => false,
-            ResolveReportAction::BlockReporter => {
-                let Some(reporter) = report.user_id else {
-                    return ResolveReport::no_reporter();
-                };
-                ban_user(
-                    &db,
-                    reporter,
-                    ChallengesBanAction::Report,
-                    &self.config.challenges.quizzes.ban_days,
-                    auth.0.id,
-                    format!("Bad report ({}): {}", report.id, report.comment),
-                )
-                .await?;
-                challenges_subtasks::ActiveModel {
-                    enabled: Set(true),
-                    ..subtask.into()
-                }
-                .update(&***db)
-                .await?;
-                false
-            }
-            ResolveReportAction::BlockCreator => {
-                ban_user(
-                    &db,
-                    subtask.creator,
-                    ChallengesBanAction::Create,
-                    &self.config.challenges.quizzes.ban_days,
-                    auth.0.id,
-                    format!("Bad subtask: {}", report.comment),
-                )
-                .await?;
-                subtask.delete(&***db).await?;
-                true
-            }
-        };
-
-        if !subtask_deleted {
-            report.delete(&***db).await?;
-        }
-
-        ResolveReport::ok()
+        // Old requests carry neither a decision nor a recipient-safe reason.
+        // Keep the URL as an explicit conflict, never delete evidence silently.
+        let _ = (report_id, data, db, auth);
+        ResolveReport::decision_required()
     }
 }
 
@@ -175,6 +150,8 @@ response!(ListReports = {
 response!(CreateReport = {
     /// Subtask has been reported successfully.
     Created(201) => Report,
+    /// This request identifier was already used with different facts.
+    ConflictingRequest(409, error),
     /// Subtask does not exist.
     SubtaskNotFound(404, error),
     /// The user is not allowed to report this subtask.
@@ -185,19 +162,24 @@ response!(CreateReport = {
 
 response!(ResolveReport = {
     Ok(200),
+    /// Use /moderation/decisions with explicit outcome, facts and redress.
+    DecisionRequired(409, error),
     /// Report not found.
     ReportNotFound(404, error),
     /// The reporter could not be banned because the report has been generated automatically.
     NoReporter(403, error),
 });
 
+#[allow(clippy::too_many_arguments)] // One authenticated report command and its owning transaction.
 pub(super) async fn create_report(
     db: &DatabaseTransaction,
     user_id: Option<Uuid>,
+    intent_id: Uuid,
     subtask: challenges_subtasks::Model,
     user_subtask: Option<&challenges_user_subtasks::Model>,
     reason: ChallengesReportReason,
     comment: String,
+    basis: serde_json::Value,
 ) -> Result<(Report, challenges_subtasks::Model), ErrorResponse> {
     let now = Utc::now().naive_utc();
 
@@ -217,7 +199,7 @@ pub(super) async fn create_report(
     }
 
     let report = challenges_subtask_reports::ActiveModel {
-        id: Set(Uuid::new_v4()),
+        id: Set(intent_id),
         subtask_id: Set(subtask.id),
         user_id: Set(user_id),
         timestamp: Set(now),
@@ -227,45 +209,17 @@ pub(super) async fn create_report(
     .insert(db)
     .await?;
 
-    let subtask = challenges_subtasks::ActiveModel {
-        enabled: Set(false),
-        ..subtask.into()
-    }
-    .update(db)
+    crate::services::moderation::report(
+        db,
+        report.id,
+        user_id,
+        &subtask,
+        reason,
+        &report.comment,
+        basis,
+    )
     .await?;
+    let subtask = crate::services::moderation::reload_subtask(db, subtask.id).await?;
 
     Ok((Report::from(report, &subtask), subtask))
-}
-
-async fn ban_user(
-    db: &DatabaseTransaction,
-    user_id: Uuid,
-    action: ChallengesBanAction,
-    ban_days: &[u32],
-    creator: Uuid,
-    reason: String,
-) -> Result<challenges_ban::Model, ErrorResponse> {
-    let now = Utc::now().naive_utc();
-
-    let bans = challenges_ban::Entity::find()
-        .filter(challenges_ban::Column::UserId.eq(user_id))
-        .filter(challenges_ban::Column::Action.eq(action))
-        .count(db)
-        .await?;
-
-    let duration = ban_days
-        .get(bans as usize)
-        .map(|&days| Duration::days(days as _));
-
-    Ok(challenges_ban::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        user_id: Set(user_id),
-        start: Set(now),
-        end: Set(duration.map(|duration| now + duration)),
-        action: Set(action),
-        creator: Set(creator),
-        reason: Set(reason),
-    }
-    .insert(db)
-    .await?)
 }

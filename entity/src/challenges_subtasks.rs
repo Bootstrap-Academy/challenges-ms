@@ -17,6 +17,7 @@ pub struct Model {
     pub enabled: bool,
     pub ty: ChallengesSubtaskType,
     pub retired: bool,
+    pub moderation_removed: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

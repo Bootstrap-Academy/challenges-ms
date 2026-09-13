@@ -18,7 +18,7 @@ use poem_openapi::OpenApiService;
 use sandkasten_client::SandkastenClient;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sentry::integrations::tracing::EventFilter;
-use tracing::{info, warn, Level};
+use tracing::{info, Level};
 use tracing_subscriber::{prelude::*, EnvFilter};
 
 use crate::{endpoints::setup_api, sweep::sweep_deleted_users};
@@ -55,29 +55,27 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     match env::args().nth(1) {
-        None => serve(config).await,
+        None => serve(config, false, false).await,
+        Some(cmd) if cmd == "api" => serve(config, true, false).await,
+        Some(cmd) if cmd == "worker" => serve(config, false, true).await,
         Some(cmd) if cmd == "sweep-deleted-users" => run_sweep(config).await,
         Some(cmd) => bail!("Unknown subcommand: {cmd}"),
     }
 }
 
-async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
+async fn serve(config: Arc<Config>, api_only: bool, worker_only: bool) -> anyhow::Result<()> {
+    services::coding_execution::validate(
+        &config.challenges.coding_challenges.execution,
+        config.challenges.coding_challenges.max_concurrency,
+    )?;
     let db = connect_database(&config).await?;
     let cache = connect_cache(&config).await?;
     let auth_redis = RedisConnection::new(config.redis.auth.as_str()).await?;
 
-    info!("Connecting to Sandkasten");
+    // Constructing the client requires no executor connection. An executor
+    // outage must not prevent unrelated API routes or durable admission starting.
     let sandkasten =
         SandkastenClient::new(config.challenges.coding_challenges.sandkasten_url.clone());
-    let server_version = sandkasten.version().await?;
-    let client_version = sandkasten_client::VERSION;
-    info!("Connected to Sandkasten v{server_version}");
-    if server_version != client_version {
-        warn!(
-            "Sandkasten server version ({server_version}) and client version ({client_version}) \
-             differ!"
-        );
-    }
 
     let jwt_secret = JwtSecret::try_from(config.jwt_secret.as_str())?;
     let internal_jwt_secrets =
@@ -97,8 +95,49 @@ async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
         db: db.clone(),
     });
 
+    tokio::spawn(services::benefits::run(
+        db.clone(),
+        shared_state.services.clone(),
+    ));
+    tokio::spawn(services::hearts::run(
+        db.clone(),
+        shared_state.services.clone(),
+    ));
+
+    if worker_only {
+        return endpoints::coding_challenges::submissions::run_worker(
+            shared_state,
+            config,
+            sandkasten,
+        )
+        .await;
+    }
+    let worker_enabled = !api_only
+        && config
+            .challenges
+            .coding_challenges
+            .execution
+            .embedded_worker;
+    let worker = async {
+        if worker_enabled {
+            endpoints::coding_challenges::submissions::run_worker(
+                shared_state.clone(),
+                config.clone(),
+                sandkasten.clone(),
+            )
+            .await
+        } else {
+            std::future::pending::<anyhow::Result<()>>().await
+        }
+    };
+
     let api_service = OpenApiService::new(
-        setup_api(shared_state.clone(), Arc::clone(&config), sandkasten).await?,
+        setup_api(
+            shared_state.clone(),
+            Arc::clone(&config),
+            sandkasten.clone(),
+        )
+        .await?,
         "Bootstrap Academy Backend: Challenges Microservice",
         env!("CARGO_PKG_VERSION"),
     )
@@ -112,18 +151,22 @@ async fn serve(config: Arc<Config>) -> anyhow::Result<()> {
         .with(Tracing)
         .with(PanicHandler::middleware())
         .with(DbTransactionMiddleware::new(db))
-        .data(shared_state);
+        .with(services::hearts::SettlementMiddleware(shared_state.clone()))
+        .data(shared_state.clone());
 
     info!(
         "Listening on {}:{}",
         config.challenges.host, config.challenges.port
     );
-    Server::new(TcpListener::bind((
+    let server = Server::new(TcpListener::bind((
         config.challenges.host.as_str(),
         config.challenges.port,
     )))
-    .run(app)
-    .await?;
+    .run(app);
+    tokio::select! {
+        result = server => result?,
+        result = worker => result?,
+    }
 
     Ok(())
 }

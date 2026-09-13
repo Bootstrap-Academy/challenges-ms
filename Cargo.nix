@@ -1019,7 +1019,7 @@ rec {
             name = "sea-orm";
             packageId = "sea-orm 0.12.15";
             usesDefaultFeatures = false;
-            features = [ "sqlx-postgres" "runtime-tokio-rustls" "macros" "with-uuid" "with-chrono" "postgres-array" ];
+            features = [ "sqlx-postgres" "runtime-tokio-rustls" "macros" "with-uuid" "with-chrono" "postgres-array" "with-json" ];
           }
           {
             name = "sentry";
@@ -1865,6 +1865,12 @@ rec {
             optional = true;
             usesDefaultFeatures = false;
           }
+          {
+            name = "serde";
+            packageId = "serde";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
         ];
         features = {
           "default" = [ "std" ];
@@ -1875,7 +1881,7 @@ rec {
           "serde" = [ "dep:serde" ];
           "std" = [ "alloc" ];
         };
-        resolvedDefaultFeatures = [ "alloc" "powerfmt" "std" ];
+        resolvedDefaultFeatures = [ "alloc" "powerfmt" "serde" "std" ];
       };
       "derivative" = rec {
         crateName = "derivative";
@@ -2181,7 +2187,7 @@ rec {
             name = "sea-orm";
             packageId = "sea-orm 0.12.15";
             usesDefaultFeatures = false;
-            features = [ "sqlx-postgres" "runtime-tokio-rustls" "macros" "with-uuid" "with-chrono" "postgres-array" ];
+            features = [ "sqlx-postgres" "runtime-tokio-rustls" "macros" "with-uuid" "with-chrono" "postgres-array" "with-json" ];
           }
           {
             name = "serde";
@@ -4073,7 +4079,7 @@ rec {
             name = "sea-orm";
             packageId = "sea-orm 0.12.15";
             usesDefaultFeatures = false;
-            features = [ "sqlx-postgres" "runtime-tokio-rustls" "macros" "with-uuid" "with-chrono" "postgres-array" ];
+            features = [ "sqlx-postgres" "runtime-tokio-rustls" "macros" "with-uuid" "with-chrono" "postgres-array" "with-json" ];
           }
           {
             name = "serde";
@@ -4353,7 +4359,7 @@ rec {
             name = "sea-orm";
             packageId = "sea-orm 0.12.15";
             usesDefaultFeatures = false;
-            features = [ "sqlx-postgres" "runtime-tokio-rustls" "macros" "with-uuid" "with-chrono" "postgres-array" ];
+            features = [ "sqlx-postgres" "runtime-tokio-rustls" "macros" "with-uuid" "with-chrono" "postgres-array" "with-json" ];
           }
           {
             name = "sea-orm-migration";
@@ -7752,6 +7758,11 @@ rec {
             features = [ "derive" ];
           }
           {
+            name = "serde_json";
+            packageId = "serde_json";
+            usesDefaultFeatures = false;
+          }
+          {
             name = "uuid";
             packageId = "uuid";
             usesDefaultFeatures = false;
@@ -7893,6 +7904,12 @@ rec {
             usesDefaultFeatures = false;
           }
           {
+            name = "serde_json";
+            packageId = "serde_json";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+          {
             name = "sqlx";
             packageId = "sqlx";
             optional = true;
@@ -7906,6 +7923,12 @@ rec {
           {
             name = "thiserror";
             packageId = "thiserror";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "time";
+            packageId = "time";
+            optional = true;
             usesDefaultFeatures = false;
           }
           {
@@ -7930,6 +7953,11 @@ rec {
           {
             name = "futures";
             packageId = "futures";
+          }
+          {
+            name = "time";
+            packageId = "time";
+            features = [ "macros" ];
           }
           {
             name = "uuid";
@@ -7970,7 +7998,7 @@ rec {
           "with-time" = [ "time" "sea-query/with-time" "sea-query-binder?/with-time" "sqlx?/time" ];
           "with-uuid" = [ "uuid" "sea-query/with-uuid" "sea-query-binder?/with-uuid" "sqlx?/uuid" ];
         };
-        resolvedDefaultFeatures = [ "chrono" "macros" "postgres-array" "runtime-tokio" "runtime-tokio-rustls" "sea-query-binder" "sqlx" "sqlx-dep" "sqlx-postgres" "uuid" "with-chrono" "with-uuid" ];
+        resolvedDefaultFeatures = [ "chrono" "macros" "postgres-array" "runtime-tokio" "runtime-tokio-rustls" "sea-query-binder" "serde_json" "sqlx" "sqlx-dep" "sqlx-postgres" "uuid" "with-chrono" "with-json" "with-uuid" ];
       };
       "sea-orm 1.0.1" = rec {
         crateName = "sea-orm";
@@ -8430,6 +8458,13 @@ rec {
             usesDefaultFeatures = false;
           }
           {
+            name = "serde_json";
+            packageId = "serde_json";
+            optional = true;
+            usesDefaultFeatures = false;
+            features = [ "std" ];
+          }
+          {
             name = "uuid";
             packageId = "uuid";
             optional = true;
@@ -8465,7 +8500,7 @@ rec {
           "with-time" = [ "time" ];
           "with-uuid" = [ "uuid" ];
         };
-        resolvedDefaultFeatures = [ "backend-mysql" "backend-postgres" "backend-sqlite" "chrono" "derivative" "hashable-value" "ordered-float" "postgres-array" "thread-safe" "uuid" "with-chrono" "with-uuid" ];
+        resolvedDefaultFeatures = [ "backend-mysql" "backend-postgres" "backend-sqlite" "chrono" "derivative" "hashable-value" "ordered-float" "postgres-array" "serde_json" "thread-safe" "uuid" "with-chrono" "with-json" "with-uuid" ];
       };
       "sea-query 0.31.0" = rec {
         crateName = "sea-query";
@@ -8572,6 +8607,13 @@ rec {
             features = [ "thread-safe" ];
           }
           {
+            name = "serde_json";
+            packageId = "serde_json";
+            optional = true;
+            usesDefaultFeatures = false;
+            features = [ "std" ];
+          }
+          {
             name = "sqlx";
             packageId = "sqlx";
             optional = true;
@@ -8614,7 +8656,7 @@ rec {
           "with-time" = [ "sqlx?/time" "sea-query/with-time" "time" ];
           "with-uuid" = [ "sqlx?/uuid" "sea-query/with-uuid" "uuid" ];
         };
-        resolvedDefaultFeatures = [ "chrono" "postgres-array" "runtime-tokio-rustls" "sqlx" "sqlx-postgres" "uuid" "with-chrono" "with-uuid" ];
+        resolvedDefaultFeatures = [ "chrono" "postgres-array" "runtime-tokio-rustls" "serde_json" "sqlx" "sqlx-postgres" "uuid" "with-chrono" "with-json" "with-uuid" ];
       };
       "sea-query-binder 0.6.0" = rec {
         crateName = "sea-query-binder";
@@ -9819,7 +9861,7 @@ rec {
           "tls-rustls" = [ "sqlx-core/_tls-rustls" "sqlx-macros?/_tls-rustls" ];
           "uuid" = [ "sqlx-core/uuid" "sqlx-macros?/uuid" "sqlx-mysql?/uuid" "sqlx-postgres?/uuid" "sqlx-sqlite?/uuid" ];
         };
-        resolvedDefaultFeatures = [ "_rt-tokio" "chrono" "postgres" "runtime-tokio" "runtime-tokio-rustls" "sqlx-postgres" "tls-rustls" "uuid" ];
+        resolvedDefaultFeatures = [ "_rt-tokio" "chrono" "json" "postgres" "runtime-tokio" "runtime-tokio-rustls" "sqlx-postgres" "tls-rustls" "uuid" ];
       };
       "sqlx-core" = rec {
         crateName = "sqlx-core";
@@ -10114,7 +10156,7 @@ rec {
           "time" = [ "sqlx-macros-core/time" ];
           "uuid" = [ "sqlx-macros-core/uuid" ];
         };
-        resolvedDefaultFeatures = [ "_rt-tokio" "_tls-rustls" "chrono" "default" "postgres" "uuid" ];
+        resolvedDefaultFeatures = [ "_rt-tokio" "_tls-rustls" "chrono" "default" "json" "postgres" "uuid" ];
       };
       "sqlx-macros-core" = rec {
         crateName = "sqlx-macros-core";
@@ -10244,7 +10286,7 @@ rec {
           "tokio" = [ "dep:tokio" ];
           "uuid" = [ "sqlx-core/uuid" "sqlx-mysql?/uuid" "sqlx-postgres?/uuid" "sqlx-sqlite?/uuid" ];
         };
-        resolvedDefaultFeatures = [ "_rt-tokio" "_tls-rustls" "chrono" "default" "postgres" "sqlx-postgres" "tokio" "uuid" ];
+        resolvedDefaultFeatures = [ "_rt-tokio" "_tls-rustls" "chrono" "default" "json" "postgres" "sqlx-postgres" "tokio" "uuid" ];
       };
       "sqlx-mysql" = rec {
         crateName = "sqlx-mysql";
@@ -10443,7 +10485,7 @@ rec {
           "time" = [ "dep:time" ];
           "uuid" = [ "dep:uuid" ];
         };
-        resolvedDefaultFeatures = [ "chrono" "migrate" "offline" "serde" "uuid" ];
+        resolvedDefaultFeatures = [ "chrono" "json" "migrate" "offline" "serde" "uuid" ];
       };
       "sqlx-postgres" = rec {
         crateName = "sqlx-postgres";
@@ -10628,7 +10670,7 @@ rec {
           "time" = [ "dep:time" ];
           "uuid" = [ "dep:uuid" ];
         };
-        resolvedDefaultFeatures = [ "chrono" "migrate" "offline" "uuid" ];
+        resolvedDefaultFeatures = [ "chrono" "json" "migrate" "offline" "uuid" ];
       };
       "sqlx-sqlite" = rec {
         crateName = "sqlx-sqlite";
@@ -10739,7 +10781,7 @@ rec {
           "time" = [ "dep:time" ];
           "uuid" = [ "dep:uuid" ];
         };
-        resolvedDefaultFeatures = [ "chrono" "migrate" "offline" "serde" "uuid" ];
+        resolvedDefaultFeatures = [ "chrono" "json" "migrate" "offline" "serde" "uuid" ];
       };
       "static_assertions" = rec {
         crateName = "static_assertions";
@@ -11097,7 +11139,7 @@ rec {
           "std" = [ "alloc" "deranged/std" ];
           "wasm-bindgen" = [ "dep:js-sys" ];
         };
-        resolvedDefaultFeatures = [ "alloc" "default" "formatting" "macros" "parsing" "std" ];
+        resolvedDefaultFeatures = [ "alloc" "default" "formatting" "macros" "parsing" "serde" "std" ];
       };
       "time-core" = rec {
         crateName = "time-core";
@@ -11134,7 +11176,7 @@ rec {
         ];
         features = {
         };
-        resolvedDefaultFeatures = [ "formatting" "parsing" ];
+        resolvedDefaultFeatures = [ "formatting" "parsing" "serde" ];
       };
       "tinyvec" = rec {
         crateName = "tinyvec";

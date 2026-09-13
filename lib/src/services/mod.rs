@@ -87,6 +87,15 @@ impl Service {
     }
 
     fn request(&self, method: Method, path: &str) -> RequestBuilder {
+        self.request_url(
+            method,
+            self.base_url
+                .join(&format!("_internal/{}", path.trim_start_matches('/')))
+                .expect("could not build url"),
+        )
+    }
+
+    fn request_url(&self, method: Method, url: Url) -> RequestBuilder {
         let token = sign_jwt(
             InternalAuthToken {
                 aud: self.name.into(),
@@ -95,14 +104,7 @@ impl Service {
             self.jwt_config.ttl,
         )
         .expect("could not sign internal auth token");
-        Client::new()
-            .request(
-                method,
-                self.base_url
-                    .join(&format!("_internal/{}", path.trim_start_matches('/')))
-                    .expect("could not build url"),
-            )
-            .bearer_auth(token)
+        Client::new().request(method, url).bearer_auth(token)
     }
 }
 
@@ -125,6 +127,8 @@ impl Service {
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
+    #[error("invalid service response: {0}")]
+    MalformedResponse(&'static str),
     #[error("reqwest error: {0}")]
     ReqwestError(#[from] reqwest::Error),
     #[error("cache error: {0}")]

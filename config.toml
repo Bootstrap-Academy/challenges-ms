@@ -55,21 +55,21 @@ ban_days = [3, 7, 30]
 [challenges.multiple_choice_questions]
 timeout = 2  # seconds
 hearts = 1
-creator_coins = 1
+creator_coins = 0
 
 [challenges.questions]
 timeout = 2  # seconds
 hearts = 1
-creator_coins = 1
+creator_coins = 0
 
 [challenges.matchings]
 timeout = 2  # seconds
 hearts = 1
-creator_coins = 1
+creator_coins = 0
 
 [challenges.coding_challenges]
 sandkasten_url = "https://sandkasten.bootstrap.academy"
 max_concurrency = 2
 timeout = 10  # seconds
 hearts = 2
-creator_coins = 10
+creator_coins = 0
