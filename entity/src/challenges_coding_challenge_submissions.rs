@@ -15,6 +15,11 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub code: String,
     pub charge_on_failure: bool,
+    pub judge_pending: bool,
+    pub judge_generation: i64,
+    pub judge_lease_owner: Option<Uuid>,
+    pub judge_lease_until: Option<DateTimeWithTimeZone>,
+    pub judge_available_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

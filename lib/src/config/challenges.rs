@@ -52,4 +52,33 @@ pub struct CodingChallenges {
     pub timeout: u64,
     pub hearts: u32,
     pub creator_coins: u32,
+    #[serde(default)]
+    pub execution: CodingExecution,
+}
+
+/// Operational controls; existing configurations keep the combined API/worker start.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct CodingExecution {
+    pub embedded_worker: bool,
+    pub max_pending: u32,
+    pub max_pending_per_user: u32,
+    pub lease_seconds: u32,
+    pub poll_milliseconds: u32,
+    pub retry_seconds: u32,
+    pub max_execution_seconds: u32,
+}
+
+impl Default for CodingExecution {
+    fn default() -> Self {
+        Self {
+            embedded_worker: true,
+            max_pending: 1024,
+            max_pending_per_user: 4,
+            lease_seconds: 30,
+            poll_milliseconds: 500,
+            retry_seconds: 10,
+            max_execution_seconds: 600,
+        }
+    }
 }

@@ -1,5 +1,6 @@
 mod authored_export;
 pub mod benefits;
+pub mod coding_execution;
 pub mod course_tasks;
 pub mod hearts;
 pub mod judge;

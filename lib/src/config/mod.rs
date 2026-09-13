@@ -5,6 +5,7 @@ use serde::{de::DeserializeOwned, Deserialize};
 use url::Url;
 
 use self::challenges::ChallengesConfig;
+pub use self::challenges::CodingExecution;
 
 mod challenges;
 

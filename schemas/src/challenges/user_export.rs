@@ -516,6 +516,11 @@ mod tests {
         let exported = Submission::from(
             challenges_coding_challenge_submissions::Model {
                 charge_on_failure: false,
+                judge_pending: true,
+                judge_generation: 0,
+                judge_lease_owner: None,
+                judge_lease_until: None,
+                judge_available_at: timestamp().and_utc().into(),
                 id,
                 subtask_id,
                 creator,
@@ -551,6 +556,11 @@ mod tests {
         let exported = Submission::from(
             challenges_coding_challenge_submissions::Model {
                 charge_on_failure: false,
+                judge_pending: true,
+                judge_generation: 0,
+                judge_lease_owner: None,
+                judge_lease_until: None,
+                judge_available_at: timestamp().and_utc().into(),
                 id: Uuid::new_v4(),
                 subtask_id: Uuid::new_v4(),
                 creator: Uuid::new_v4(),

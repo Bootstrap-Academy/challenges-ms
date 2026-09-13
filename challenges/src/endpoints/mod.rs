@@ -4,7 +4,6 @@ use fnct::format::JsonFormatter;
 use lib::{config::Config, SharedState};
 use poem_openapi::OpenApi;
 use sandkasten_client::SandkastenClient;
-use tokio::sync::Semaphore;
 
 use self::{
     challenges::Challenges, coding_challenges::CodingChallenges, course_tasks::CourseTasks,
@@ -89,9 +88,6 @@ pub async fn setup_api(
             judge_cache: state.cache.with_formatter(JsonFormatter),
             state: Arc::clone(&state),
             sandkasten,
-            judge_lock: Arc::new(Semaphore::new(
-                config.challenges.coding_challenges.max_concurrency,
-            )),
             config,
         }
         .setup_api()
