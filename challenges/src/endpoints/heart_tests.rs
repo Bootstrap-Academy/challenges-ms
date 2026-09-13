@@ -71,7 +71,9 @@ impl Fixture {
                 let db = db.clone();
                 async move {
                     let path = request.uri().path().to_owned();
-                    let value = if path.ends_with("/ordinary-authority") {
+                    let value = if path == "/environments" {
+                        json!({"python":{"name":"Python","version":"synthetic","default_main_file_name":"code.py","example":null,"meta":{}}})
+                    } else if path.ends_with("/ordinary-authority") {
                         let body: Value = request.take_body().into_json().await.unwrap();
                         let user: UserAccessToken =
                             verify_jwt(body["access_token"].as_str().unwrap(), &secret).unwrap();
@@ -142,6 +144,8 @@ impl Fixture {
         let mut config = lib::config::load().unwrap();
         config.services.shop = format!("http://{address}/shop/").parse().unwrap();
         config.services.auth = format!("http://{address}/auth/").parse().unwrap();
+        config.challenges.coding_challenges.sandkasten_url =
+            format!("http://{address}/").parse().unwrap();
         config.challenges.multiple_choice_questions.timeout = 0;
         config.challenges.matchings.timeout = 0;
         config.challenges.questions.timeout = 0;

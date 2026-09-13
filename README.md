@@ -39,6 +39,45 @@ If you would like to submit a bug report or feature request, or are looking for 
 7. Run `just migrate` to run the database migrations.
 8. Run `just run` to start the microservice. You can find the automatically generated swagger documentation on http://localhost:8005/docs.
 
+## Coding execution
+
+After running migrations, `challenges` starts the API and its coding worker as before. To scale them separately, run `challenges api` and one or more `challenges worker` processes with the same database and service configuration. Workers do not bind an HTTP port. Set `challenges.coding_challenges.execution.embedded_worker = false` to make the default command serve only the API instead. The existing `max_concurrency` setting limits execution slots per worker process.
+
+The optional `[challenges.coding_challenges.execution]` configuration defaults to:
+
+```toml
+embedded_worker = true
+max_pending = 1024
+max_pending_per_user = 4
+lease_seconds = 30
+poll_milliseconds = 500
+retry_seconds = 10
+max_execution_seconds = 600
+```
+
+Use consistent admission limits across API replicas. Pending includes running and technically deferred submissions; an overflowing queue responds with the existing HTTP 429 retry response before storing a submission or charging a heart. Previously accepted work remains queued even if it exceeds a newly configured limit. Technical executor failures stay pending and retry without charging hearts.
+
+PostgreSQL claims only committed submissions and fences result/progress/outbox commits by lease owner and generation. Heartbeats renew a live lease every third of its duration. The queue API reports live advertised execution capacity, actual leased submissions, and waiting submissions across processes. Position zero means actively leased; positive positions are an approximate waiting order and may change during retries or concurrent work.
+
+Stop or drain **all old workers before starting this version's workers**: older binaries do not participate in leases. Apply the additive migration before the new binary. During recovery stop all new workers before starting the previous binary and retain the additive schema. Existing submission IDs, results, heart operations and benefit outboxes are preserved. If a process or connection fails, remote sandbox work can physically run again after lease expiry; fencing prevents an obsolete worker from committing results or rewards, but does not promise exactly-once remote computation.
+
+Local database regression (fresh migrated disposable PostgreSQL plus isolated Redis, no live services):
+
+```bash
+HEART_TEST_DATABASE_URL=postgresql://... HEART_TEST_REDIS_URL=redis://... \
+  cargo test --locked -p challenges coding_durable_execution_postgres -- --ignored --test-threads=1
+```
+
+Run that test separately from the historical heart fixtures, which intentionally leave submission history behind. `cargo test --locked --workspace` runs the regular checks without external fixture dependencies.
+
+For the complete local migration/heart/authority/export regression and two real worker processes against a deliberately stalled local executor, use Python 3.11+, the PostgreSQL/Redis tools on `PATH`, and cached Cargo dependencies:
+
+```bash
+python3 scripts/test-coding-execution.py --output /tmp/coding-execution-check
+```
+
+The output directory must be new. The script binds all fixtures to loopback, keeps its logs, and stops/removes only its own processes and database cluster.
+
 ## Account Deletion
 When an account is deleted, the auth microservice calls `DELETE /_internal/users/:user_id` on this microservice.
 The endpoint requires an internal token with the `challenges` audience and answers `204`, also for a user that has no data here, so it can be retried safely.
