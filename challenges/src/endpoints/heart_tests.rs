@@ -34,6 +34,8 @@ pub(crate) struct Shop {
     pub receipts: HashMap<Uuid, Value>,
     pub lose_reply: bool,
     pub calls: usize,
+    /// skills-ms XP operations received, by operation ID.
+    pub xp_operations: HashMap<Uuid, Value>,
 }
 
 pub(crate) struct Fixture {
@@ -115,6 +117,21 @@ impl Fixture {
                                 .body("lost after commit");
                         }
                         receipt
+                    } else if path == "/skills/_internal/skills" {
+                        json!([
+                            {"id":"synthetic-sub-skill","parent_id":"synthetic-root","courses":[]},
+                            {"id":"other-sub-skill","parent_id":"synthetic-root","courses":[]}
+                        ])
+                    } else if path.starts_with("/skills/_internal/xp-operations/") {
+                        let parts: Vec<_> = path.rsplit('/').collect();
+                        let (skill, user, operation) = (parts[0], parts[1], parts[2]);
+                        let operation: Uuid = operation.parse().unwrap();
+                        let body: Value = request.take_body().into_json().await.unwrap();
+                        let exact = json!({"user_id":user,"skill_id":skill,"xp":body["xp"],"earning_id":body["earning_id"]});
+                        let mut shop = shop.lock().unwrap();
+                        let known = shop.xp_operations.entry(operation).or_insert(exact.clone());
+                        assert_eq!(known, &exact);
+                        json!({"operation_id":operation,"request":exact,"state":"applied","applied":true})
                     } else if path.contains("/premium/") {
                         let user: Uuid = path.rsplit('/').next().unwrap().parse().unwrap();
                         json!(shop.lock().unwrap().premium.contains(&user))
@@ -144,6 +161,7 @@ impl Fixture {
         let mut config = lib::config::load().unwrap();
         config.services.shop = format!("http://{address}/shop/").parse().unwrap();
         config.services.auth = format!("http://{address}/auth/").parse().unwrap();
+        config.services.skills = format!("http://{address}/skills/").parse().unwrap();
         config.challenges.coding_challenges.sandkasten_url =
             format!("http://{address}/").parse().unwrap();
         config.challenges.multiple_choice_questions.timeout = 0;

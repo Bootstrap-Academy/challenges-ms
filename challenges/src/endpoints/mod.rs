@@ -28,6 +28,8 @@ mod creator_tests;
 #[cfg(test)]
 pub(crate) mod heart_tests;
 #[cfg(test)]
+mod lesson_milestone_tests;
+#[cfg(test)]
 mod openapi_tests;
 #[cfg(test)]
 mod scoped_release_tests;
