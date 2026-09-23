@@ -28,6 +28,8 @@ mod creator_tests;
 #[cfg(test)]
 pub(crate) mod heart_tests;
 #[cfg(test)]
+mod openapi_tests;
+#[cfg(test)]
 mod scoped_release_tests;
 
 #[derive(poem_openapi::Tags)]
@@ -88,7 +90,7 @@ pub async fn setup_api(
             judge_cache: state.cache.with_formatter(JsonFormatter),
             state: Arc::clone(&state),
             sandkasten,
-            config,
+            config: Arc::clone(&config),
         }
         .setup_api()
         .await?,
@@ -99,6 +101,6 @@ pub async fn setup_api(
         moderation::Api {
             state: Arc::clone(&state),
         },
-        Internal { state },
+        Internal { state, config },
     ))
 }

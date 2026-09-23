@@ -6,6 +6,7 @@ pub use sea_orm_migration::prelude::*;
 pub struct Migrator;
 mod m20260912_170000_heart_outcomes;
 mod m20260913_180000_coding_execution;
+mod m20260924_120000_lesson_milestones;
 
 mod m20230322_163425_challenges_init;
 mod m20230326_074819_multiple_choice_attempts;
@@ -84,6 +85,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260912_070000_legacy_moderation_email::Migration),
             Box::new(m20260912_170000_heart_outcomes::Migration),
             Box::new(m20260913_180000_coding_execution::Migration),
+            Box::new(m20260924_120000_lesson_milestones::Migration),
         ]
     }
 }

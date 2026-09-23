@@ -47,6 +47,7 @@ pub async fn export_user_data(
             vec![user_id.into()],
         )
         .await?,
+        lesson_milestones: super::lesson_milestones::export(db, user_id).await?,
         moderation: super::moderation::inbox(db, user_id).await?,
         subtask_progress: challenges_user_subtasks::Entity::find()
             .filter(challenges_user_subtasks::Column::UserId.eq(user_id))
@@ -166,6 +167,7 @@ pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result
         ))
         .await?
         .rows_affected();
+    rows += super::lesson_milestones::delete(db, user_id).await?;
 
     rows += delete_bans_against(user_id).exec(db).await?.rows_affected;
     reset_creator_of_bans_by(user_id).exec(db).await?;
