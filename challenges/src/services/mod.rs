@@ -7,6 +7,7 @@ pub mod hearts;
 pub mod judge;
 pub mod leaderboard;
 pub mod learning;
+pub mod learning_history;
 pub mod moderation;
 pub mod subtasks;
 pub mod tasks;

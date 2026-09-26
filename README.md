@@ -118,6 +118,27 @@ activation. Backend defaults and cohort/terms eligibility control learning
 policy; Skills independently controls daily measurement/enforcement. This
 consumer does not activate either policy or introduce new terms or prices.
 
+Skills reads historical participation through the service-local
+`POST /_internal/users/{user_id}/learning-history`, authenticated with the
+existing internal JWT audience `challenges` (including per-audience secrets).
+The body is `{subtask_ids: UUID[], lecture_bindings: [{course_id, lecture_id}]}`;
+both lists default to empty, and the combined limit is 500 entries before
+deduplication. Invalid or oversized requests return 422. The response contains
+only `{attempted_subtask_ids: UUID[], attempted_lecture_bindings: [{course_id,
+lecture_id}]}`, with unique results restricted to the requested IDs and exact
+course/lecture pairs. An unknown user or empty request returns empty lists.
+
+This read-only local query recognizes wrong and solved quiz attempts, submitted
+code including pending judgments, and saved progress with an attempt count or
+last-attempt/solved timestamp. Empty or rating-only progress, views and broad
+course/section bindings do not start a lecture. Historical example executions
+have no durable user participation record here and cannot be reconstructed from
+shared evaluator caches. No code, answers, solutions or success claims leave
+this endpoint, and it does not call Skills or modify XP, receipts or progress.
+Deploy this endpoint before the Skills consumer that uses its evidence to
+preserve historical lesson starts. The two services may call each other during
+admission, but this history lookup has no upstream dependency or subject lock.
+
 Run the native access, heart, historical-authority and coding queue regressions
 with cached Cargo dependencies and PostgreSQL/Redis tools on `PATH`:
 

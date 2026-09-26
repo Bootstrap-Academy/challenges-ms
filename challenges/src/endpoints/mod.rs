@@ -30,6 +30,8 @@ mod daily_access_tests;
 #[cfg(test)]
 pub(crate) mod heart_tests;
 #[cfg(test)]
+mod learning_history_tests;
+#[cfg(test)]
 mod scoped_release_tests;
 
 #[derive(poem_openapi::Tags)]
