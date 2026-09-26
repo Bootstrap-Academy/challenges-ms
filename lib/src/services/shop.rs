@@ -8,7 +8,36 @@ use super::{Service, ServiceResult};
 #[derive(Debug, Clone)]
 pub struct ShopService(Service);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LearningMode {
+    Legacy,
+    Shadow,
+    Daily,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LearningPolicy {
+    pub mode: LearningMode,
+    pub premium: bool,
+}
+
 impl ShopService {
+    /// Admission uses current policy, including a just-activated Premium plan.
+    /// Missing users, routes and malformed modes must never grant access.
+    pub async fn learning_policy(&self, user: Uuid) -> ServiceResult<LearningPolicy> {
+        let response = self
+            .0
+            .get(&format!("/learning-policy/{user}"))
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+        if response.status() != StatusCode::OK {
+            return Err(super::ServiceError::UnexpectedStatusCode(response.status()));
+        }
+        Ok(response.json().await?)
+    }
+
     /// An immutable wrong-answer operation; retries use the original UUID.
     pub async fn apply_heart_operation(
         &self,
@@ -37,7 +66,8 @@ impl ShopService {
                     receipt["outcome"].as_str(),
                     receipt["charged_half_hearts"].as_u64()
                 ),
-                (Some("charged"), Some(2)) | (Some("premium" | "insufficient"), Some(0))
+                (Some("charged"), Some(2))
+                    | (Some("premium" | "insufficient" | "daily_learning"), Some(0))
             )
         {
             return Err(super::ServiceError::MalformedResponse(

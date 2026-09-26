@@ -26,6 +26,8 @@ mod subtasks;
 #[cfg(test)]
 mod creator_tests;
 #[cfg(test)]
+mod daily_access_tests;
+#[cfg(test)]
 pub(crate) mod heart_tests;
 #[cfg(test)]
 mod scoped_release_tests;

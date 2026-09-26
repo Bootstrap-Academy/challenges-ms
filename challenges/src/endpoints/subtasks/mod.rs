@@ -79,6 +79,7 @@ impl Subtasks {
         ListSubtasks::ok(
             query_subtasks_only(
                 &db,
+                &self.state.services,
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
@@ -114,8 +115,14 @@ impl Subtasks {
         };
 
         let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
-        let subtasks =
-            stat_subtasks_prepare(&db, &auth.0, task_id.0.map(|x| vec![x]), &filter).await?;
+        let subtasks = stat_subtasks_prepare(
+            &db,
+            &self.state.services,
+            &auth.0,
+            task_id.0.map(|x| vec![x]),
+            &filter,
+        )
+        .await?;
 
         filter.ty = None;
         GetSubtaskStats::ok(stat_subtasks(&subtasks, &user_subtasks, filter))

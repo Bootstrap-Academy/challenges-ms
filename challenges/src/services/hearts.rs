@@ -2,7 +2,11 @@
 //! are delivered; every remote retry carries the exact original attempt UUID.
 use std::sync::{Arc, Mutex};
 
-use lib::{auth::User, services::Services, SharedState};
+use lib::{
+    auth::User,
+    services::{shop::LearningMode, Services},
+    SharedState,
+};
 use poem::{Endpoint, IntoResponse, Middleware, Request, Response};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, Statement,
@@ -19,11 +23,11 @@ pub async fn admit(
     user: &User,
     subtask: &entity::challenges_subtasks::Model,
 ) -> anyhow::Result<Option<bool>> {
-    if subtask.retired
-        || user.admin
-        || user.id == subtask.creator
-        || services.shop.has_premium(user.id).await?
-    {
+    if subtask.retired || user.admin || user.id == subtask.creator {
+        return Ok(Some(true));
+    }
+    let policy = services.shop.learning_policy(user.id).await?;
+    if policy.mode == LearningMode::Daily || policy.premium {
         return Ok(Some(true));
     }
     Ok((services.shop.get_hearts(user.id).await? >= WRONG_ANSWER_HALF_HEARTS).then_some(false))

@@ -57,6 +57,12 @@ impl Api {
             return TestExample::example_not_found();
         }
 
+        if !crate::services::access::can_read_subtask(&db, &self.state.services, &auth.0, &subtask)
+            .await?
+        {
+            return TestExample::example_not_found();
+        }
+
         if !check_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
             return TestExample::not_enough_hearts();
         }
@@ -88,6 +94,18 @@ impl Api {
             }
             x => x?,
         };
+
+        if let Some(denial) = crate::services::access::start(
+            &db,
+            &self.state.services,
+            &auth.0,
+            &subtask,
+            Uuid::new_v4(),
+        )
+        .await?
+        {
+            return denial.response();
+        }
 
         let result = match judge
             .run_solution(

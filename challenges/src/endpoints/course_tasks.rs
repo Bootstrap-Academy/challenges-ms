@@ -56,12 +56,7 @@ impl CourseTasks {
             .find_also_related(challenges_tasks::Entity)
             .filter(condition);
         ListTasksInSkill::ok(
-            query
-                .all(&***db)
-                .await?
-                .into_iter()
-                .filter_map(|(challenge, task)| Some(CourseTask::from(challenge, task?)))
-                .collect(),
+            visible_course_tasks(&self.state.services, &_auth.0, query.all(&***db).await?).await?,
         )
     }
 
@@ -87,12 +82,7 @@ impl CourseTasks {
             query = query.filter(challenges_course_tasks::Column::LectureId.eq(lecture_id));
         }
         ListCourseTasks::ok(
-            query
-                .all(&***db)
-                .await?
-                .into_iter()
-                .filter_map(|(challenge, task)| Some(CourseTask::from(challenge, task?)))
-                .collect(),
+            visible_course_tasks(&self.state.services, &_auth.0, query.all(&***db).await?).await?,
         )
     }
 
@@ -106,7 +96,21 @@ impl CourseTasks {
         _auth: VerifiedUserAuth,
     ) -> GetCourseTask::Response<VerifiedUserAuth> {
         match get_course_task(&db, course_id.0, task_id.0).await? {
-            Some((course, task)) => GetCourseTask::ok(CourseTask::from(course, task)),
+            Some((course, task)) => {
+                if _auth.0.admin
+                    || _auth.0.id == task.creator
+                    || crate::services::access::can_read_course_task(
+                        &self.state.services,
+                        &_auth.0,
+                        &course,
+                    )
+                    .await?
+                {
+                    GetCourseTask::ok(CourseTask::from(course, task))
+                } else {
+                    GetCourseTask::course_task_not_found()
+                }
+            }
             None => GetCourseTask::course_task_not_found(),
         }
     }
@@ -320,4 +324,27 @@ enum CourseNotFoundError {
     Course,
     Section,
     Lecture,
+}
+
+async fn visible_course_tasks(
+    services: &Services,
+    user: &lib::auth::User,
+    rows: Vec<(
+        challenges_course_tasks::Model,
+        Option<challenges_tasks::Model>,
+    )>,
+) -> anyhow::Result<Vec<CourseTask>> {
+    let mut result = Vec::new();
+    for (course, task) in rows {
+        let Some(task) = task else {
+            continue;
+        };
+        if user.admin
+            || user.id == task.creator
+            || crate::services::access::can_read_course_task(services, user, &course).await?
+        {
+            result.push(CourseTask::from(course, task));
+        }
+    }
+    Ok(result)
 }

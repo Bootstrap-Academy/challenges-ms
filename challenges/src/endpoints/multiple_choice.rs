@@ -63,6 +63,7 @@ impl MultipleChoice {
         ListMCQs::ok(
             query_subtasks::<challenges_multiple_choice_quizes::Entity, _>(
                 &db,
+                &self.state.services,
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
@@ -91,6 +92,7 @@ impl MultipleChoice {
     ) -> GetMCQ::Response<VerifiedUserAuth> {
         match query_subtask::<challenges_multiple_choice_quizes::Entity, _>(
             &db,
+            &self.state.services,
             &auth.0,
             task_id.0,
             subtask_id.0,
@@ -281,6 +283,14 @@ impl MultipleChoice {
             return SolveMCQ::not_enough_hearts();
         };
 
+        let attempt_id = Uuid::new_v4();
+        if let Some(denial) =
+            crate::services::access::start(&db, &self.state.services, &auth.0, &subtask, attempt_id)
+                .await?
+        {
+            return denial.response();
+        }
+
         let correct_cnt = check_answers(&data.0.answers, mcq.correct_answers);
         let solved = correct_cnt == mcq.answers.len();
 
@@ -320,7 +330,6 @@ impl MultipleChoice {
             }
         }
 
-        let attempt_id = Uuid::new_v4();
         entity::challenges_multiple_choice_attempts::ActiveModel {
             id: Set(attempt_id),
             question_id: Set(mcq.subtask_id),

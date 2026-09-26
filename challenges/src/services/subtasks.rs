@@ -265,46 +265,59 @@ pub struct QuerySubtasksFilter {
 
 pub async fn query_subtasks_only(
     db: &DatabaseTransaction,
+    services: &Services,
     user: &User,
     task_id: Option<Uuid>,
     filter: QuerySubtasksFilter,
-) -> Result<Vec<Subtask>, DbErr> {
+) -> anyhow::Result<Vec<Subtask>> {
     let user_subtasks = get_user_subtasks(db, user.id).await?;
     let mut query = challenges_subtasks::Entity::find();
     if let Some(task_id) = task_id {
         query = query.filter(challenges_subtasks::Column::TaskId.eq(task_id));
     }
-    Ok(super::moderation::effective_subtasks(
+    let candidates = super::moderation::effective_subtasks(
         db,
         prepare_query(query, &filter, user).all(db).await?,
     )
-    .await?
-    .into_iter()
-    .filter(|subtask| effective_filter(subtask, &filter, user))
-    .filter_map(|subtask| subtasks_filter_map(subtask, &filter, &user_subtasks))
-    .collect())
+    .await?;
+    let mut result = Vec::new();
+    for subtask in candidates {
+        if effective_filter(&subtask, &filter, user)
+            && super::access::can_read_subtask(db, services, user, &subtask).await?
+        {
+            if let Some(subtask) = subtasks_filter_map(subtask, &filter, &user_subtasks) {
+                result.push(subtask);
+            }
+        }
+    }
+    Ok(result)
 }
 
 pub async fn stat_subtasks_prepare(
     db: &DatabaseTransaction,
+    services: &Services,
     user: &User,
     task_ids: Option<Vec<Uuid>>,
     filter: &QuerySubtasksFilter,
-) -> Result<Vec<challenges_subtasks::Model>, DbErr> {
+) -> anyhow::Result<Vec<challenges_subtasks::Model>> {
     let mut query = challenges_subtasks::Entity::find();
     if let Some(task_ids) = task_ids {
         query = query.filter(challenges_subtasks::Column::TaskId.is_in(task_ids));
     }
-    Ok(
-        super::moderation::effective_subtasks(
-            db,
-            prepare_query(query, filter, user).all(db).await?,
-        )
-        .await?
-        .into_iter()
-        .filter(|s| effective_filter(s, filter, user))
-        .collect(),
+    let candidates = super::moderation::effective_subtasks(
+        db,
+        prepare_query(query, filter, user).all(db).await?,
     )
+    .await?;
+    let mut result = Vec::new();
+    for subtask in candidates {
+        if effective_filter(&subtask, filter, user)
+            && super::access::can_read_subtask(db, services, user, &subtask).await?
+        {
+            result.push(subtask);
+        }
+    }
+    Ok(result)
 }
 
 pub fn stat_subtasks(
@@ -339,11 +352,12 @@ pub fn stat_subtasks(
 
 pub async fn query_subtasks<E, T>(
     db: &DatabaseTransaction,
+    services: &Services,
     user: &User,
     task_id: Uuid,
     filter: QuerySubtasksFilter,
     map: impl Fn(E::Model, Subtask) -> T,
-) -> Result<Vec<T>, DbErr>
+) -> anyhow::Result<Vec<T>>
 where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
 {
@@ -365,6 +379,17 @@ where
     .into_iter()
     .map(|s| (s.id, s))
     .collect();
+    let mut denied = Vec::new();
+    for subtask in effective.values() {
+        if effective_filter(subtask, &filter, user)
+            && !super::access::can_read_subtask(db, services, user, subtask).await?
+        {
+            denied.push(subtask.id);
+        }
+    }
+    for id in denied {
+        effective.remove(&id);
+    }
     Ok(pairs
         .into_iter()
         .filter_map(|(specific, subtask)| {
@@ -437,11 +462,12 @@ fn subtasks_filter_map(
 
 pub async fn query_subtask<E, T>(
     db: &DatabaseTransaction,
+    services: &Services,
     user: &User,
     task_id: Uuid,
     subtask_id: Uuid,
     map: impl Fn(E::Model, Subtask) -> T,
-) -> Result<Option<T>, DbErr>
+) -> anyhow::Result<Option<T>>
 where
     E: EntityTrait + Related<challenges_subtasks::Entity>,
     E::PrimaryKey: sea_orm::PrimaryKeyTrait<ValueType = Uuid>,
@@ -455,6 +481,9 @@ where
         return Ok(None);
     }
 
+    if !super::access::can_read_subtask(db, services, user, &subtask).await? {
+        return Ok(None);
+    }
     let user_subtask = get_user_subtask(db, user.id, subtask.id).await?;
 
     Ok(Some(map(

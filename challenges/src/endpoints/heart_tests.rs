@@ -34,6 +34,19 @@ pub(crate) struct Shop {
     pub receipts: HashMap<Uuid, Value>,
     pub lose_reply: bool,
     pub calls: usize,
+    pub modes: HashMap<Uuid, String>,
+    pub policy_status: Option<u16>,
+    pub policy_body: Option<Value>,
+    pub heart_reads: usize,
+    pub learner_executions: usize,
+    pub deny_courses: HashSet<String>,
+    pub deny_subtasks: HashSet<Uuid>,
+    pub deny_new_starts: HashSet<Uuid>,
+    pub access_status: Option<u16>,
+    pub access_requests: Vec<(Uuid, String, Value)>,
+    pub started: HashSet<(Uuid, Uuid)>,
+    pub heart_status: Option<u16>,
+    pub malformed_receipt: bool,
 }
 
 pub(crate) struct Fixture {
@@ -73,6 +86,23 @@ impl Fixture {
                     let path = request.uri().path().to_owned();
                     let value = if path == "/environments" {
                         json!({"python":{"name":"Python","version":"synthetic","default_main_file_name":"code.py","example":null,"meta":{}}})
+                    } else if path == "/run" {
+                        let body: Value = request.take_body().into_json().await.unwrap();
+                        let stdout = match body["run"]["args"][0].as_str() {
+                            Some("examples") => json!(["example"]),
+                            Some("generate") => json!({"input":"synthetic", "data":null}),
+                            Some("prepare") => {
+                                shop.lock().unwrap().learner_executions += 1;
+                                json!({"code":null,"reason":"synthetic precheck"})
+                            }
+                            _ => panic!("unexpected executor operation"),
+                        };
+                        json!({"program_id":Uuid::new_v4(),"ttl":60,"cached":false,"build":null,
+                            "run":{"status":0,"stdout":stdout.to_string(),"stderr":"",
+                                "resource_usage":{"time":1,"memory":1},
+                                "limits":{"cpus":1,"time":1,"memory":128,"tmpfs":0,"filesize":1,
+                                    "file_descriptors":32,"processes":1,"stdout_max_size":4096,
+                                    "stderr_max_size":4096,"network":false}}})
                     } else if path.ends_with("/ordinary-authority") {
                         let body: Value = request.take_body().into_json().await.unwrap();
                         let user: UserAccessToken =
@@ -92,17 +122,25 @@ impl Fixture {
                             "SELECT 1 FROM challenge_heart_operations WHERE id=$1 AND user_id=$2", [operation.into(),user.into()])).await.unwrap().is_some());
                         let mut shop = shop.lock().unwrap();
                         shop.calls += 1;
+                        if let Some(status) = shop.heart_status {
+                            return Response::builder()
+                                .status(poem::http::StatusCode::from_u16(status).unwrap())
+                                .body("unavailable before commit");
+                        }
                         let receipt = if let Some(receipt) = shop.receipts.get(&operation) {
                             receipt.clone()
                         } else {
                             let balance = *shop.balances.entry(user).or_insert(6);
-                            let outcome = if shop.premium.contains(&user) {
-                                "premium"
-                            } else if balance < 2 {
-                                "insufficient"
-                            } else {
-                                "charged"
-                            };
+                            let outcome =
+                                if shop.modes.get(&user).is_some_and(|mode| mode == "daily") {
+                                    "daily_learning"
+                                } else if shop.premium.contains(&user) {
+                                    "premium"
+                                } else if balance < 2 {
+                                    "insufficient"
+                                } else {
+                                    "charged"
+                                };
                             let charged = if outcome == "charged" { 2 } else { 0 };
                             shop.balances.insert(user, balance - charged);
                             let receipt = json!({"operation_id":operation,"user_id":user,"charged_half_hearts":charged,"hearts":balance-charged,"outcome":outcome});
@@ -114,13 +152,89 @@ impl Fixture {
                                 .status(poem::http::StatusCode::SERVICE_UNAVAILABLE)
                                 .body("lost after commit");
                         }
-                        receipt
+                        if shop.malformed_receipt {
+                            let mut bad = receipt.clone();
+                            bad["charged_half_hearts"] = json!(2);
+                            bad["outcome"] = json!("daily_learning");
+                            bad
+                        } else {
+                            receipt
+                        }
+                    } else if path.contains("/learning-policy/") {
+                        let user: Uuid = path.rsplit('/').next().unwrap().parse().unwrap();
+                        let shop = shop.lock().unwrap();
+                        if let Some(status) = shop.policy_status {
+                            return Response::builder()
+                                .status(poem::http::StatusCode::from_u16(status).unwrap())
+                                .body("policy unavailable");
+                        }
+                        shop.policy_body.clone().unwrap_or_else(|| json!({"mode":shop.modes.get(&user).map(String::as_str).unwrap_or("legacy"),"premium":shop.premium.contains(&user),"single_course_sales":true,"heart_sales":true}))
+                    } else if path.contains("/learning-access/") {
+                        let parts: Vec<_> = path.rsplit('/').collect();
+                        let action = parts[0];
+                        let token = request
+                            .headers()
+                            .get("authorization")
+                            .unwrap()
+                            .to_str()
+                            .unwrap()
+                            .strip_prefix("Bearer ")
+                            .unwrap();
+                        let claims: lib::jwt::InternalAuthToken =
+                            verify_jwt(token, &secret).unwrap();
+                        assert_eq!(claims.aud, "skills");
+                        let user: Uuid = parts[1].parse().unwrap();
+                        let body: Value = request.take_body().into_json().await.unwrap();
+                        let mut shop = shop.lock().unwrap();
+                        shop.access_requests
+                            .push((user, action.to_owned(), body.clone()));
+                        if let Some(status) = shop.access_status {
+                            return Response::builder()
+                                .status(poem::http::StatusCode::from_u16(status).unwrap())
+                                .body("access unavailable");
+                        }
+                        let subtask = body["subtask_id"]
+                            .as_str()
+                            .map(|id| Uuid::parse_str(id).unwrap());
+                        let forbidden =
+                            body["lecture_bindings"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .any(|binding| {
+                                    shop.deny_courses
+                                        .contains(binding["course_id"].as_str().unwrap())
+                                })
+                                || subtask.is_some_and(|id| shop.deny_subtasks.contains(&id));
+                        if forbidden {
+                            return Response::builder().status(poem::http::StatusCode::FORBIDDEN).content_type("application/json").body(json!({"code":"course_access_required","detail":"Course access required"}).to_string());
+                        }
+                        if action == "start" {
+                            assert!(body["request_id"]
+                                .as_str()
+                                .is_some_and(|id| Uuid::parse_str(id).is_ok()));
+                            let subtask = subtask.expect("start needs concrete subtask");
+                            if shop.deny_new_starts.contains(&user)
+                                && !shop.started.contains(&(user, subtask))
+                            {
+                                return Response::builder().status(poem::http::StatusCode::TOO_MANY_REQUESTS).content_type("application/json").body(json!({"code":"daily_limit_reached","detail":"You can keep practising.","daily":{"mode":"daily","limit":3,"used":3,"remaining":0,"unlimited":false,"resets_at":"2026-09-27T22:00:00Z","timezone":"Europe/Berlin"}}).to_string());
+                            }
+                            shop.started.insert((user, subtask));
+                        } else {
+                            assert_eq!(action, "check");
+                            assert!(body.get("request_id").is_none());
+                        }
+                        json!({"allowed":true,"lesson":null,"daily":null})
+                    } else if path.ends_with("/_internal/skills") {
+                        json!([{"id":"synthetic-skill","parent_id":"root","courses":["synthetic-course","locked-course"]}])
                     } else if path.contains("/premium/") {
                         let user: Uuid = path.rsplit('/').next().unwrap().parse().unwrap();
                         json!(shop.lock().unwrap().premium.contains(&user))
                     } else if path.contains("/hearts/") {
                         let user: Uuid = path.rsplit('/').next().unwrap().parse().unwrap();
-                        json!({"hearts":*shop.lock().unwrap().balances.entry(user).or_insert(6)})
+                        let mut shop = shop.lock().unwrap();
+                        shop.heart_reads += 1;
+                        json!({"hearts":*shop.balances.entry(user).or_insert(6)})
                     } else {
                         panic!("unexpected local service request: {path}");
                     };
@@ -144,6 +258,7 @@ impl Fixture {
         let mut config = lib::config::load().unwrap();
         config.services.shop = format!("http://{address}/shop/").parse().unwrap();
         config.services.auth = format!("http://{address}/auth/").parse().unwrap();
+        config.services.skills = format!("http://{address}/skills/").parse().unwrap();
         config.challenges.coding_challenges.sandkasten_url =
             format!("http://{address}/").parse().unwrap();
         config.challenges.multiple_choice_questions.timeout = 0;

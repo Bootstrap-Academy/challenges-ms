@@ -97,6 +97,12 @@ impl Api {
             return GetSubmission::submission_not_found();
         }
 
+        if !crate::services::access::can_read_subtask(&db, &self.state.services, &auth.0, &subtask)
+            .await?
+        {
+            return GetSubmission::submission_not_found();
+        }
+
         let Some(submission) =
             challenges_coding_challenge_submissions::Entity::find_by_id(submission_id.0)
                 .filter(
@@ -181,9 +187,22 @@ impl Api {
             ));
         }
 
+        let submission_id = Uuid::new_v4();
+        if let Some(denial) = crate::services::access::start(
+            &db,
+            &self.state.services,
+            &auth.0,
+            &subtask,
+            submission_id,
+        )
+        .await?
+        {
+            return denial.response();
+        }
+
         let submission = Arc::new(
             challenges_coding_challenge_submissions::ActiveModel {
-                id: Set(Uuid::new_v4()),
+                id: Set(submission_id),
                 subtask_id: Set(cc.subtask_id),
                 creator: Set(auth.0.id),
                 creation_timestamp: Set(Utc::now().naive_utc()),
@@ -298,6 +317,12 @@ impl Api {
         };
         if !auth.0.admin
             && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
+            return ListSubmissions::subtask_not_found();
+        }
+
+        if !crate::services::access::can_read_subtask(&db, &self.state.services, &auth.0, &subtask)
+            .await?
         {
             return ListSubmissions::subtask_not_found();
         }

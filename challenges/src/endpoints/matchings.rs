@@ -61,6 +61,7 @@ impl Matchings {
         ListMatchings::ok(
             query_subtasks::<challenges_matchings::Entity, _>(
                 &db,
+                &self.state.services,
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
@@ -89,6 +90,7 @@ impl Matchings {
     ) -> GetMatching::Response<VerifiedUserAuth> {
         match query_subtask::<challenges_matchings::Entity, _>(
             &db,
+            &self.state.services,
             &auth.0,
             task_id.0,
             subtask_id.0,
@@ -289,6 +291,14 @@ impl Matchings {
             return SolveMatching::not_enough_hearts();
         };
 
+        let attempt_id = Uuid::new_v4();
+        if let Some(denial) =
+            crate::services::access::start(&db, &self.state.services, &auth.0, &subtask, attempt_id)
+                .await?
+        {
+            return denial.response();
+        }
+
         let correct = data
             .0
             .answer
@@ -334,7 +344,6 @@ impl Matchings {
             }
         }
 
-        let attempt_id = Uuid::new_v4();
         entity::challenges_matching_attempts::ActiveModel {
             id: Set(attempt_id),
             matching_id: Set(matching.subtask_id),

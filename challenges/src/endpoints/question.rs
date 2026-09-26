@@ -61,6 +61,7 @@ impl Questions {
         ListQuestions::ok(
             query_subtasks::<challenges_questions::Entity, _>(
                 &db,
+                &self.state.services,
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
@@ -89,6 +90,7 @@ impl Questions {
     ) -> GetQuestion::Response<VerifiedUserAuth> {
         match query_subtask::<challenges_questions::Entity, _>(
             &db,
+            &self.state.services,
             &auth.0,
             task_id.0,
             subtask_id.0,
@@ -273,6 +275,14 @@ impl Questions {
             return SolveQuestion::not_enough_hearts();
         };
 
+        let attempt_id = Uuid::new_v4();
+        if let Some(denial) =
+            crate::services::access::start(&db, &self.state.services, &auth.0, &subtask, attempt_id)
+                .await?
+        {
+            return denial.response();
+        }
+
         let answer = normalize_answer(&data.0.answer, question.case_sensitive);
         let solved = question
             .answers
@@ -315,7 +325,6 @@ impl Questions {
             }
         }
 
-        let attempt_id = Uuid::new_v4();
         entity::challenges_question_attempts::ActiveModel {
             id: Set(attempt_id),
             question_id: Set(question.subtask_id),

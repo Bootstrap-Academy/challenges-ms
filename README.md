@@ -78,6 +78,58 @@ python3 scripts/test-coding-execution.py --output /tmp/coding-execution-check
 
 The output directory must be new. The script binds all fixtures to loopback, keeps its logs, and stops/removes only its own processes and database cluster.
 
+## Learning access and daily lessons
+
+Attempt admission reads the current Backend policy from
+`GET /shop/_internal/learning-policy/{user_id}`. `legacy` and `shadow` retain
+the existing heart rules; `daily` bypasses both the balance requirement and
+new wrong-answer heart operations. Existing admin, author and retired-task
+exceptions remain. Missing users, unknown modes, invalid responses and service
+failures return an error before accepting an attempt.
+
+Skills owns course access, lesson binding resolution and the daily counter.
+Challenges supplies authenticated user IDs, task/subtask IDs and course,
+section and lecture bindings from its database to
+`POST /skills/_internal/learning-access/{user_id}/check` or `/start`.
+Read/list/code recovery routes only check access. Quiz answers, coding
+submissions and running a coding example start learning before accepting work.
+The attempt/submission UUID is the internal request ID; Skills' durable
+user/course/lesson start makes retrying an uncertain admission safe. Existing
+public challenge POSTs keep their original attempt semantics.
+
+The same checks apply to raw exercise IDs and retained-learning routes.
+Inaccessible rows are omitted from lists and details keep their existing 404
+envelopes. Start refusals preserve Skills' status and JSON, including
+`429 daily_limit_reached` with the current `daily` status. Provider errors do
+not become incorrect answers or grant access. Shared and standalone exercises
+are resolved by Skills; an inaccessible optional binding must not suppress an
+otherwise eligible exercise. Course/section-wide bindings keep nullable
+lecture IDs, so they cannot masquerade as standalone work.
+
+Heart outbox settlement always submits the original operation to Backend.
+The final `daily_learning` receipt requires zero charged half-hearts. Already
+completed operations replay their original receipt, including a charge made
+before a policy transition. Technical errors and malformed receipts remain
+pending; accepted learner results and reward idempotency are unchanged.
+
+Deploy the compatible Backend policy/receipt API and Skills check/start API
+before this consumer. Backend's receipt CHECK migration must precede daily
+activation. Backend defaults and cohort/terms eligibility control learning
+policy; Skills independently controls daily measurement/enforcement. This
+consumer does not activate either policy or introduce new terms or prices.
+
+Run the native access, heart, historical-authority and coding queue regressions
+with cached Cargo dependencies and PostgreSQL/Redis tools on `PATH`:
+
+```bash
+python3 scripts/test-learning-access.py --output /tmp/learning-access-check
+```
+
+The runner uses fresh disposable databases and local HTTP contract fixtures,
+records command results, and stops/removes its own services. It supports
+`CARGO_TARGET_DIR`. This tests the Challenges boundary; Skills counter/day
+concurrency and real multi-service release acceptance are separate checks.
+
 ## Account Deletion
 When an account is deleted, the auth microservice calls `DELETE /_internal/users/:user_id` on this microservice.
 The endpoint requires an internal token with the `challenges` audience and answers `204`, also for a user that has no data here, so it can be retried safely.

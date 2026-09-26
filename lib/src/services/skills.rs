@@ -12,6 +12,58 @@ use super::{Service, ServiceResult};
 pub struct SkillsService(Service);
 
 impl SkillsService {
+    /// Checks and starts share one authority. Checks never consume a lesson.
+    pub async fn learning_access(
+        &self,
+        user: Uuid,
+        request: &LearningAccessRequest,
+    ) -> ServiceResult<Result<(), LearningAccessDenied>> {
+        let action = if request.request_id.is_some() {
+            "start"
+        } else {
+            "check"
+        };
+        let response = self
+            .0
+            .post(&format!("/learning-access/{user}/{action}"))
+            .json(request)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        let status = response.status();
+        if status == StatusCode::OK {
+            let result: serde_json::Value = response.json().await?;
+            if result["allowed"] != true {
+                return Err(super::ServiceError::MalformedResponse(
+                    "Invalid learning admission",
+                ));
+            }
+            return Ok(Ok(()));
+        }
+        if matches!(
+            status,
+            StatusCode::FORBIDDEN
+                | StatusCode::NOT_FOUND
+                | StatusCode::CONFLICT
+                | StatusCode::TOO_MANY_REQUESTS
+        ) {
+            let body: serde_json::Value = response.json().await?;
+            if !body.is_object()
+                || (status == StatusCode::TOO_MANY_REQUESTS
+                    && (body["code"] != "daily_limit_reached" || !body["daily"].is_object()))
+            {
+                return Err(super::ServiceError::MalformedResponse(
+                    "Invalid learning refusal",
+                ));
+            }
+            return Ok(Err(LearningAccessDenied {
+                status: status.as_u16(),
+                body,
+            }));
+        }
+        Err(super::ServiceError::UnexpectedStatusCode(status))
+    }
+
     pub async fn apply_benefit(
         &self,
         operation: Uuid,
@@ -184,6 +236,29 @@ impl SkillsService {
             )
             .await??)
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct LectureBinding {
+    pub course_id: String,
+    pub section_id: Option<String>,
+    pub lecture_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LearningAccessRequest {
+    pub task_id: Option<Uuid>,
+    pub subtask_id: Option<Uuid>,
+    pub lecture_bindings: Vec<LectureBinding>,
+    pub user_admin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<Uuid>,
+}
+
+#[derive(Debug)]
+pub struct LearningAccessDenied {
+    pub status: u16,
+    pub body: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

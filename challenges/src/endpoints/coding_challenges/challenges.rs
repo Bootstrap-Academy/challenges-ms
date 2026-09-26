@@ -69,6 +69,7 @@ impl Api {
         ListCodingChallenges::ok(
             query_subtasks::<challenges_coding_challenges::Entity, _>(
                 &db,
+                &self.state.services,
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
@@ -97,6 +98,7 @@ impl Api {
     ) -> GetCodingChallenge::Response<VerifiedUserAuth> {
         match query_subtask::<challenges_coding_challenges::Entity, _>(
             &db,
+            &self.state.services,
             &auth.0,
             task_id.0,
             subtask_id.0,
@@ -123,6 +125,7 @@ impl Api {
     ) -> GetExamples::Response<VerifiedUserAuth> {
         let cc = match query_subtask::<challenges_coding_challenges::Entity, _>(
             &db,
+            &self.state.services,
             &auth.0,
             task_id.0,
             subtask_id.0,
