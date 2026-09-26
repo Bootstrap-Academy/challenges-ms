@@ -269,11 +269,18 @@ impl Questions {
             }
         }
 
-        let Some(heart_exempt) =
-            crate::services::hearts::admit(&self.state.services, &auth.0, &subtask).await?
-        else {
-            return SolveQuestion::not_enough_hearts();
-        };
+        let heart_exempt =
+            match crate::services::hearts::admit(&db, &self.state.services, &auth.0, &subtask)
+                .await?
+            {
+                crate::services::hearts::Admission::Allowed { exempt } => exempt,
+                crate::services::hearts::Admission::NoHearts => {
+                    return SolveQuestion::not_enough_hearts()
+                }
+                crate::services::hearts::Admission::Unavailable(denial) => {
+                    return denial.response()
+                }
+            };
 
         let attempt_id = Uuid::new_v4();
         if let Some(denial) =

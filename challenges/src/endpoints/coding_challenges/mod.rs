@@ -37,7 +37,6 @@ impl CodingChallenges {
             },
             judge::Api {
                 state: Arc::clone(&self.state),
-                config: Arc::clone(&self.config),
                 sandkasten: self.sandkasten.clone(),
                 judge_cache: self.judge_cache.clone(),
             },

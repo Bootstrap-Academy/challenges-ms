@@ -28,17 +28,6 @@ use super::{
     tasks::{get_specific_task, get_task, get_task_with_specific, Task},
 };
 
-pub async fn check_hearts(
-    services: &Services,
-    _config: &Config,
-    user: &User,
-    subtask: &challenges_subtasks::Model,
-) -> anyhow::Result<bool> {
-    Ok(super::hearts::admit(services, user, subtask)
-        .await?
-        .is_some())
-}
-
 pub async fn send_task_rewards(
     services: &Services,
     db: &DatabaseTransaction,

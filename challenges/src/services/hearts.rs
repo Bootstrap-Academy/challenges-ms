@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use lib::{
     auth::User,
-    services::{shop::LearningMode, Services},
+    services::{shop::LearningMode, ServiceError, Services},
     SharedState,
 };
 use poem::{Endpoint, IntoResponse, Middleware, Request, Response};
@@ -17,20 +17,57 @@ use uuid::Uuid;
 
 pub const WRONG_ANSWER_HALF_HEARTS: u32 = 2;
 
-/// None refuses admission; Some(true) preserves an existing fee exemption.
+pub enum Admission {
+    Allowed { exempt: bool },
+    NoHearts,
+    Unavailable(super::access::Denied),
+}
+
 pub async fn admit(
+    db: &DatabaseTransaction,
     services: &Services,
     user: &User,
     subtask: &entity::challenges_subtasks::Model,
-) -> anyhow::Result<Option<bool>> {
+) -> anyhow::Result<Admission> {
     if subtask.retired || user.admin || user.id == subtask.creator {
-        return Ok(Some(true));
+        return Ok(Admission::Allowed { exempt: true });
     }
-    let policy = services.shop.learning_policy(user.id).await?;
+    let policy = match services.shop.learning_policy(user.id).await {
+        Ok(policy) => policy,
+        Err(error) if temporary_policy_failure(&error) => {
+            // Check is read-only and uses our own task/binding, never client
+            // claims. Start admission below remains mandatory before effects.
+            return Ok(
+                if matches!(
+                    super::access::daily_heart_exemption(db, services, user, subtask).await,
+                    Ok(true)
+                ) {
+                    Admission::Allowed { exempt: true }
+                } else {
+                    Admission::Unavailable(super::access::Denied::unavailable())
+                },
+            );
+        }
+        Err(error) => return Err(error.into()),
+    };
     if policy.mode == LearningMode::Daily || policy.premium {
-        return Ok(Some(true));
+        return Ok(Admission::Allowed { exempt: true });
     }
-    Ok((services.shop.get_hearts(user.id).await? >= WRONG_ANSWER_HALF_HEARTS).then_some(false))
+    Ok(
+        if services.shop.get_hearts(user.id).await? >= WRONG_ANSWER_HALF_HEARTS {
+            Admission::Allowed { exempt: false }
+        } else {
+            Admission::NoHearts
+        },
+    )
+}
+
+fn temporary_policy_failure(error: &ServiceError) -> bool {
+    match error {
+        ServiceError::UnexpectedStatusCode(status) => status.is_server_error(),
+        ServiceError::ReqwestError(error) => error.is_connect() || error.is_timeout(),
+        _ => false,
+    }
 }
 
 #[derive(Clone, Default)]

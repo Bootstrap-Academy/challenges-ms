@@ -465,7 +465,7 @@ async fn daily_policy_failures_and_legacy_shadow_postgres() {
             )
             .await
             .0,
-            500
+            if status == 503 { 503 } else { 500 }
         );
     }
     f.shop.lock().unwrap().policy_status = None;
@@ -504,7 +504,7 @@ async fn daily_policy_failures_and_legacy_shadow_postgres() {
             )
             .await
             .0,
-            500
+            if status == 401 { 500 } else { 503 }
         );
         assert_eq!(
             f.call(
@@ -805,4 +805,212 @@ async fn daily_coding_submission_test_and_private_code_postgres() {
         0
     );
     assert_eq!(f.shop.lock().unwrap().heart_reads, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn policy_outage_requires_trusted_daily_continuation_for_actual_answers_postgres() {
+    let f = Fixture::new().await;
+    let app = app(&f).await;
+    for (kind, route, answer, table) in [
+        (
+            "multiple_choice_question",
+            "multiple_choice",
+            json!({"answers":[false,true]}),
+            "challenges_multiple_choice_attempts",
+        ),
+        (
+            "matching",
+            "matchings",
+            json!({"answer":[1,0]}),
+            "challenges_matching_attempts",
+        ),
+        (
+            "question",
+            "questions",
+            json!({"answer":"wrong"}),
+            "challenges_question_attempts",
+        ),
+    ] {
+        let user = Uuid::new_v4();
+        let (task, subtask) = f.seed(kind).await;
+        bind(&f, task, "synthetic-course", Some("lecture")).await;
+        let path = format!("/tasks/{task}/{route}/{subtask}/attempts");
+        {
+            let mut peer = f.shop.lock().unwrap();
+            peer.policy_status = Some(503);
+            peer.balances.insert(user, 0);
+            peer.started.insert((user, subtask));
+        }
+        // Generic admission, legacy, malformed policy and a forged caller
+        // assertion never establish a billing exemption.
+        for policy in [None, Some("legacy"), Some("invalid")] {
+            {
+                let mut peer = f.shop.lock().unwrap();
+                if let Some(policy) = policy {
+                    peer.heart_policies.insert((user, subtask), policy.into());
+                } else {
+                    peer.heart_policies.remove(&(user, subtask));
+                }
+            }
+            let (status, body) = f
+                .call(&app, user, false, Method::POST, &path, answer.clone())
+                .await;
+            assert_eq!(status, 503, "{body}");
+            assert_eq!(body["code"], "learning_access_unavailable");
+            assert_eq!(count(&f, table, "user_id", user).await, 0);
+        }
+        f.shop
+            .lock()
+            .unwrap()
+            .heart_policies
+            .insert((user, subtask), "daily".into());
+        for _ in 0..2 {
+            let (status, body) = f
+                .call(&app, user, false, Method::POST, &path, answer.clone())
+                .await;
+            assert_eq!(status, 201, "{body}");
+            assert_eq!(body["solved"], false);
+            assert_eq!(body["hearts_pending"], false);
+        }
+        assert_eq!(count(&f, table, "user_id", user).await, 2);
+        assert_eq!(
+            count(&f, "challenge_heart_operations", "user_id", user).await,
+            0
+        );
+        assert_eq!(
+            count(&f, "challenge_benefit_earnings", "user_id", user).await,
+            0
+        );
+        {
+            let peer = f.shop.lock().unwrap();
+            assert_eq!(peer.balances[&user], 0);
+            assert_eq!(peer.heart_reads, 0);
+            let calls: Vec<_> = peer
+                .access_requests
+                .iter()
+                .filter(|(id, _, _)| *id == user)
+                .collect();
+            assert_eq!(
+                calls
+                    .iter()
+                    .filter(|(_, action, _)| action == "start")
+                    .count(),
+                2
+            );
+            assert!(calls
+                .iter()
+                .all(|(_, _, request)| request["subtask_id"] == json!(subtask)));
+        }
+
+        // Another user/new lesson has no trusted prior daily admission, even
+        // if the caller attaches an unrecognized billing field.
+        let fresh = Uuid::new_v4();
+        let mut forged = answer.clone();
+        forged["heart_policy"] = json!("daily");
+        assert_eq!(
+            f.call(&app, fresh, false, Method::POST, &path, forged)
+                .await
+                .0,
+            503
+        );
+        assert_eq!(count(&f, table, "user_id", fresh).await, 0);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn policy_outage_coding_continuation_retains_no_debit_and_admission_postgres() {
+    let f = Fixture::new().await;
+    let app = app(&f).await;
+    let user = Uuid::new_v4();
+    let (task, subtask) = f.seed("coding_challenge").await;
+    bind(&f, task, "synthetic-course", Some("lecture")).await;
+    let base = format!("/tasks/{task}/coding_challenges/{subtask}");
+    let source = json!({"environment":"python","code":"print(42)"});
+    {
+        let mut peer = f.shop.lock().unwrap();
+        peer.policy_status = Some(503);
+        peer.balances.insert(user, 0);
+    }
+    for tail in ["examples/example/test", "submissions"] {
+        assert_eq!(
+            f.call(
+                &app,
+                user,
+                false,
+                Method::POST,
+                &format!("{base}/{tail}"),
+                source.clone()
+            )
+            .await
+            .0,
+            503
+        );
+    }
+    assert_eq!(
+        count(
+            &f,
+            "challenges_coding_challenge_submissions",
+            "creator",
+            user
+        )
+        .await,
+        0
+    );
+    assert_eq!(f.shop.lock().unwrap().learner_executions, 0);
+    {
+        let mut peer = f.shop.lock().unwrap();
+        peer.heart_policies.insert((user, subtask), "daily".into());
+        peer.started.insert((user, subtask));
+        peer.deny_new_starts.insert(user);
+    }
+    assert_eq!(
+        f.call(
+            &app,
+            user,
+            false,
+            Method::POST,
+            &format!("{base}/examples/example/test"),
+            source.clone()
+        )
+        .await
+        .0,
+        200
+    );
+    let (status, body) = f
+        .call(
+            &app,
+            user,
+            false,
+            Method::POST,
+            &format!("{base}/submissions"),
+            source,
+        )
+        .await;
+    assert_eq!(status, 201, "{body}");
+    let id: Uuid = body["id"].as_str().unwrap().parse().unwrap();
+    let row = f
+        .state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT charge_on_failure FROM challenges_coding_challenge_submissions WHERE id=$1",
+            [id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!row.try_get::<bool>("", "charge_on_failure").unwrap());
+    assert_eq!(
+        count(&f, "challenge_heart_operations", "user_id", user).await,
+        0
+    );
+    let peer = f.shop.lock().unwrap();
+    assert_eq!(peer.heart_reads, 0);
+    assert_eq!(peer.balances[&user], 0);
+    assert_eq!(
+        peer.access_requests.last().unwrap().2["request_id"],
+        json!(id)
+    );
 }

@@ -45,6 +45,7 @@ pub(crate) struct Shop {
     pub access_status: Option<u16>,
     pub access_requests: Vec<(Uuid, String, Value)>,
     pub started: HashSet<(Uuid, Uuid)>,
+    pub heart_policies: HashMap<(Uuid, Uuid), String>,
     pub heart_status: Option<u16>,
     pub malformed_receipt: bool,
 }
@@ -224,7 +225,7 @@ impl Fixture {
                             assert_eq!(action, "check");
                             assert!(body.get("request_id").is_none());
                         }
-                        json!({"allowed":true,"lesson":null,"daily":null})
+                        json!({"allowed":true,"lesson":null,"daily":null,"heart_policy":subtask.and_then(|id|shop.heart_policies.get(&(user,id)))})
                     } else if path.ends_with("/_internal/skills") {
                         json!([{"id":"synthetic-skill","parent_id":"root","courses":["synthetic-course","locked-course"]}])
                     } else if path.contains("/premium/") {

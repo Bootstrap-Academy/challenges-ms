@@ -4,8 +4,11 @@ use entity::{challenges_course_tasks, challenges_subtasks};
 use lib::{
     auth::User,
     services::{
-        skills::{LearningAccessDenied, LearningAccessRequest, LectureBinding},
-        Services,
+        skills::{
+            LearningAccessAllowed, LearningAccessDenied, LearningAccessRequest,
+            LearningHeartPolicy, LectureBinding,
+        },
+        ServiceError, Services,
     },
 };
 use poem::{http::StatusCode, Response};
@@ -17,6 +20,13 @@ use uuid::Uuid;
 pub struct Denied(pub LearningAccessDenied);
 
 impl Denied {
+    pub fn unavailable() -> Self {
+        Self(LearningAccessDenied {
+            status: 503,
+            body: serde_json::json!({"code":"learning_access_unavailable","detail":"Dein Lernzugang ist gerade nicht erreichbar. Versuch es gleich noch einmal."}),
+        })
+    }
+
     pub fn response<T: ApiResponse, A: MetaResponsesExt>(
         self,
     ) -> poem_ext::responses::Response<T, A> {
@@ -37,9 +47,9 @@ async fn request(
     subtask_id: Option<Uuid>,
     binding: Option<&challenges_course_tasks::Model>,
     request_id: Option<Uuid>,
-) -> anyhow::Result<Option<Denied>> {
+) -> anyhow::Result<Result<LearningAccessAllowed, Denied>> {
     if user.admin {
-        return Ok(None);
+        return Ok(Ok(LearningAccessAllowed::default()));
     }
     let request = LearningAccessRequest {
         task_id,
@@ -55,12 +65,16 @@ async fn request(
         user_admin: user.admin,
         request_id,
     };
-    Ok(services
-        .skills
-        .learning_access(user.id, &request)
-        .await?
-        .err()
-        .map(Denied))
+    match services.skills.learning_access(user.id, &request).await {
+        Ok(result) => Ok(result.map_err(Denied)),
+        Err(ServiceError::UnexpectedStatusCode(status)) if status.is_server_error() => {
+            Ok(Err(Denied::unavailable()))
+        }
+        Err(ServiceError::ReqwestError(error)) if error.is_connect() || error.is_timeout() => {
+            Ok(Err(Denied::unavailable()))
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 pub async fn start(
@@ -85,6 +99,35 @@ pub async fn start(
         Some(request_id),
     )
     .await
+    .map(|result| result.err())
+}
+
+/// Only the authenticated Skills authority can identify the concrete lesson's
+/// durable Daily policy during a Shop outage. A generic allowed/null response
+/// (including old Skills versions) is insufficient to waive legacy hearts.
+pub async fn daily_heart_exemption(
+    db: &DatabaseTransaction,
+    services: &Services,
+    user: &User,
+    subtask: &challenges_subtasks::Model,
+) -> anyhow::Result<bool> {
+    let binding = challenges_course_tasks::Entity::find_by_id(subtask.task_id)
+        .one(db)
+        .await?;
+    Ok(matches!(
+        request(
+            services,
+            user,
+            Some(subtask.task_id),
+            Some(subtask.id),
+            binding.as_ref(),
+            None
+        )
+        .await?,
+        Ok(LearningAccessAllowed {
+            heart_policy: Some(LearningHeartPolicy::Daily)
+        })
+    ))
 }
 
 pub async fn can_read_subtask(
@@ -108,7 +151,8 @@ pub async fn can_read_subtask(
             binding.as_ref(),
             None,
         )
-        .await?,
+        .await?
+        .err(),
     )
 }
 
@@ -126,7 +170,8 @@ pub async fn can_read_course_task(
             Some(binding),
             None,
         )
-        .await?,
+        .await?
+        .err(),
     )
 }
 

@@ -165,11 +165,18 @@ impl Api {
             }
         }
 
-        let Some(heart_exempt) =
-            crate::services::hearts::admit(&self.state.services, &auth.0, &subtask).await?
-        else {
-            return CreateSubmission::not_enough_hearts();
-        };
+        let heart_exempt =
+            match crate::services::hearts::admit(&db, &self.state.services, &auth.0, &subtask)
+                .await?
+            {
+                crate::services::hearts::Admission::Allowed { exempt } => exempt,
+                crate::services::hearts::Admission::NoHearts => {
+                    return CreateSubmission::not_enough_hearts()
+                }
+                crate::services::hearts::Admission::Unavailable(denial) => {
+                    return denial.response()
+                }
+            };
 
         if !queue::admit(
             &db,

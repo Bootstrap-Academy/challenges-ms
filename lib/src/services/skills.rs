@@ -17,7 +17,7 @@ impl SkillsService {
         &self,
         user: Uuid,
         request: &LearningAccessRequest,
-    ) -> ServiceResult<Result<(), LearningAccessDenied>> {
+    ) -> ServiceResult<Result<LearningAccessAllowed, LearningAccessDenied>> {
         let action = if request.request_id.is_some() {
             "start"
         } else {
@@ -38,7 +38,10 @@ impl SkillsService {
                     "Invalid learning admission",
                 ));
             }
-            return Ok(Ok(()));
+            let allowed = serde_json::from_value(result).map_err(|_| {
+                super::ServiceError::MalformedResponse("Invalid learning heart policy")
+            })?;
+            return Ok(Ok(allowed));
         }
         if matches!(
             status,
@@ -253,6 +256,19 @@ pub struct LearningAccessRequest {
     pub user_admin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<Uuid>,
+}
+
+/// Absent on older Skills generations. Admission alone is never a billing exemption.
+#[derive(Debug, Default, Deserialize)]
+pub struct LearningAccessAllowed {
+    pub heart_policy: Option<LearningHeartPolicy>,
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LearningHeartPolicy {
+    Legacy,
+    Daily,
 }
 
 #[derive(Debug)]
