@@ -6,7 +6,7 @@ use uuid::Uuid;
 use super::{Service, ServiceResult};
 
 #[derive(Debug, Clone)]
-pub struct AuthService(Service);
+pub struct AuthService(pub(super) Service);
 
 /// Part of the cache key of a cached [`User`].
 ///

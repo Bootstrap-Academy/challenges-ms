@@ -36,6 +36,8 @@ mod lesson_milestone_tests;
 #[cfg(test)]
 mod openapi_tests;
 #[cfg(test)]
+mod publication_tests;
+#[cfg(test)]
 mod scoped_release_tests;
 
 #[derive(poem_openapi::Tags)]
@@ -105,6 +107,7 @@ pub async fn setup_api(
         LeaderboardEndpoints {
             cache: state.cache.with_formatter(Default::default()),
             state: Arc::clone(&state),
+            config: Arc::clone(&config),
         },
         moderation::Api {
             state: Arc::clone(&state),
