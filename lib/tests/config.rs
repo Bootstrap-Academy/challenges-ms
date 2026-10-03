@@ -8,6 +8,7 @@ fn test_config() {
     );
     let config = lib::config::load().unwrap();
     assert!(config.internal_jwt_secrets.is_empty());
+    assert!(!config.challenges.learning_access_reads);
     assert!(
         config
             .challenges

@@ -7,6 +7,7 @@ use entity::{
 };
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
+    config::Config,
     services::Services,
     SharedState,
 };
@@ -37,6 +38,7 @@ use crate::services::subtasks::{
 
 pub struct Challenges {
     pub state: Arc<SharedState>,
+    pub config: Arc<Config>,
 }
 
 #[OpenApi(tag = "Tags::Challenges")]
@@ -106,9 +108,15 @@ impl Challenges {
         };
 
         let user_subtasks = get_user_subtasks(&db, auth.0.id).await?;
-        let subtasks =
-            stat_subtasks_prepare(&db, &self.state.services, &auth.0, Some(task_ids), &filter)
-                .await?;
+        let subtasks = stat_subtasks_prepare(
+            &db,
+            &self.state.services,
+            &auth.0,
+            self.config.challenges.learning_access_reads,
+            Some(task_ids),
+            &filter,
+        )
+        .await?;
 
         filter.ty = None;
         GetCategoryStats::ok(stat_subtasks(&subtasks, &user_subtasks, filter))

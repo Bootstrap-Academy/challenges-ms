@@ -65,6 +65,7 @@ impl MultipleChoice {
                 &db,
                 &self.state.services,
                 &auth.0,
+                self.config.challenges.learning_access_reads,
                 task_id.0,
                 QuerySubtasksFilter {
                     attempted: attempted.0,

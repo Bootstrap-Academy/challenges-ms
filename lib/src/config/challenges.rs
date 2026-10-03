@@ -9,6 +9,9 @@ pub struct ChallengesConfig {
     pub port: u16,
     pub server: String,
     pub sentry: Option<Sentry>,
+    /// New list admission is opt-in; dormant deployments keep legacy reads.
+    #[serde(default)]
+    pub learning_access_reads: bool,
     pub quizzes: Quizzes, // course tasks
     pub multiple_choice_questions: MultipleChoiceQuestions,
     pub questions: Questions,

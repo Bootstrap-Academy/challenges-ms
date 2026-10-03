@@ -256,6 +256,7 @@ pub async fn query_subtasks_only(
     db: &DatabaseTransaction,
     services: &Services,
     user: &User,
+    access_reads: bool,
     task_id: Option<Uuid>,
     filter: QuerySubtasksFilter,
 ) -> anyhow::Result<Vec<Subtask>> {
@@ -269,23 +270,24 @@ pub async fn query_subtasks_only(
         prepare_query(query, &filter, user).all(db).await?,
     )
     .await?;
-    let mut result = Vec::new();
-    for subtask in candidates {
-        if effective_filter(&subtask, &filter, user)
-            && super::access::can_read_subtask(db, services, user, &subtask).await?
-        {
-            if let Some(subtask) = subtasks_filter_map(subtask, &filter, &user_subtasks) {
-                result.push(subtask);
-            }
-        }
-    }
-    Ok(result)
+    let candidates = candidates
+        .into_iter()
+        .filter(|s| effective_filter(s, &filter, user))
+        .collect();
+    Ok(
+        super::access::retain_readable_subtasks(db, services, user, candidates, access_reads)
+            .await?
+            .into_iter()
+            .filter_map(|subtask| subtasks_filter_map(subtask, &filter, &user_subtasks))
+            .collect(),
+    )
 }
 
 pub async fn stat_subtasks_prepare(
     db: &DatabaseTransaction,
     services: &Services,
     user: &User,
+    access_reads: bool,
     task_ids: Option<Vec<Uuid>>,
     filter: &QuerySubtasksFilter,
 ) -> anyhow::Result<Vec<challenges_subtasks::Model>> {
@@ -298,15 +300,11 @@ pub async fn stat_subtasks_prepare(
         prepare_query(query, filter, user).all(db).await?,
     )
     .await?;
-    let mut result = Vec::new();
-    for subtask in candidates {
-        if effective_filter(&subtask, filter, user)
-            && super::access::can_read_subtask(db, services, user, &subtask).await?
-        {
-            result.push(subtask);
-        }
-    }
-    Ok(result)
+    let candidates = candidates
+        .into_iter()
+        .filter(|s| effective_filter(s, filter, user))
+        .collect();
+    super::access::retain_readable_subtasks(db, services, user, candidates, access_reads).await
 }
 
 pub fn stat_subtasks(
@@ -343,6 +341,7 @@ pub async fn query_subtasks<E, T>(
     db: &DatabaseTransaction,
     services: &Services,
     user: &User,
+    access_reads: bool,
     task_id: Uuid,
     filter: QuerySubtasksFilter,
     map: impl Fn(E::Model, Subtask) -> T,
@@ -360,25 +359,20 @@ where
     )
     .all(db)
     .await?;
-    let mut effective: HashMap<_, _> = super::moderation::effective_subtasks(
+    let candidates = super::moderation::effective_subtasks(
         db,
         pairs.iter().filter_map(|(_, s)| s.clone()).collect(),
     )
     .await?
     .into_iter()
-    .map(|s| (s.id, s))
+    .filter(|s| effective_filter(s, &filter, user))
     .collect();
-    let mut denied = Vec::new();
-    for subtask in effective.values() {
-        if effective_filter(subtask, &filter, user)
-            && !super::access::can_read_subtask(db, services, user, subtask).await?
-        {
-            denied.push(subtask.id);
-        }
-    }
-    for id in denied {
-        effective.remove(&id);
-    }
+    let mut effective: HashMap<_, _> =
+        super::access::retain_readable_subtasks(db, services, user, candidates, access_reads)
+            .await?
+            .into_iter()
+            .map(|s| (s.id, s))
+            .collect();
     Ok(pairs
         .into_iter()
         .filter_map(|(specific, subtask)| {

@@ -31,6 +31,7 @@ async fn app(f: &Fixture) -> impl Endpoint {
                     },
                     super::course_tasks::CourseTasks {
                         state: f.state.clone(),
+                        config: f.config.clone(),
                     },
                     super::subtasks::Subtasks {
                         state: f.state.clone(),
@@ -391,6 +392,121 @@ async fn daily_course_reads_and_direct_ids_postgres() {
         "synthetic-course"
     );
     assert!(request["lecture_bindings"][0]["lecture_id"].is_null());
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn list_read_batches_bound_calls_and_keep_subtask_rights_postgres() {
+    for enabled in [false, true] {
+        let f = Fixture::with_access_reads(enabled).await;
+        let app = app(&f).await;
+        let user = Uuid::new_v4();
+        daily(&f, user);
+        let (task, subtask) = f.seed("multiple_choice_question").await;
+        let course = format!("batch-course-{}", Uuid::new_v4());
+        bind(&f, task, &course, Some("lecture")).await;
+        f.state
+            .db
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "WITH added AS (INSERT INTO challenges_subtasks
+             (id,task_id,creator,creation_timestamp,xp,coins,enabled,retired,ty)
+             SELECT gen_random_uuid(),task_id,creator,creation_timestamp,xp,coins,enabled,retired,ty
+             FROM challenges_subtasks CROSS JOIN generate_series(1,500) WHERE id=$1 RETURNING id)
+             INSERT INTO challenges_multiple_choice_quizes
+             (subtask_id,question,answers,correct_answers,single_choice)
+             SELECT added.id,q.question,q.answers,q.correct_answers,q.single_choice
+             FROM added CROSS JOIN challenges_multiple_choice_quizes q WHERE q.subtask_id=$1",
+                [subtask.into()],
+            ))
+            .await
+            .unwrap();
+        {
+            let mut shop = f.shop.lock().unwrap();
+            shop.deny_subtasks.insert(subtask);
+            if !enabled {
+                shop.access_status = Some(503);
+            }
+        }
+        let paths = [
+            format!("/subtasks?task_id={task}"),
+            format!("/subtasks/stats?task_id={task}"),
+            format!("/tasks/{task}/multiple_choice"),
+        ];
+        for path in &paths {
+            f.shop.lock().unwrap().access_requests.clear();
+            let (status, body) = f
+                .call(&app, user, false, Method::GET, path, json!(null))
+                .await;
+            assert_eq!(status, 200, "{body}");
+            let count = if path.contains("/stats?") {
+                body["total"].as_u64().unwrap()
+            } else {
+                body.as_array().unwrap().len() as u64
+            };
+            assert_eq!(count, if enabled { 500 } else { 501 });
+            let shop = f.shop.lock().unwrap();
+            assert_eq!(shop.access_requests.len(), if enabled { 3 } else { 0 });
+            if enabled {
+                assert!(shop.access_requests.iter().all(|(_, action, body)| {
+                    action == "check-batch" && body["requests"].as_array().unwrap().len() <= 250
+                }));
+            }
+            assert!(shop.started.is_empty());
+        }
+        f.shop.lock().unwrap().access_requests.clear();
+        let (status, body) = f
+            .call(
+                &app,
+                user,
+                false,
+                Method::GET,
+                &format!("/courses/{course}/tasks"),
+                json!(null),
+            )
+            .await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert_eq!(
+            f.shop.lock().unwrap().access_requests.len(),
+            if enabled { 1 } else { 0 }
+        );
+        if enabled {
+            // A creator's exception remains local, even for a denied subtask.
+            f.state
+                .db
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "UPDATE challenges_subtasks SET creator=$1 WHERE id=$2",
+                    [user.into(), subtask.into()],
+                ))
+                .await
+                .unwrap();
+            f.shop.lock().unwrap().access_requests.clear();
+            let (status, body) = f
+                .call(&app, user, false, Method::GET, &paths[0], json!(null))
+                .await;
+            assert_eq!(status, 200);
+            assert_eq!(body.as_array().unwrap().len(), 501);
+            assert_eq!(f.shop.lock().unwrap().access_requests.len(), 2);
+            // Missing decisions never turn into a partial list or a grant.
+            f.shop.lock().unwrap().read_batch_override = Some(json!({"readable":[true]}));
+            assert_eq!(
+                f.call(&app, user, false, Method::GET, &paths[0], json!(null))
+                    .await
+                    .0,
+                500
+            );
+            f.shop.lock().unwrap().access_requests.clear();
+            assert_eq!(
+                f.call(&app, user, true, Method::GET, &paths[0], json!(null))
+                    .await
+                    .0,
+                200
+            );
+            assert!(f.shop.lock().unwrap().access_requests.is_empty());
+        }
+    }
 }
 
 #[tokio::test]

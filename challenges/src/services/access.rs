@@ -1,5 +1,7 @@
 //! Every exercise entry point uses Skills' course/lesson authority. Parent
 //! bindings come from this database, never from caller-supplied course IDs.
+use std::collections::{HashMap, HashSet};
+
 use entity::{challenges_course_tasks, challenges_subtasks};
 use lib::{
     auth::User,
@@ -14,7 +16,7 @@ use lib::{
 use poem::{http::StatusCode, Response};
 use poem_ext::responses::{InnerResponse, MetaResponsesExt};
 use poem_openapi::ApiResponse;
-use sea_orm::{DatabaseTransaction, EntityTrait};
+use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 pub struct Denied(pub LearningAccessDenied);
@@ -51,7 +53,27 @@ async fn request(
     if user.admin {
         return Ok(Ok(LearningAccessAllowed::default()));
     }
-    let request = LearningAccessRequest {
+    let request = admission_request(user, task_id, subtask_id, binding, request_id);
+    match services.skills.learning_access(user.id, &request).await {
+        Ok(result) => Ok(result.map_err(Denied)),
+        Err(ServiceError::UnexpectedStatusCode(status)) if status.is_server_error() => {
+            Ok(Err(Denied::unavailable()))
+        }
+        Err(ServiceError::ReqwestError(error)) if error.is_connect() || error.is_timeout() => {
+            Ok(Err(Denied::unavailable()))
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn admission_request(
+    user: &User,
+    task_id: Option<Uuid>,
+    subtask_id: Option<Uuid>,
+    binding: Option<&challenges_course_tasks::Model>,
+    request_id: Option<Uuid>,
+) -> LearningAccessRequest {
+    LearningAccessRequest {
         task_id,
         subtask_id,
         lecture_bindings: binding
@@ -64,16 +86,6 @@ async fn request(
             .collect(),
         user_admin: user.admin,
         request_id,
-    };
-    match services.skills.learning_access(user.id, &request).await {
-        Ok(result) => Ok(result.map_err(Denied)),
-        Err(ServiceError::UnexpectedStatusCode(status)) if status.is_server_error() => {
-            Ok(Err(Denied::unavailable()))
-        }
-        Err(ServiceError::ReqwestError(error)) if error.is_connect() || error.is_timeout() => {
-            Ok(Err(Denied::unavailable()))
-        }
-        Err(error) => Err(error.into()),
     }
 }
 
@@ -154,6 +166,63 @@ pub async fn can_read_subtask(
         .await?
         .err(),
     )
+}
+
+/// Disabled lists have no new service dependency. Active lists retain each
+/// concrete subtask's decision: a Task-wide check can widen outage admission.
+pub async fn retain_readable_subtasks(
+    db: &DatabaseTransaction,
+    services: &Services,
+    user: &User,
+    subtasks: Vec<challenges_subtasks::Model>,
+    enabled: bool,
+) -> anyhow::Result<Vec<challenges_subtasks::Model>> {
+    if !enabled || user.admin {
+        return Ok(subtasks);
+    }
+    let pending: Vec<_> = subtasks
+        .iter()
+        .filter(|subtask| !subtask.retired && subtask.creator != user.id)
+        .collect();
+    if pending.is_empty() {
+        return Ok(subtasks);
+    }
+    let task_ids: HashSet<_> = pending.iter().map(|subtask| subtask.task_id).collect();
+    let bindings: HashMap<_, _> = challenges_course_tasks::Entity::find()
+        .filter(challenges_course_tasks::Column::TaskId.is_in(task_ids))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|binding| (binding.task_id, binding))
+        .collect();
+    let mut denied = HashSet::new();
+    for batch in pending.chunks(250) {
+        let requests: Vec<_> = batch
+            .iter()
+            .map(|subtask| {
+                admission_request(
+                    user,
+                    Some(subtask.task_id),
+                    Some(subtask.id),
+                    bindings.get(&subtask.task_id),
+                    None,
+                )
+            })
+            .collect();
+        let decisions = services
+            .skills
+            .learning_access_reads(user.id, &requests)
+            .await?;
+        for (subtask, allowed) in batch.iter().zip(decisions) {
+            if !allowed {
+                denied.insert(subtask.id);
+            }
+        }
+    }
+    Ok(subtasks
+        .into_iter()
+        .filter(|s| !denied.contains(&s.id))
+        .collect())
 }
 
 pub async fn can_read_course_task(

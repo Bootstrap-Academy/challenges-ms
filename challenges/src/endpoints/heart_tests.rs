@@ -44,10 +44,27 @@ pub(crate) struct Shop {
     pub deny_new_starts: HashSet<Uuid>,
     pub access_status: Option<u16>,
     pub access_requests: Vec<(Uuid, String, Value)>,
+    pub read_batch_override: Option<Value>,
     pub started: HashSet<(Uuid, Uuid)>,
     pub heart_policies: HashMap<(Uuid, Uuid), String>,
     pub heart_status: Option<u16>,
     pub malformed_receipt: bool,
+}
+
+impl Shop {
+    fn can_read(&self, body: &Value) -> bool {
+        !body["lecture_bindings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|binding| {
+                self.deny_courses
+                    .contains(binding["course_id"].as_str().unwrap())
+            })
+            && !body["subtask_id"]
+                .as_str()
+                .is_some_and(|id| self.deny_subtasks.contains(&Uuid::parse_str(id).unwrap()))
+    }
 }
 
 pub(crate) struct Fixture {
@@ -64,6 +81,10 @@ impl Drop for Fixture {
 
 impl Fixture {
     pub(crate) async fn new() -> Self {
+        Self::with_access_reads(true).await
+    }
+
+    pub(crate) async fn with_access_reads(enabled: bool) -> Self {
         let db = Database::connect(
             std::env::var("HEART_TEST_DATABASE_URL").expect("isolated migrated PostgreSQL"),
         )
@@ -194,20 +215,23 @@ impl Fixture {
                                 .status(poem::http::StatusCode::from_u16(status).unwrap())
                                 .body("access unavailable");
                         }
+                        if action == "check-batch" {
+                            let requests = body["requests"].as_array().unwrap();
+                            assert!(!requests.is_empty() && requests.len() <= 250);
+                            assert!(requests
+                                .iter()
+                                .all(|request| request.get("request_id").is_none()));
+                            let value = shop.read_batch_override.clone().unwrap_or_else(|| {
+                                json!({"readable": requests.iter().map(|request| shop.can_read(request)).collect::<Vec<_>>()})
+                            });
+                            return Response::builder()
+                                .content_type("application/json")
+                                .body(value.to_string());
+                        }
                         let subtask = body["subtask_id"]
                             .as_str()
                             .map(|id| Uuid::parse_str(id).unwrap());
-                        let forbidden =
-                            body["lecture_bindings"]
-                                .as_array()
-                                .unwrap()
-                                .iter()
-                                .any(|binding| {
-                                    shop.deny_courses
-                                        .contains(binding["course_id"].as_str().unwrap())
-                                })
-                                || subtask.is_some_and(|id| shop.deny_subtasks.contains(&id));
-                        if forbidden {
+                        if !shop.can_read(&body) {
                             return Response::builder().status(poem::http::StatusCode::FORBIDDEN).content_type("application/json").body(json!({"code":"course_access_required","detail":"Course access required"}).to_string());
                         }
                         if action == "start" {
@@ -257,6 +281,7 @@ impl Fixture {
             Server::new_with_acceptor(acceptor).run(app).await.unwrap();
         });
         let mut config = lib::config::load().unwrap();
+        config.challenges.learning_access_reads = enabled;
         config.services.shop = format!("http://{address}/shop/").parse().unwrap();
         config.services.auth = format!("http://{address}/auth/").parse().unwrap();
         config.services.skills = format!("http://{address}/skills/").parse().unwrap();

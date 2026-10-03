@@ -67,9 +67,11 @@ pub async fn setup_api(
         },
         Challenges {
             state: Arc::clone(&state),
+            config: Arc::clone(&config),
         },
         CourseTasks {
             state: Arc::clone(&state),
+            config: Arc::clone(&config),
         },
         Subtasks {
             state: Arc::clone(&state),

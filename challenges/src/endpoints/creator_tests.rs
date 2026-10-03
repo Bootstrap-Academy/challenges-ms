@@ -22,6 +22,7 @@ async fn academy_content_authority_postgres() {
                 (
                     super::course_tasks::CourseTasks {
                         state: f.state.clone(),
+                        config: f.config.clone(),
                     },
                     super::subtasks::Subtasks {
                         state: f.state.clone(),

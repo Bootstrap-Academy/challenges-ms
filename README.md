@@ -91,8 +91,18 @@ Skills owns course access, lesson binding resolution and the daily counter.
 Challenges supplies authenticated user IDs, task/subtask IDs and course,
 section and lecture bindings from its database to
 `POST /skills/_internal/learning-access/{user_id}/check` or `/start`.
-Read/list/code recovery routes only check access. Quiz answers, coding
+Individual read/code recovery routes only check access. Quiz answers, coding
 submissions and running a coding example start learning before accepting work.
+
+List admission is opt-in through `challenges.learning_access_reads` (or
+`CHALLENGES__LEARNING_ACCESS_READS=true`). Its default is `false`: pure lists
+keep their existing moderation, creator and progress filters without new
+Skills admission requests. Enable it only with the Skills `check-batch` route
+deployed. Active subtask lists load parent bindings once and check batches of
+at most 250 concrete subtasks through
+`POST /skills/_internal/learning-access/{user_id}/check-batch`; concrete IDs
+preserve lesson-specific rights, including during policy outages. Course-task
+lists check each parent binding once. These checks never start a lesson.
 The attempt/submission UUID is the internal request ID; Skills' durable
 user/course/lesson start makes retrying an uncertain admission safe. Existing
 public challenge POSTs keep their original attempt semantics.

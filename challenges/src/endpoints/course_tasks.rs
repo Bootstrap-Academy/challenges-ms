@@ -4,6 +4,7 @@ use chrono::Utc;
 use entity::{challenges_course_tasks, challenges_tasks};
 use lib::{
     auth::{AdminAuth, VerifiedUserAuth},
+    config::Config,
     services::Services,
     SharedState,
 };
@@ -24,6 +25,7 @@ use super::Tags;
 
 pub struct CourseTasks {
     pub state: Arc<SharedState>,
+    pub config: Arc<Config>,
 }
 
 #[OpenApi(tag = "Tags::CourseTasks")]
@@ -56,7 +58,13 @@ impl CourseTasks {
             .find_also_related(challenges_tasks::Entity)
             .filter(condition);
         ListTasksInSkill::ok(
-            visible_course_tasks(&self.state.services, &_auth.0, query.all(&***db).await?).await?,
+            visible_course_tasks(
+                &self.state.services,
+                &_auth.0,
+                query.all(&***db).await?,
+                self.config.challenges.learning_access_reads,
+            )
+            .await?,
         )
     }
 
@@ -82,7 +90,13 @@ impl CourseTasks {
             query = query.filter(challenges_course_tasks::Column::LectureId.eq(lecture_id));
         }
         ListCourseTasks::ok(
-            visible_course_tasks(&self.state.services, &_auth.0, query.all(&***db).await?).await?,
+            visible_course_tasks(
+                &self.state.services,
+                &_auth.0,
+                query.all(&***db).await?,
+                self.config.challenges.learning_access_reads,
+            )
+            .await?,
         )
     }
 
@@ -333,13 +347,15 @@ async fn visible_course_tasks(
         challenges_course_tasks::Model,
         Option<challenges_tasks::Model>,
     )>,
+    access_reads: bool,
 ) -> anyhow::Result<Vec<CourseTask>> {
     let mut result = Vec::new();
     for (course, task) in rows {
         let Some(task) = task else {
             continue;
         };
-        if user.admin
+        if !access_reads
+            || user.admin
             || user.id == task.creator
             || crate::services::access::can_read_course_task(services, user, &course).await?
         {

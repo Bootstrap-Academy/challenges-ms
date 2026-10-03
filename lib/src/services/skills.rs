@@ -12,6 +12,43 @@ use super::{Service, ServiceResult};
 pub struct SkillsService(Service);
 
 impl SkillsService {
+    /// Bounded, ordered read decisions preserve concrete lesson scope.
+    pub async fn learning_access_reads(
+        &self,
+        user: Uuid,
+        requests: &[LearningAccessRequest],
+    ) -> ServiceResult<Vec<bool>> {
+        if requests.is_empty()
+            || requests.len() > 250
+            || requests.iter().any(|request| request.request_id.is_some())
+        {
+            return Err(super::ServiceError::MalformedResponse(
+                "Invalid learning read batch",
+            ));
+        }
+        let response = self
+            .0
+            .post(&format!("/learning-access/{user}/check-batch"))
+            .json(&serde_json::json!({"requests": requests}))
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        if response.status() != StatusCode::OK {
+            return Err(super::ServiceError::UnexpectedStatusCode(response.status()));
+        }
+        #[derive(Deserialize)]
+        struct Decisions {
+            readable: Vec<bool>,
+        }
+        let decisions: Decisions = response.json().await?;
+        if decisions.readable.len() != requests.len() {
+            return Err(super::ServiceError::MalformedResponse(
+                "Incomplete learning read batch",
+            ));
+        }
+        Ok(decisions.readable)
+    }
+
     /// Checks and starts share one authority. Checks never consume a lesson.
     pub async fn learning_access(
         &self,
