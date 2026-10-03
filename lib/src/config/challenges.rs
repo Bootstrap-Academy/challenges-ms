@@ -12,6 +12,9 @@ pub struct ChallengesConfig {
     /// New list admission is opt-in; dormant deployments keep legacy reads.
     #[serde(default)]
     pub learning_access_reads: bool,
+    /// Reader preparation only. The backend owns irreversible policy activation.
+    #[serde(default)]
+    pub profile_publications_enabled: bool,
     pub quizzes: Quizzes, // course tasks
     pub multiple_choice_questions: MultipleChoiceQuestions,
     pub questions: Questions,
