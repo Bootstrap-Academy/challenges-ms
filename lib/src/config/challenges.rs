@@ -9,7 +9,8 @@ pub struct ChallengesConfig {
     pub port: u16,
     pub server: String,
     pub sentry: Option<Sentry>,
-    /// New list admission is opt-in; dormant deployments keep legacy reads.
+    /// Admission for metadata/statistics lists is opt-in. Full exercise content
+    /// always uses the same course/lesson admission as its detail route.
     #[serde(default)]
     pub learning_access_reads: bool,
     /// Reader preparation only. The backend owns irreversible policy activation.

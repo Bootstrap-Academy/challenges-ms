@@ -341,7 +341,6 @@ pub async fn query_subtasks<E, T>(
     db: &DatabaseTransaction,
     services: &Services,
     user: &User,
-    access_reads: bool,
     task_id: Uuid,
     filter: QuerySubtasksFilter,
     map: impl Fn(E::Model, Subtask) -> T,
@@ -367,8 +366,10 @@ where
     .into_iter()
     .filter(|s| effective_filter(s, &filter, user))
     .collect();
+    // These lists include full exercise content. The rollout switch only
+    // controls metadata lists; content always follows the detail route's rights.
     let mut effective: HashMap<_, _> =
-        super::access::retain_readable_subtasks(db, services, user, candidates, access_reads)
+        super::access::retain_readable_subtasks(db, services, user, candidates, true)
             .await?
             .into_iter()
             .map(|s| (s.id, s))

@@ -73,8 +73,9 @@ def main():
                     raise RuntimeError("Local Redis failed to start")
                 time.sleep(0.1)
         for db, filters in [
-            ("access_regression", ["endpoints::", "--", "--ignored", "--skip", "coding_durable_execution_postgres", "--test-threads=1"]),
+            ("access_regression", ["endpoints::", "--", "--ignored", "--skip", "coding_durable_execution_postgres", "--skip", "coding_inline_", "--test-threads=1"]),
             ("queue_regression", ["coding_durable_execution_postgres", "--", "--ignored", "--test-threads=1"]),
+            ("inline_regression", ["coding_inline_", "--", "--ignored", "--test-threads=1"]),
         ]:
             run(f"create-{db}", ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-p", str(pg_port),
                                  "-U", user, "-d", "postgres"], stdin=f"CREATE DATABASE {db}")
