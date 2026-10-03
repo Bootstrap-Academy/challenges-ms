@@ -21,18 +21,22 @@ pub async fn lock_subject(db: &DatabaseTransaction, user: Uuid) -> Result<(), Db
 
 pub async fn lock_attempt(db: &DatabaseTransaction, user: Uuid) -> Result<(), DbErr> {
     lock_subject(db, user).await?;
-    if db
+    if erased(db, user).await? {
+        return Err(DbErr::Custom("Learning subject was erased".into()));
+    }
+    Ok(())
+}
+
+/// Only meaningful after `lock_subject`, which serializes with account erasure.
+pub async fn erased(db: &DatabaseTransaction, user: Uuid) -> Result<bool, DbErr> {
+    Ok(db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT 1 FROM moderation_erasure_events WHERE subject=$1",
             [user.into()],
         ))
         .await?
-        .is_some()
-    {
-        return Err(DbErr::Custom("Learning subject was erased".into()));
-    }
-    Ok(())
+        .is_some())
 }
 
 pub async fn record(

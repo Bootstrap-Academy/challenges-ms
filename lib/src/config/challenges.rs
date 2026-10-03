@@ -17,6 +17,8 @@ pub struct ChallengesConfig {
     pub questions: Questions,
     pub matchings: Matchings,
     pub coding_challenges: CodingChallenges,
+    #[serde(default)]
+    pub lesson_milestones: LessonMilestones,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,5 +85,19 @@ impl Default for CodingExecution {
             retry_seconds: 10,
             max_execution_seconds: 600,
         }
+    }
+}
+
+/// Bounds for XP that skills-ms reports for a completed lesson unit. Existing
+/// configurations keep working without this section.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct LessonMilestones {
+    pub max_xp: u64,
+}
+
+impl Default for LessonMilestones {
+    fn default() -> Self {
+        Self { max_xp: 50 }
     }
 }

@@ -18,6 +18,7 @@ fn app(f: &Fixture) -> impl Endpoint {
             OpenApiService::new(
                 super::internal::Internal {
                     state: f.state.clone(),
+                    config: f.config.clone(),
                 },
                 "Historical participation regression",
                 "1",
