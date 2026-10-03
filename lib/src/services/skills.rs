@@ -12,6 +12,48 @@ use super::{Service, ServiceResult};
 pub struct SkillsService(Service);
 
 impl SkillsService {
+    /// Deliberately bypass the legacy rank cache and require the new capability.
+    pub async fn published_leaderboard(
+        &self,
+        limit: u64,
+        offset: u64,
+        epoch: &super::publications::PublicationEpoch,
+    ) -> ServiceResult<PublishedGlobalLeaderboard> {
+        Ok(self
+            .0
+            .get("/published-leaderboard")
+            .query(&[
+                ("limit", limit.to_string()),
+                ("offset", offset.to_string()),
+                ("publication_epoch", epoch.publication_epoch.to_string()),
+                ("scope_version", epoch.scope_version.clone()),
+            ])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
+    }
+
+    pub async fn published_rank(
+        &self,
+        user_id: Uuid,
+        epoch: &super::publications::PublicationEpoch,
+    ) -> ServiceResult<PublishedGlobalRank> {
+        Ok(self
+            .0
+            .get(&format!("/published-leaderboard/{user_id}"))
+            .query(&[
+                ("publication_epoch", epoch.publication_epoch.to_string()),
+                ("scope_version", epoch.scope_version.clone()),
+            ])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
+    }
+
     /// Bounded, ordered read decisions preserve concrete lesson scope.
     pub async fn learning_access_reads(
         &self,
@@ -366,4 +408,25 @@ pub struct GlobalLeaderboardUser {
 pub struct Rank {
     pub xp: u64,
     pub rank: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishedGlobalLeaderboard {
+    pub leaderboard: Vec<GlobalLeaderboardUser>,
+    pub total: u64,
+    pub scope_version: String,
+    pub publication_epoch: Uuid,
+    pub epoch_revision: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishedGlobalRank {
+    pub xp: u64,
+    pub rank: Option<u64>,
+    pub public_rank: Option<u64>,
+    pub scope_version: String,
+    pub publication_epoch: Uuid,
+    pub epoch_revision: u64,
 }

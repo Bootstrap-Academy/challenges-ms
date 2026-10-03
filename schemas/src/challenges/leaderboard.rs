@@ -1,6 +1,6 @@
 use chrono::{DateTime, TimeZone, Utc};
 use lib::services;
-use poem_openapi::Object;
+use poem_openapi::{Object, Union};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -54,5 +54,64 @@ impl From<services::skills::Rank> for Rank {
             score: value.xp,
             rank: value.rank,
         }
+    }
+}
+
+/// A fixed allowlist, never a serialization of the ordinary account DTO.
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
+pub struct PublishedUser {
+    pub id: Uuid,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
+pub struct PublishedLeaderboardUser {
+    pub user: PublishedUser,
+    #[oai(flatten)]
+    pub rank: Rank,
+}
+
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
+pub struct PublishedLeaderboard {
+    pub leaderboard: Vec<PublishedLeaderboardUser>,
+    pub total: u64,
+    pub scope_version: String,
+    pub publication_epoch: Uuid,
+    pub epoch_revision: u64,
+}
+
+#[derive(Debug, Clone, Object, Serialize, Deserialize)]
+pub struct PublishedRank {
+    pub score: u64,
+    /// Null for a private owner or a user who has not entered this leaderboard.
+    pub rank: Option<u64>,
+    pub public_rank: Option<u64>,
+    pub scope_version: String,
+    pub publication_epoch: Uuid,
+    pub epoch_revision: u64,
+}
+
+#[derive(Debug, Union)]
+pub enum LeaderboardResponse {
+    Legacy(Leaderboard),
+    Published(PublishedLeaderboard),
+}
+
+#[derive(Debug, Union)]
+pub enum RankResponse {
+    Legacy(Rank),
+    Published(PublishedRank),
+}
+
+impl From<Leaderboard> for LeaderboardResponse {
+    fn from(value: Leaderboard) -> Self {
+        Self::Legacy(value)
+    }
+}
+
+impl From<Rank> for RankResponse {
+    fn from(value: Rank) -> Self {
+        Self::Legacy(value)
     }
 }

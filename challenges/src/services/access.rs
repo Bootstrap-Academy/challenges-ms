@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use entity::{challenges_course_tasks, challenges_subtasks};
+use futures::{stream, StreamExt, TryStreamExt};
 use lib::{
     auth::User,
     services::{
@@ -195,33 +196,54 @@ pub async fn retain_readable_subtasks(
         .into_iter()
         .map(|binding| (binding.task_id, binding))
         .collect();
+    // Overlap a bounded number of read-only peer calls. Each response remains
+    // attached to its concrete batch; any failed batch aborts the whole list.
+    let batches: Vec<_> = pending
+        .chunks(250)
+        .map(|batch| {
+            let requests = batch
+                .iter()
+                .map(|subtask| {
+                    admission_request(
+                        user,
+                        Some(subtask.task_id),
+                        Some(subtask.id),
+                        bindings.get(&subtask.task_id),
+                        None,
+                    )
+                })
+                .collect();
+            let ids = batch.iter().map(|subtask| subtask.id).collect();
+            read_batch(services, user.id, requests, ids)
+        })
+        .collect();
     let mut denied = HashSet::new();
-    for batch in pending.chunks(250) {
-        let requests: Vec<_> = batch
-            .iter()
-            .map(|subtask| {
-                admission_request(
-                    user,
-                    Some(subtask.task_id),
-                    Some(subtask.id),
-                    bindings.get(&subtask.task_id),
-                    None,
-                )
-            })
-            .collect();
-        let decisions = services
-            .skills
-            .learning_access_reads(user.id, &requests)
-            .await?;
-        for (subtask, allowed) in batch.iter().zip(decisions) {
-            if !allowed {
-                denied.insert(subtask.id);
-            }
+    {
+        let mut batches = stream::iter(batches).buffered(3);
+        while let Some(ids) = batches.try_next().await? {
+            denied.extend(ids);
         }
     }
     Ok(subtasks
         .into_iter()
         .filter(|s| !denied.contains(&s.id))
+        .collect())
+}
+
+async fn read_batch(
+    services: &Services,
+    user_id: Uuid,
+    requests: Vec<LearningAccessRequest>,
+    ids: Vec<Uuid>,
+) -> Result<Vec<Uuid>, ServiceError> {
+    let decisions = services
+        .skills
+        .learning_access_reads(user_id, &requests)
+        .await?;
+    Ok(ids
+        .into_iter()
+        .zip(decisions)
+        .filter_map(|(id, allowed)| (!allowed).then_some(id))
         .collect())
 }
 

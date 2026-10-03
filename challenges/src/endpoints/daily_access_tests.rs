@@ -424,9 +424,6 @@ async fn list_read_batches_bound_calls_and_keep_subtask_rights_postgres() {
         {
             let mut shop = f.shop.lock().unwrap();
             shop.deny_subtasks.insert(subtask);
-            if !enabled {
-                shop.access_status = Some(503);
-            }
         }
         let paths = [
             format!("/subtasks?task_id={task}"),
@@ -434,6 +431,7 @@ async fn list_read_batches_bound_calls_and_keep_subtask_rights_postgres() {
             format!("/tasks/{task}/multiple_choice"),
         ];
         for path in &paths {
+            let gated = enabled || path.ends_with("/multiple_choice");
             f.shop.lock().unwrap().access_requests.clear();
             let (status, body) = f
                 .call(&app, user, false, Method::GET, path, json!(null))
@@ -444,10 +442,10 @@ async fn list_read_batches_bound_calls_and_keep_subtask_rights_postgres() {
             } else {
                 body.as_array().unwrap().len() as u64
             };
-            assert_eq!(count, if enabled { 500 } else { 501 });
+            assert_eq!(count, if gated { 500 } else { 501 });
             let shop = f.shop.lock().unwrap();
-            assert_eq!(shop.access_requests.len(), if enabled { 3 } else { 0 });
-            if enabled {
+            assert_eq!(shop.access_requests.len(), if gated { 3 } else { 0 });
+            if gated {
                 assert!(shop.access_requests.iter().all(|(_, action, body)| {
                     action == "check-batch" && body["requests"].as_array().unwrap().len() <= 250
                 }));
@@ -506,6 +504,71 @@ async fn list_read_batches_bound_calls_and_keep_subtask_rights_postgres() {
             );
             assert!(f.shop.lock().unwrap().access_requests.is_empty());
         }
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn full_content_lists_always_match_detail_access_postgres() {
+    for enabled in [false, true] {
+        let f = Fixture::with_access_reads(enabled).await;
+        let app = app(&f).await;
+        let user = Uuid::new_v4();
+        for (kind, route) in [
+            ("question", "questions"),
+            ("matching", "matchings"),
+            ("multiple_choice_question", "multiple_choice"),
+            ("coding_challenge", "coding_challenges"),
+        ] {
+            let (task, subtask) = f.seed(kind).await;
+            let course = format!("private-course-{}", Uuid::new_v4());
+            bind(&f, task, &course, Some("lecture")).await;
+            let list = format!("/tasks/{task}/{route}");
+            let detail = format!("{list}/{subtask}");
+            f.shop.lock().unwrap().deny_courses.insert(course.clone());
+            assert_eq!(
+                f.call(&app, user, false, Method::GET, &detail, json!(null))
+                    .await
+                    .0,
+                404
+            );
+            let (status, body) = f
+                .call(&app, user, false, Method::GET, &list, json!(null))
+                .await;
+            assert_eq!(status, 200);
+            assert!(body.as_array().unwrap().is_empty());
+
+            f.shop.lock().unwrap().deny_courses.remove(&course);
+            assert_eq!(
+                f.call(&app, user, false, Method::GET, &detail, json!(null))
+                    .await
+                    .0,
+                200
+            );
+            let (status, body) = f
+                .call(&app, user, false, Method::GET, &list, json!(null))
+                .await;
+            assert_eq!(status, 200);
+            assert_eq!(body.as_array().unwrap().len(), 1);
+            for fault in [json!({"readable": []}), json!({"readable": ["true"]})] {
+                f.shop.lock().unwrap().read_batch_override = Some(fault);
+                assert_eq!(
+                    f.call(&app, user, false, Method::GET, &list, json!(null))
+                        .await
+                        .0,
+                    500
+                );
+            }
+            f.shop.lock().unwrap().read_batch_override = None;
+            f.shop.lock().unwrap().access_status = Some(503);
+            let (status, body) = f
+                .call(&app, user, false, Method::GET, &list, json!(null))
+                .await;
+            assert_eq!(status, 500);
+            assert!(!body.is_array());
+            f.shop.lock().unwrap().access_status = None;
+        }
+        assert!(f.shop.lock().unwrap().started.is_empty());
     }
 }
 
