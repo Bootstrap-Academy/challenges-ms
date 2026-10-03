@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use super::{get_leaderboard, get_leaderboard_user};
 
-fn get_base_query(language: &str) -> SelectStatement {
+pub(super) fn get_base_query(language: &str) -> SelectStatement {
     Query::select()
         .column(Alias::new("user_id"))
         .expr_as(
