@@ -26,6 +26,8 @@ pub struct UserDataExport {
     pub heart_operations: serde_json::Value,
     /// Immutable earning facts and individual applied or unresolved benefit receipts.
     pub benefits: serde_json::Value,
+    /// The lesson units whose completion earned the user XP.
+    pub lesson_milestones: Vec<super::lesson_milestones::LessonMilestone>,
     /// Recipient-safe decisions and complaint receipts; no reporter identity or private evidence.
     pub moderation: serde_json::Value,
     /// The progress of the user on the subtasks they have worked on.

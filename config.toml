@@ -73,3 +73,7 @@ max_concurrency = 2
 timeout = 10  # seconds
 hearts = 2
 creator_coins = 0
+
+# XP per completed lesson unit comes from the skills-ms catalogue, at most this.
+[challenges.lesson_milestones]
+max_xp = 50

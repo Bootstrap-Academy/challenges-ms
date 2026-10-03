@@ -34,6 +34,8 @@ pub(crate) struct Shop {
     pub receipts: HashMap<Uuid, Value>,
     pub lose_reply: bool,
     pub calls: usize,
+    /// skills-ms XP operations received, by operation ID.
+    pub xp_operations: HashMap<Uuid, Value>,
     pub modes: HashMap<Uuid, String>,
     pub policy_status: Option<u16>,
     pub policy_body: Option<Value>,
@@ -251,7 +253,21 @@ impl Fixture {
                         }
                         json!({"allowed":true,"lesson":null,"daily":null,"heart_policy":subtask.and_then(|id|shop.heart_policies.get(&(user,id)))})
                     } else if path.ends_with("/_internal/skills") {
-                        json!([{"id":"synthetic-skill","parent_id":"root","courses":["synthetic-course","locked-course"]}])
+                        json!([
+                            {"id":"synthetic-skill","parent_id":"root","courses":["synthetic-course","locked-course"]},
+                            {"id":"synthetic-sub-skill","parent_id":"synthetic-root","courses":[]},
+                            {"id":"other-sub-skill","parent_id":"synthetic-root","courses":[]}
+                        ])
+                    } else if path.starts_with("/skills/_internal/xp-operations/") {
+                        let parts: Vec<_> = path.rsplit('/').collect();
+                        let (skill, user, operation) = (parts[0], parts[1], parts[2]);
+                        let operation: Uuid = operation.parse().unwrap();
+                        let body: Value = request.take_body().into_json().await.unwrap();
+                        let exact = json!({"user_id":user,"skill_id":skill,"xp":body["xp"],"earning_id":body["earning_id"]});
+                        let mut shop = shop.lock().unwrap();
+                        let known = shop.xp_operations.entry(operation).or_insert(exact.clone());
+                        assert_eq!(known, &exact);
+                        json!({"operation_id":operation,"request":exact,"state":"applied","applied":true})
                     } else if path.contains("/premium/") {
                         let user: Uuid = path.rsplit('/').next().unwrap().parse().unwrap();
                         json!(shop.lock().unwrap().premium.contains(&user))
