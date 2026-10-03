@@ -25,10 +25,9 @@ use uuid::Uuid;
 
 use super::Tags;
 use crate::services::subtasks::{
-    create_subtask, deduct_hearts, get_subtask, get_user_subtask, query_subtask,
-    query_subtask_admin, query_subtasks, send_task_rewards, update_subtask, update_user_subtask,
-    CreateSubtaskError, QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError,
-    UserSubtaskExt,
+    create_subtask, get_subtask, get_user_subtask, query_subtask, query_subtask_admin,
+    query_subtasks, send_task_rewards, update_subtask, update_user_subtask, CreateSubtaskError,
+    QuerySubtaskAdminError, QuerySubtasksFilter, UpdateSubtaskError, UserSubtaskExt,
 };
 
 pub struct Questions {
@@ -62,6 +61,7 @@ impl Questions {
         ListQuestions::ok(
             query_subtasks::<challenges_questions::Entity, _>(
                 &db,
+                &self.state.services,
                 &auth.0,
                 task_id.0,
                 QuerySubtasksFilter {
@@ -90,6 +90,7 @@ impl Questions {
     ) -> GetQuestion::Response<VerifiedUserAuth> {
         match query_subtask::<challenges_questions::Entity, _>(
             &db,
+            &self.state.services,
             &auth.0,
             task_id.0,
             subtask_id.0,
@@ -136,11 +137,10 @@ impl Questions {
         task_id: Path<Uuid>,
         data: Json<CreateQuestionRequest>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> CreateQuestion::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> CreateQuestion::Response<AdminAuth> {
         let subtask = match create_subtask(
             &db,
-            &self.state.services,
             &self.config,
             &auth.0,
             task_id.0,
@@ -153,9 +153,6 @@ impl Questions {
             Err(CreateSubtaskError::TaskNotFound) => return CreateQuestion::task_not_found(),
             Err(CreateSubtaskError::Forbidden) => return CreateQuestion::forbidden(),
             Err(CreateSubtaskError::Banned(until)) => return CreateQuestion::banned(until),
-            Err(CreateSubtaskError::XpLimitExceeded(x)) => {
-                return CreateQuestion::xp_limit_exceeded(x)
-            }
             Err(CreateSubtaskError::CoinLimitExceeded(x)) => {
                 return CreateQuestion::coin_limit_exceeded(x)
             }
@@ -205,6 +202,7 @@ impl Questions {
         .await?
         {
             Ok(x) => x,
+            Err(UpdateSubtaskError::Forbidden) => return UpdateQuestion::forbidden(),
             Err(UpdateSubtaskError::SubtaskNotFound) => return UpdateQuestion::subtask_not_found(),
             Err(UpdateSubtaskError::TaskNotFound) => return UpdateQuestion::task_not_found(),
         };
@@ -246,16 +244,20 @@ impl Questions {
         data: Json<SolveQuestionRequest>,
         db: Data<&DbTxn>,
         auth: VerifiedUserAuth,
+        settlement: Data<&crate::services::hearts::PendingHeartOperations>,
     ) -> SolveQuestion::Response<VerifiedUserAuth> {
         let Some((question, subtask)) =
             get_subtask::<challenges_questions::Entity>(&db, task_id.0, subtask_id.0).await?
         else {
             return SolveQuestion::subtask_not_found();
         };
-        if !auth.0.admin && auth.0.id != subtask.creator && !subtask.enabled {
+        if !auth.0.admin
+            && (subtask.moderation_removed || (auth.0.id != subtask.creator && !subtask.enabled))
+        {
             return SolveQuestion::subtask_not_found();
         }
 
+        crate::services::benefits::lock_attempt(&db, auth.0.id).await?;
         let user_subtask = get_user_subtask(&db, auth.0.id, subtask.id).await?;
 
         let solved_previously = user_subtask.is_solved();
@@ -267,8 +269,25 @@ impl Questions {
             }
         }
 
-        if !deduct_hearts(&self.state.services, &self.config, &auth.0, &subtask).await? {
-            return SolveQuestion::not_enough_hearts();
+        let heart_exempt =
+            match crate::services::hearts::admit(&db, &self.state.services, &auth.0, &subtask)
+                .await?
+            {
+                crate::services::hearts::Admission::Allowed { exempt } => exempt,
+                crate::services::hearts::Admission::NoHearts => {
+                    return SolveQuestion::not_enough_hearts()
+                }
+                crate::services::hearts::Admission::Unavailable(denial) => {
+                    return denial.response()
+                }
+            };
+
+        let attempt_id = Uuid::new_v4();
+        if let Some(denial) =
+            crate::services::access::start(&db, &self.state.services, &auth.0, &subtask, attempt_id)
+                .await?
+        {
+            return denial.response();
         }
 
         let answer = normalize_answer(&data.0.answer, question.case_sensitive);
@@ -313,7 +332,77 @@ impl Questions {
             }
         }
 
-        SolveQuestion::ok(SolveQuestionFeedback { solved })
+        entity::challenges_question_attempts::ActiveModel {
+            id: Set(attempt_id),
+            question_id: Set(question.subtask_id),
+            user_id: Set(auth.0.id),
+            timestamp: Set(Utc::now().naive_utc()),
+            solved: Set(solved),
+        }
+        .insert(&***db)
+        .await?;
+        if !solved && !heart_exempt {
+            crate::services::hearts::record(&db, attempt_id, auth.0.id, subtask.id).await?;
+            settlement.add(attempt_id);
+        }
+
+        SolveQuestion::ok(SolveQuestionFeedback {
+            attempt_id,
+            hearts_pending: false,
+            solved,
+        })
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/tasks/:task_id/questions", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_questions(
+        &self,
+        task_id: Path<Uuid>,
+        attempted: Query<Option<bool>>,
+        solved: Query<Option<bool>>,
+        rated: Query<Option<bool>>,
+        enabled: Query<Option<bool>>,
+        retired: Query<Option<bool>>,
+        creator: Query<Option<Uuid>>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> ListQuestions::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_questions(
+            task_id,
+            attempted,
+            solved,
+            rated,
+            enabled,
+            retired,
+            creator,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(
+        path = "/learning/tasks/:task_id/questions/:subtask_id",
+        method = "get"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_question(
+        &self,
+        task_id: Path<Uuid>,
+        subtask_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        auth: lib::auth::LearningAuth,
+    ) -> GetQuestion::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_question(task_id, subtask_id, db, VerifiedUserAuth(user))
+            .await
     }
 }
 
@@ -352,6 +441,8 @@ response!(CreateQuestion = {
 });
 
 response!(UpdateQuestion = {
+    /// Content is maintained by Academy administrators.
+    Forbidden(403, error),
     Ok(200) => QuestionWithSolution,
     /// Subtask does not exist.
     SubtaskNotFound(404, error),

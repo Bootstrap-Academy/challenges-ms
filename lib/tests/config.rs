@@ -8,6 +8,14 @@ fn test_config() {
     );
     let config = lib::config::load().unwrap();
     assert!(config.internal_jwt_secrets.is_empty());
+    assert!(
+        config
+            .challenges
+            .coding_challenges
+            .execution
+            .embedded_worker
+    );
+    assert!(config.challenges.coding_challenges.execution.max_pending > 0);
 
     // in production the per audience secrets are set through the environment
     env::set_var("INTERNAL_JWT_SECRETS__AUTH", "the auth secret");

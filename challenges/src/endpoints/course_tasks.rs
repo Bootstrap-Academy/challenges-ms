@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use entity::{challenges_course_tasks, challenges_tasks};
-use lib::{auth::VerifiedUserAuth, config::Config, services::Services, SharedState};
+use lib::{
+    auth::{AdminAuth, VerifiedUserAuth},
+    services::Services,
+    SharedState,
+};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{
@@ -17,11 +21,9 @@ use sea_orm::{
 use uuid::Uuid;
 
 use super::Tags;
-use crate::services::subtasks::can_create_for_course;
 
 pub struct CourseTasks {
     pub state: Arc<SharedState>,
-    pub config: Arc<Config>,
 }
 
 #[OpenApi(tag = "Tags::CourseTasks")]
@@ -54,12 +56,7 @@ impl CourseTasks {
             .find_also_related(challenges_tasks::Entity)
             .filter(condition);
         ListTasksInSkill::ok(
-            query
-                .all(&***db)
-                .await?
-                .into_iter()
-                .filter_map(|(challenge, task)| Some(CourseTask::from(challenge, task?)))
-                .collect(),
+            visible_course_tasks(&self.state.services, &_auth.0, query.all(&***db).await?).await?,
         )
     }
 
@@ -85,12 +82,7 @@ impl CourseTasks {
             query = query.filter(challenges_course_tasks::Column::LectureId.eq(lecture_id));
         }
         ListCourseTasks::ok(
-            query
-                .all(&***db)
-                .await?
-                .into_iter()
-                .filter_map(|(challenge, task)| Some(CourseTask::from(challenge, task?)))
-                .collect(),
+            visible_course_tasks(&self.state.services, &_auth.0, query.all(&***db).await?).await?,
         )
     }
 
@@ -104,7 +96,21 @@ impl CourseTasks {
         _auth: VerifiedUserAuth,
     ) -> GetCourseTask::Response<VerifiedUserAuth> {
         match get_course_task(&db, course_id.0, task_id.0).await? {
-            Some((course, task)) => GetCourseTask::ok(CourseTask::from(course, task)),
+            Some((course, task)) => {
+                if _auth.0.admin
+                    || _auth.0.id == task.creator
+                    || crate::services::access::can_read_course_task(
+                        &self.state.services,
+                        &_auth.0,
+                        &course,
+                    )
+                    .await?
+                {
+                    GetCourseTask::ok(CourseTask::from(course, task))
+                } else {
+                    GetCourseTask::course_task_not_found()
+                }
+            }
             None => GetCourseTask::course_task_not_found(),
         }
     }
@@ -116,8 +122,8 @@ impl CourseTasks {
         course_id: Path<String>,
         data: Json<CreateCourseTaskRequest>,
         db: Data<&DbTxn>,
-        auth: VerifiedUserAuth,
-    ) -> CreateCourseTask::Response<VerifiedUserAuth> {
+        auth: AdminAuth,
+    ) -> CreateCourseTask::Response<AdminAuth> {
         if data.0.lecture_id.is_some() && data.0.section_id.is_none() {
             return CreateCourseTask::lecture_without_section();
         }
@@ -134,11 +140,6 @@ impl CourseTasks {
             Err(CourseNotFoundError::Course) => return CreateCourseTask::course_not_found(),
             Err(CourseNotFoundError::Section) => return CreateCourseTask::section_not_found(),
             Err(CourseNotFoundError::Lecture) => return CreateCourseTask::lecture_not_found(),
-        }
-
-        if !can_create_for_course(&self.state.services, &self.config, &course_id.0, &auth.0).await?
-        {
-            return CreateCourseTask::forbidden();
         }
 
         let eq = |x: challenges_course_tasks::Column, y| match y {
@@ -181,6 +182,63 @@ impl CourseTasks {
         .await?;
 
         CreateCourseTask::created(CourseTask::from(course_task, task))
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/skills/:skill_id/tasks", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_tasks_in_skill(
+        &self,
+        skill_id: Path<String>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> ListTasksInSkill::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_tasks_in_skill(skill_id, db, VerifiedUserAuth(user))
+            .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/courses/:course_id/tasks", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_list_course_tasks(
+        &self,
+        course_id: Path<String>,
+        section_id: Query<Option<String>>,
+        lecture_id: Query<Option<String>>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> ListCourseTasks::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.list_course_tasks(
+            course_id,
+            section_id,
+            lecture_id,
+            db,
+            VerifiedUserAuth(user),
+        )
+        .await
+    }
+
+    /// Scoped retained learning only; no ordinary session or publication authority.
+    #[oai(path = "/learning/courses/:course_id/tasks/:task_id", method = "get")]
+    #[allow(clippy::too_many_arguments)]
+    async fn learning_get_course_task(
+        &self,
+        course_id: Path<String>,
+        task_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        _auth: lib::auth::LearningAuth,
+    ) -> GetCourseTask::Response<VerifiedUserAuth> {
+        let user = crate::services::learning::admit(&db, &self.state.services, _auth.0).await?;
+        // Reuse product behavior after dedicated scoped admission. This local
+        // wrapper value does not pass through any ordinary HTTP authenticator.
+        self.get_course_task(course_id, task_id, db, VerifiedUserAuth(user))
+            .await
     }
 }
 
@@ -266,4 +324,27 @@ enum CourseNotFoundError {
     Course,
     Section,
     Lecture,
+}
+
+async fn visible_course_tasks(
+    services: &Services,
+    user: &lib::auth::User,
+    rows: Vec<(
+        challenges_course_tasks::Model,
+        Option<challenges_tasks::Model>,
+    )>,
+) -> anyhow::Result<Vec<CourseTask>> {
+    let mut result = Vec::new();
+    for (course, task) in rows {
+        let Some(task) = task else {
+            continue;
+        };
+        if user.admin
+            || user.id == task.creator
+            || crate::services::access::can_read_course_task(services, user, &course).await?
+        {
+            result.push(CourseTask::from(course, task));
+        }
+    }
+    Ok(result)
 }

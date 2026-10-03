@@ -9,7 +9,6 @@ use sandkasten_client::{
     SandkastenClient,
 };
 use schemas::challenges::coding_challenges::CheckResult;
-use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use crate::services::judge::{Error as JudgeError, Judge};
@@ -23,7 +22,6 @@ pub struct CodingChallenges {
     pub state: Arc<SharedState>,
     pub sandkasten: SandkastenClient,
     pub judge_cache: Cache<JsonFormatter>,
-    pub judge_lock: Arc<Semaphore>,
     pub config: Arc<Config>,
 }
 
@@ -39,7 +37,6 @@ impl CodingChallenges {
             },
             judge::Api {
                 state: Arc::clone(&self.state),
-                config: Arc::clone(&self.config),
                 sandkasten: self.sandkasten.clone(),
                 judge_cache: self.judge_cache.clone(),
             },
@@ -48,14 +45,7 @@ impl CodingChallenges {
                 state: self.state,
                 sandkasten: self.sandkasten,
                 judge_cache: self.judge_cache,
-                reward_lock: Default::default(),
-                queue_positions: Arc::new(
-                    QueuePositions::new(self.judge_lock.available_permits()).into(),
-                ),
-                judge_lock: self.judge_lock,
-            }
-            .setup_api()
-            .await?,
+            },
         ))
     }
 }
@@ -138,8 +128,6 @@ mod _check_error {
     });
 }
 use _check_error::CheckError::raw as _CheckError;
-
-use self::submissions::QueuePositions;
 
 struct CheckChallenge<'a> {
     judge: Judge<'a>,

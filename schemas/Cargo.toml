@@ -12,4 +12,5 @@ poem-ext = { workspace = true }
 poem-openapi = { workspace = true }
 sandkasten-client = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 uuid = { workspace = true }

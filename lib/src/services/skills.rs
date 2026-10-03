@@ -12,6 +12,111 @@ use super::{Service, ServiceResult};
 pub struct SkillsService(Service);
 
 impl SkillsService {
+    /// Checks and starts share one authority. Checks never consume a lesson.
+    pub async fn learning_access(
+        &self,
+        user: Uuid,
+        request: &LearningAccessRequest,
+    ) -> ServiceResult<Result<LearningAccessAllowed, LearningAccessDenied>> {
+        let action = if request.request_id.is_some() {
+            "start"
+        } else {
+            "check"
+        };
+        let response = self
+            .0
+            .post(&format!("/learning-access/{user}/{action}"))
+            .json(request)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        let status = response.status();
+        if status == StatusCode::OK {
+            let result: serde_json::Value = response.json().await?;
+            if result["allowed"] != true {
+                return Err(super::ServiceError::MalformedResponse(
+                    "Invalid learning admission",
+                ));
+            }
+            let allowed = serde_json::from_value(result).map_err(|_| {
+                super::ServiceError::MalformedResponse("Invalid learning heart policy")
+            })?;
+            return Ok(Ok(allowed));
+        }
+        if matches!(
+            status,
+            StatusCode::FORBIDDEN
+                | StatusCode::NOT_FOUND
+                | StatusCode::CONFLICT
+                | StatusCode::TOO_MANY_REQUESTS
+        ) {
+            let body: serde_json::Value = response.json().await?;
+            if !body.is_object()
+                || (status == StatusCode::TOO_MANY_REQUESTS
+                    && (body["code"] != "daily_limit_reached" || !body["daily"].is_object()))
+            {
+                return Err(super::ServiceError::MalformedResponse(
+                    "Invalid learning refusal",
+                ));
+            }
+            return Ok(Err(LearningAccessDenied {
+                status: status.as_u16(),
+                body,
+            }));
+        }
+        Err(super::ServiceError::UnexpectedStatusCode(status))
+    }
+
+    pub async fn apply_benefit(
+        &self,
+        operation: Uuid,
+        user: Uuid,
+        request: &serde_json::Value,
+    ) -> ServiceResult<serde_json::Value> {
+        let Some(skill) = request["skill_id"].as_str() else {
+            return Ok(serde_json::json!({"state":"review","reason":"Missing original skill"}));
+        };
+        // Push the skill as one path segment; a configured skill is not a URL.
+        let path = format!("/xp-operations/{operation}/{user}/");
+        let mut url = self
+            .0
+            .base_url
+            .join(&format!("_internal/{}", path.trim_start_matches('/')))
+            .expect("fixed benefit URL");
+        url.path_segments_mut()
+            .expect("service URL supports paths")
+            .pop_if_empty()
+            .push(skill);
+        let body = serde_json::json!({"xp":request["xp"],"earning_id":request["earning_id"]});
+        let response = self
+            .0
+            .request_url(reqwest::Method::POST, url)
+            .json(&body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(
+                serde_json::json!({"state":"review","reason":"Exact benefit payload conflict"}),
+            );
+        }
+        if response.status() != StatusCode::OK {
+            return Err(super::ServiceError::UnexpectedStatusCode(response.status()));
+        }
+        let result: serde_json::Value = response.json().await?;
+        let expected = serde_json::json!({"user_id":user,"skill_id":skill,"xp":request["xp"],"earning_id":request["earning_id"]});
+        if result["operation_id"] != serde_json::json!(operation)
+            || result["request"] != expected
+            || !((result["state"] == "applied" && result["applied"] == true)
+                || (result["state"] == "recipient_erased" && result["applied"] == false))
+        {
+            return Ok(
+                serde_json::json!({"state":"uncertain","reason":"Unrecognized exact benefit receipt"}),
+            );
+        }
+        Ok(result)
+    }
+
     pub(super) fn new(service: Service) -> Self {
         Self(service)
     }
@@ -134,6 +239,42 @@ impl SkillsService {
             )
             .await??)
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct LectureBinding {
+    pub course_id: String,
+    pub section_id: Option<String>,
+    pub lecture_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LearningAccessRequest {
+    pub task_id: Option<Uuid>,
+    pub subtask_id: Option<Uuid>,
+    pub lecture_bindings: Vec<LectureBinding>,
+    pub user_admin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<Uuid>,
+}
+
+/// Absent on older Skills generations. Admission alone is never a billing exemption.
+#[derive(Debug, Default, Deserialize)]
+pub struct LearningAccessAllowed {
+    pub heart_policy: Option<LearningHeartPolicy>,
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LearningHeartPolicy {
+    Legacy,
+    Daily,
+}
+
+#[derive(Debug)]
+pub struct LearningAccessDenied {
+    pub status: u16,
+    pub body: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

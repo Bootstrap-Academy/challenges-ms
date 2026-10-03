@@ -3,8 +3,12 @@ use std::sync::Arc;
 use lib::{auth::InternalAuth, SharedState};
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::Response};
-use poem_openapi::{param::Path, ApiResponse, OpenApi};
-use schemas::challenges::user_export::UserDataExport;
+use poem_openapi::{param::Path, payload::Json, ApiResponse, OpenApi};
+use schemas::challenges::{
+    learning_history::{LearningHistory, LearningHistoryRequest},
+    user_export::UserDataExport,
+};
+use sea_orm::ConnectionTrait;
 use tracing::info;
 use uuid::Uuid;
 
@@ -17,6 +21,28 @@ pub struct Internal {
 
 #[OpenApi(tag = "Tags::Internal")]
 impl Internal {
+    /// Read existing participation in requested exercises and exact lectures.
+    ///
+    /// Both lists default to empty; at most 500 combined entries are accepted.
+    /// This does not grant success, alter progress, or call another service.
+    #[oai(path = "/_internal/users/:user_id/learning-history", method = "post")]
+    async fn learning_history(
+        &self,
+        user_id: Path<Uuid>,
+        db: Data<&DbTxn>,
+        _auth: InternalAuth,
+        data: Json<LearningHistoryRequest>,
+    ) -> GetLearningHistory::Response<InternalAuth> {
+        if data.0.subtask_ids.len() + data.0.lecture_bindings.len() > 500 {
+            return GetLearningHistory::too_many_entries();
+        }
+        db.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            .await?;
+        GetLearningHistory::ok(
+            crate::services::learning_history::lookup(&***db, user_id.0, data.0).await?,
+        )
+    }
+
     /// Return all data that belongs to a user.
     ///
     /// The export is empty for a user without any data in this service.
@@ -27,6 +53,10 @@ impl Internal {
         db: Data<&DbTxn>,
         _auth: InternalAuth,
     ) -> ExportUser::Response<InternalAuth> {
+        // Definitions and ownership must come from one snapshot, including
+        // while another request edits or deletes the authored content.
+        db.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            .await?;
         ExportUser::ok(export_user_data(&db, user_id.0).await?)
     }
 
@@ -58,4 +88,11 @@ pub enum DeleteUser {
 response!(ExportUser = {
     /// All data of the user.
     Ok(200) => UserDataExport,
+});
+
+response!(GetLearningHistory = {
+    /// Requested exercises and lectures with existing participation by this user.
+    Ok(200) => LearningHistory,
+    /// At most 500 combined subtask IDs and lecture bindings are accepted.
+    TooManyEntries(422, error),
 });

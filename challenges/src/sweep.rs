@@ -46,12 +46,23 @@ pub async fn sweep_deleted_users(
                 Decision::Keep => {}
                 Decision::Delete => {
                     stats.missing += 1;
-                    let txn = db.begin().await?;
-                    delete_user_data(&txn, user_id).await?;
-                    txn.commit().await?;
-                    // the same cache entries the internal endpoint invalidates
-                    cache.pop_tag(&user_id.to_string()).await?;
-                    stats.deleted += 1;
+                    let result: anyhow::Result<()> = async {
+                        let txn = db.begin().await?;
+                        delete_user_data(&txn, user_id).await?;
+                        // Match the endpoint: failed cache invalidation leaves referenced
+                        // rows for a subsequent safety-net pass to find again.
+                        cache.pop_tag(&user_id.to_string()).await?;
+                        txn.commit().await?;
+                        Ok(())
+                    }
+                    .await;
+                    match result {
+                        Ok(()) => stats.deleted += 1,
+                        Err(_) => {
+                            stats.errors += 1;
+                            warn!("User erasure failed; continuing sweep");
+                        }
+                    }
                 }
                 Decision::Skip => stats.errors += 1,
             }
