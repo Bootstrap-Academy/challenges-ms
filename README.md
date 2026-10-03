@@ -94,11 +94,12 @@ section and lecture bindings from its database to
 Individual read/code recovery routes only check access. Quiz answers, coding
 submissions and running a coding example start learning before accepting work.
 
-List admission is opt-in through `challenges.learning_access_reads` (or
-`CHALLENGES__LEARNING_ACCESS_READS=true`). Its default is `false`: pure lists
-keep their existing moderation, creator and progress filters without new
-Skills admission requests. Enable it only with the Skills `check-batch` route
-deployed. Active subtask lists load parent bindings once and check batches of
+Metadata/statistics list admission is opt-in through `challenges.learning_access_reads`
+(or `CHALLENGES__LEARNING_ACCESS_READS=true`), default `false`. Full-content
+question, matching, multiple-choice and coding lists always check the concrete
+course/lesson rights of their detail routes, including with that switch off.
+Deploy the Skills `check-batch` route before this Challenges version. Content
+and active metadata lists load parent bindings once and check batches of
 at most 250 concrete subtasks through
 `POST /skills/_internal/learning-access/{user_id}/check-batch`; concrete IDs
 preserve lesson-specific rights, including during policy outages. Course-task

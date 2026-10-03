@@ -297,6 +297,10 @@ impl Fixture {
             Server::new_with_acceptor(acceptor).run(app).await.unwrap();
         });
         let mut config = lib::config::load().unwrap();
+        config.database.url = std::env::var("HEART_TEST_DATABASE_URL")
+            .unwrap()
+            .parse()
+            .unwrap();
         config.challenges.learning_access_reads = enabled;
         config.services.shop = format!("http://{address}/shop/").parse().unwrap();
         config.services.auth = format!("http://{address}/auth/").parse().unwrap();

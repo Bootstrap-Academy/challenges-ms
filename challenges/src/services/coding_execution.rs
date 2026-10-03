@@ -1,10 +1,14 @@
 //! PostgreSQL owns admission, scheduling and the generation fence. No request
 //! starts uncommitted work, and no process loads the complete submission history.
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use lib::config::CodingExecution;
 use schemas::challenges::coding_challenges::QueueStatus;
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, DbErr, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, Statement,
+    TransactionTrait,
+};
+use tracing::error;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug)]
@@ -39,8 +43,9 @@ pub fn validate(config: &CodingExecution, concurrency: usize) -> anyhow::Result<
     Ok(())
 }
 
-/// Caller holds the subject lock, and inserts the submission in this same
-/// transaction only after this succeeds. Rejection creates no attempt/outbox.
+/// Caller holds the subject lock, and inserts a submission or inline lease in
+/// this same transaction only after this succeeds. Both share the exact caps.
+/// Rejection creates no attempt/outbox, and expired inline leases cost no slots.
 pub async fn admit(
     db: &DatabaseTransaction,
     user: Uuid,
@@ -51,10 +56,117 @@ pub async fn admit(
         "SELECT pg_advisory_xact_lock(hashtextextended('coding-execution-admission',0))",
     ))
     .await?;
+    prune_inline(db).await?;
     let row = db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,
-        "SELECT (SELECT count(*) FROM (SELECT 1 FROM challenges_coding_challenge_submissions s WHERE judge_pending AND NOT EXISTS (SELECT 1 FROM challenges_coding_challenge_result r WHERE r.submission_id=s.id) LIMIT $2) all_pending) < $2 AS global_ok, (SELECT count(*) FROM (SELECT 1 FROM challenges_coding_challenge_submissions s WHERE judge_pending AND creator=$1 AND NOT EXISTS (SELECT 1 FROM challenges_coding_challenge_result r WHERE r.submission_id=s.id) LIMIT $3) user_pending) < $3 AS user_ok",
+        "SELECT (SELECT count(*) FROM (SELECT 1 FROM (SELECT 1 FROM challenges_coding_challenge_submissions s WHERE judge_pending AND NOT EXISTS (SELECT 1 FROM challenges_coding_challenge_result r WHERE r.submission_id=s.id) UNION ALL SELECT 1 FROM challenge_coding_inline_runs WHERE expires_at > clock_timestamp()) pending LIMIT $2) all_pending) < $2 AS global_ok, (SELECT count(*) FROM (SELECT 1 FROM (SELECT 1 FROM challenges_coding_challenge_submissions s WHERE judge_pending AND creator=$1 AND NOT EXISTS (SELECT 1 FROM challenges_coding_challenge_result r WHERE r.submission_id=s.id) UNION ALL SELECT 1 FROM challenge_coding_inline_runs WHERE user_id=$1 AND expires_at > clock_timestamp()) pending LIMIT $3) user_pending) < $3 AS user_ok",
         [user.into(), i64::from(config.max_pending).into(), i64::from(config.max_pending_per_user).into()])).await?.expect("aggregate row");
     Ok(row.try_get::<bool>("", "global_ok")? && row.try_get::<bool>("", "user_ok")?)
+}
+
+/// Owns transient admission independently of the long HTTP transaction. Drop
+/// releases on timeout/client cancellation; expiry also covers API process loss.
+pub struct InlineRun {
+    id: Option<Uuid>,
+    db: DatabaseConnection,
+    cleanup_timeout: Duration,
+}
+
+impl InlineRun {
+    pub async fn reserve(
+        db: &DatabaseConnection,
+        user: Uuid,
+        subtask: Uuid,
+        config: &CodingExecution,
+    ) -> Result<Option<Self>, DbErr> {
+        let transaction = db.begin().await?;
+        // Same lock order as submission admission and account erasure.
+        super::benefits::lock_attempt(&transaction, user).await?;
+        if !admit(&transaction, user, config).await? {
+            return Ok(None);
+        }
+        let id = Uuid::new_v4();
+        let guard = Self {
+            id: Some(id),
+            db: db.clone(),
+            cleanup_timeout: Duration::from_secs(u64::from(config.lease_seconds)),
+        };
+        transaction.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+            "INSERT INTO challenge_coding_inline_runs(id,user_id,subtask_id,expires_at) VALUES($1,$2,$3,clock_timestamp()+$4::bigint * interval '1 second')",
+            [id.into(), user.into(), subtask.into(), i64::from(config.max_execution_seconds).into()])).await?;
+        transaction.commit().await?;
+        Ok(Some(guard))
+    }
+
+    pub async fn release(&mut self) -> Result<(), DbErr> {
+        if let Some(id) = self.id {
+            release_inline(&self.db, id).await?;
+            self.id = None;
+        }
+        Ok(())
+    }
+
+    /// Erasure/task deletion removes the row. Stop the local executor future
+    /// when that happens rather than continuing with an erased subject.
+    pub async fn until_removed(&self, poll_milliseconds: u32) -> Result<(), DbErr> {
+        let id = self.id.expect("active inline lease");
+        loop {
+            let active = self.db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,
+                "SELECT id FROM challenge_coding_inline_runs WHERE id=$1 AND expires_at > clock_timestamp()",
+                [id.into()])).await?.is_some();
+            if !active {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(u64::from(poll_milliseconds))).await;
+        }
+    }
+}
+
+impl Drop for InlineRun {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            let db = self.db.clone();
+            let timeout = self.cleanup_timeout;
+            // The HTTP future can disappear at any await point. Cleanup owns
+            // only this UUID; an expired lease remains harmless if DB is down.
+            tokio::spawn(async move {
+                match tokio::time::timeout(timeout, release_inline(&db, id)).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(err)) => error!("could not release inline coding test {id}: {err}"),
+                    Err(_) => error!("inline coding cleanup timed out for {id}"),
+                }
+            });
+        }
+    }
+}
+
+async fn release_inline(db: &DatabaseConnection, id: Uuid) -> Result<(), DbErr> {
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "DELETE FROM challenge_coding_inline_runs WHERE id=$1",
+        [id.into()],
+    ))
+    .await?;
+    Ok(())
+}
+
+async fn prune_inline(db: &impl ConnectionTrait) -> Result<(), DbErr> {
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        "DELETE FROM challenge_coding_inline_runs WHERE expires_at <= clock_timestamp()",
+    ))
+    .await?;
+    Ok(())
+}
+
+pub async fn erase_inline(db: &DatabaseTransaction, user: Uuid) -> Result<u64, DbErr> {
+    Ok(db
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "DELETE FROM challenge_coding_inline_runs WHERE user_id=$1",
+            [user.into()],
+        ))
+        .await?
+        .rows_affected())
 }
 
 pub async fn claim(
@@ -123,6 +235,9 @@ pub async fn advertise(
         "DELETE FROM challenge_coding_workers WHERE lease_until <= clock_timestamp()",
     ))
     .await?;
+    // Reuse the worker's existing heartbeat to remove leases left by an API
+    // process crash, even when no new examples/submissions are being admitted.
+    prune_inline(db).await?;
     Ok(())
 }
 

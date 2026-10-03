@@ -159,6 +159,7 @@ pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result
     )
     .await?;
     let mut rows = 0;
+    rows += super::coding_execution::erase_inline(db, user_id).await?;
     rows += db
         .execute(sea_orm::Statement::from_sql_and_values(
             sea_orm::DbBackend::Postgres,

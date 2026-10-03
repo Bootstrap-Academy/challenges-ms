@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use fnct::format::JsonFormatter;
 use lib::{config::Config, Cache, SharedState};
@@ -9,6 +9,7 @@ use sandkasten_client::{
     SandkastenClient,
 };
 use schemas::challenges::coding_challenges::CheckResult;
+use sea_orm::{ConnectOptions, Database};
 use uuid::Uuid;
 
 use crate::services::judge::{Error as JudgeError, Judge};
@@ -27,6 +28,11 @@ pub struct CodingChallenges {
 
 impl CodingChallenges {
     pub async fn setup_api(self) -> anyhow::Result<impl OpenApi> {
+        // Request middleware retains its primary connection while examples
+        // execute. Admission/cleanup must never wait for another primary slot.
+        let mut inline_options = ConnectOptions::new(self.config.database.url.to_string());
+        inline_options.connect_timeout(Duration::from_secs(self.config.database.connect_timeout));
+        let inline_db = Database::connect(inline_options).await?;
         Ok((
             assets::Api,
             challenges::Api {
@@ -36,6 +42,8 @@ impl CodingChallenges {
                 state: Arc::clone(&self.state),
             },
             judge::Api {
+                config: Arc::clone(&self.config),
+                inline_db,
                 state: Arc::clone(&self.state),
                 sandkasten: self.sandkasten.clone(),
                 judge_cache: self.judge_cache.clone(),
