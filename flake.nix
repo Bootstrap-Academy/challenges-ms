@@ -42,7 +42,9 @@
         ];
       };
       generate = pkgs.writeShellScriptBin "generate" ''
-        ${lib.getExe pkgs.crate2nix} generate
+        CARGO=${toolchain.cargo}/bin/cargo \
+          RUSTC=${toolchain.rustc}/bin/rustc \
+          ${lib.getExe pkgs.crate2nix} generate
       '';
     });
 

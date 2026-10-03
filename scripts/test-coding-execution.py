@@ -10,6 +10,7 @@ import http.server
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
@@ -153,8 +154,13 @@ def main():
 
         for db in ("migration_check", "coding_queue", "heart_regression", "export_regression", "benefit_regression", "process_check"):
             sql("postgres", f"CREATE DATABASE {db}")
-        migration_count = (work / "migration/src/lib.rs").read_text().count("Box::new(")
-        migrate("migration_check", migration_count - 1)
+        migration_names = re.findall(r"Box::new\((\w+)::Migration\)",
+                                     (work / "migration/src/lib.rs").read_text())
+        coding_migration = "m20260913_180000_coding_execution"
+        before_coding = migration_names.index(coding_migration)
+        report["upgrade_migration"] = coding_migration
+        report["prior_migration_count"] = before_coding
+        migrate("migration_check", before_coding)
         completed = seed("migration_check", True)
         pending = seed("migration_check")
         before = sql("migration_check", "SELECT id,code,creation_timestamp,charge_on_failure FROM challenges_coding_challenge_submissions ORDER BY id")
