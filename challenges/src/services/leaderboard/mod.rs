@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 pub mod global;
 pub mod language;
+pub mod published;
 pub mod task;
 
 async fn get_leaderboard(
@@ -18,16 +19,38 @@ async fn get_leaderboard(
     limit: u64,
     offset: u64,
 ) -> anyhow::Result<Leaderboard> {
+    let (ranked, total) = ranked_rows(db, base_query, limit, offset, false).await?;
+    Ok(Leaderboard {
+        leaderboard: try_join_all(
+            ranked
+                .into_iter()
+                .map(|(user_id, rank)| resolve_user(services, user_id, rank)),
+        )
+        .await?
+        .into_iter()
+        .flatten()
+        .collect(),
+        total,
+    })
+}
+
+async fn ranked_rows(
+    db: &DatabaseTransaction,
+    base_query: SelectStatement,
+    limit: u64,
+    offset: u64,
+    stable_order: bool,
+) -> anyhow::Result<(Vec<(Uuid, Rank)>, u64)> {
+    let mut page = base_query.clone();
+    page.order_by(Alias::new("xp"), Order::Desc)
+        .order_by(Alias::new("last_update"), Order::Asc);
+    if stable_order {
+        page.order_by(Alias::new("user_id"), Order::Asc);
+    }
     let rows: Vec<(Uuid, i64)> = db
         .query_all(
-            db.get_database_backend().build(
-                base_query
-                    .clone()
-                    .order_by(Alias::new("xp"), Order::Desc)
-                    .order_by(Alias::new("last_update"), Order::Asc)
-                    .limit(limit)
-                    .offset(offset),
-            ),
+            db.get_database_backend()
+                .build(page.limit(limit).offset(offset)),
         )
         .await?
         .into_iter()
@@ -51,18 +74,7 @@ async fn get_leaderboard(
     let first_rank = rank_of(db, base_query, rows.first().map(|&(_, xp)| xp).unwrap_or(0)).await?;
     let ranked = assign_ranks(rows, offset, first_rank);
 
-    Ok(Leaderboard {
-        leaderboard: try_join_all(
-            ranked
-                .into_iter()
-                .map(|(user_id, rank)| resolve_user(services, user_id, rank)),
-        )
-        .await?
-        .into_iter()
-        .flatten()
-        .collect(),
-        total,
-    })
+    Ok((ranked, total))
 }
 
 /// Assign a rank to every row of a page of a leaderboard.
@@ -99,24 +111,29 @@ pub async fn get_leaderboard_user(
     base_query: SelectStatement,
     user_id: Uuid,
 ) -> anyhow::Result<Rank> {
-    let xp = db
-        .query_one(
-            db.get_database_backend().build(
-                base_query
-                    .clone()
-                    .and_where(Expr::col(Alias::new("user_id")).eq(user_id)),
-            ),
-        )
+    let xp = user_score(db, base_query.clone(), user_id)
         .await?
-        .map(|row| row.try_get_many_by_index::<(Uuid, i64)>())
-        .transpose()?
-        .map(|(_, xp)| xp)
         .unwrap_or(0);
-
     Ok(Rank {
         score: xp as _,
         rank: rank_of(db, base_query, xp).await?,
     })
+}
+
+async fn user_score(
+    db: &DatabaseTransaction,
+    mut base_query: SelectStatement,
+    user_id: Uuid,
+) -> anyhow::Result<Option<i64>> {
+    Ok(db
+        .query_one(
+            db.get_database_backend()
+                .build(base_query.and_where(Expr::col(Alias::new("user_id")).eq(user_id))),
+        )
+        .await?
+        .map(|row| row.try_get_many_by_index::<(Uuid, i64)>())
+        .transpose()?
+        .map(|(_, xp)| xp))
 }
 
 async fn rank_of(

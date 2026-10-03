@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub mod auth;
+pub mod publications;
 pub mod shop;
 pub mod skills;
 

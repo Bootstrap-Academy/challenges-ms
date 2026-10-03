@@ -152,6 +152,9 @@ async fn serve(config: Arc<Config>, api_only: bool, worker_only: bool) -> anyhow
         .with(PanicHandler::middleware())
         .with(DbTransactionMiddleware::new(db))
         .with(services::hearts::SettlementMiddleware(shared_state.clone()))
+        .with(services::leaderboard::published::Headers(
+            config.challenges.profile_publications_enabled,
+        ))
         .data(shared_state.clone());
 
     info!(
