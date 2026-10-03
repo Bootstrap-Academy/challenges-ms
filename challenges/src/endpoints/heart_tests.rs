@@ -339,6 +339,10 @@ impl Fixture {
     }
 
     pub(crate) async fn seed(&self, kind: &str) -> (Uuid, Uuid) {
+        self.seed_with_enabled(kind, true).await
+    }
+
+    pub(crate) async fn seed_with_enabled(&self, kind: &str, enabled: bool) -> (Uuid, Uuid) {
         let task = Uuid::new_v4();
         let subtask = Uuid::new_v4();
         let author = Uuid::new_v4();
@@ -352,8 +356,8 @@ impl Fixture {
             .await
             .unwrap();
         self.state.db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
-            "INSERT INTO challenges_subtasks(id,task_id,creator,creation_timestamp,xp,coins,enabled,retired,ty) VALUES($1,$2,$3,now(),0,5,true,false,$4::text::challenges_subtask_type)",
-            [subtask.into(),task.into(),author.into(),kind.into()])).await.unwrap();
+            "INSERT INTO challenges_subtasks(id,task_id,creator,creation_timestamp,xp,coins,enabled,retired,ty) VALUES($1,$2,$3,now(),0,5,$5,false,$4::text::challenges_subtask_type)",
+            [subtask.into(),task.into(),author.into(),kind.into(),enabled.into()])).await.unwrap();
         let sql = match kind {
             "multiple_choice_question" => "INSERT INTO challenges_multiple_choice_quizes(subtask_id,question,answers,correct_answers,single_choice) VALUES($1,'Choose',ARRAY['yes','no'],1,true)",
             "matching" => "INSERT INTO challenges_matchings(subtask_id,\"left\",\"right\",solution) VALUES($1,ARRAY['a','b'],ARRAY['A','B'],ARRAY[0,1]::smallint[])",
