@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     name: test (${{ matrix.toolchain }})
     strategy:
+      fail-fast: false
       matrix:
         toolchain: [stable, beta]
     steps:

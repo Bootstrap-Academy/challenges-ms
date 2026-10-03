@@ -16,6 +16,7 @@ pub struct Model {
     pub creator: Uuid,
     #[sea_orm(column_type = "Text")]
     pub reason: String,
+    pub rescinded: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
