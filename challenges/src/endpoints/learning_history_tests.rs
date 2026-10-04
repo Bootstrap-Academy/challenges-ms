@@ -3,15 +3,14 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use lib::jwt::{sign_jwt, InternalAuthToken, InternalJwtSecrets, JwtSecret};
 use poem::{http::Method, Endpoint, EndpointExt, IntoResponse, Request, Route};
-use poem_ext::db::DbTransactionMiddleware;
 use poem_openapi::OpenApiService;
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
 use super::heart_tests::Fixture;
 
-fn app(f: &Fixture) -> impl Endpoint {
+async fn app(f: &Fixture) -> impl Endpoint {
     Route::new()
         .nest(
             "/",
@@ -24,7 +23,14 @@ fn app(f: &Fixture) -> impl Endpoint {
                 "1",
             ),
         )
-        .with(DbTransactionMiddleware::new(f.state.db.clone()))
+        .with(
+            crate::services::request_transactions::RequestTransactions::connect(
+                f.state.db.clone(),
+                &f.config,
+            )
+            .await
+            .unwrap(),
+        )
         .with(crate::services::hearts::SettlementMiddleware(
             f.state.clone(),
         ))
@@ -128,6 +134,69 @@ async fn snapshot(f: &Fixture) -> Value {
 
 #[tokio::test]
 #[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn learning_history_finishes_with_every_primary_connection_occupied_postgres() {
+    let f = Fixture::new().await;
+    let user = Uuid::new_v4();
+    let (_, subtask) = f.seed("multiple_choice_question").await;
+    attempt(&f, user, subtask, "multiple_choice_question", false).await;
+    let before = snapshot(&f).await;
+    let app = app(&f).await;
+    let token = token(&f);
+    // The production primary pool defaults to ten connections. Holding every
+    // one reproduces the capacity that the incoming Skills calls retain.
+    let mut occupied = Vec::new();
+    for _ in 0..10 {
+        occupied.push(f.state.db.begin().await.unwrap());
+    }
+    let body = json!({"subtask_ids":vec![subtask;500]});
+    let expected = json!({"attempted_subtask_ids":[subtask],"attempted_lecture_bindings":[]});
+    let replies = tokio::time::timeout(
+        Duration::from_secs(2),
+        futures::future::join_all((0..10).map(|_| call(&app, user, Some(&token), body.clone()))),
+    )
+    .await
+    .expect("history must not wait for a primary connection");
+    assert!(replies
+        .iter()
+        .all(|reply| reply == &(200, expected.clone())));
+    assert_eq!(call(&app, user, None, body).await.0, 401);
+    assert_eq!(
+        call(
+            &app,
+            user,
+            Some(&token),
+            json!({"subtask_ids":vec![subtask;501]})
+        )
+        .await
+        .0,
+        422
+    );
+    // A different internal route still needs the primary pool; reserve access
+    // must not spread to exports, erasure, rewards, or arbitrary requests.
+    let export = || {
+        Request::builder()
+            .method(Method::GET)
+            .uri(format!("/_internal/users/{user}/export").parse().unwrap())
+            .header("Authorization", format!("Bearer {token}"))
+            .body(())
+    };
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), app.call(export()))
+            .await
+            .is_err()
+    );
+    for tx in occupied {
+        tx.rollback().await.unwrap();
+    }
+    assert_eq!(
+        app.call(export()).await.unwrap().into_response().status(),
+        200
+    );
+    assert_eq!(snapshot(&f).await, before);
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
 async fn learning_history_participation_is_private_and_read_only_postgres() {
     let f = Fixture::new().await;
     let user = Uuid::new_v4();
@@ -220,7 +289,7 @@ async fn learning_history_participation_is_private_and_read_only_postgres() {
     let access_count = f.shop.lock().unwrap().access_requests.len();
     f.shop.lock().unwrap().access_status = Some(503);
     f.shop.lock().unwrap().policy_status = Some(503);
-    let app = app(&f);
+    let app = app(&f).await;
     let token = token(&f);
     for _ in 0..2 {
         assert_eq!(
@@ -274,7 +343,7 @@ async fn learning_history_uses_exact_requested_lecture_bindings_postgres() {
     let (task, pending) = f.seed("coding_challenge").await;
     execute(&f, "INSERT INTO challenges_course_tasks(task_id,course_id,lecture_id) VALUES($1,'course-c','lecture-3')", vec![task.into()]).await;
     attempt(&f, user, pending, "coding_challenge", false).await;
-    let app = app(&f);
+    let app = app(&f).await;
     let token = token(&f);
     let binding = json!({"course_id":"course-a","lecture_id":"lecture-1"});
     let before = snapshot(&f).await;
@@ -328,7 +397,7 @@ async fn learning_history_authentication_and_batch_validation_postgres() {
         )]),
     )
     .unwrap();
-    let app = app(&f);
+    let app = app(&f).await;
     let user = Uuid::new_v4();
     let body = json!({"subtask_ids":[Uuid::new_v4()]});
     let secret = f.state.internal_jwt_secrets.get("challenges");

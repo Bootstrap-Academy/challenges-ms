@@ -19,7 +19,8 @@ pub struct Subtask {
     /// The type of the subtask.
     #[oai(rename = "type")]
     pub ty: ChallengesSubtaskType,
-    /// The creator of the subtask
+    /// Technical content-author reference for filters and ownership checks.
+    /// It grants no access to the author's profile or learning progress.
     pub creator: Uuid,
     /// The creation timestamp of the subtask
     pub creation_timestamp: DateTime<Utc>,
