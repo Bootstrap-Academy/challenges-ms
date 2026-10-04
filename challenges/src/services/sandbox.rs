@@ -122,22 +122,63 @@ pub fn technical_compilation(result: &RunResult) -> bool {
 
 fn infrastructure_diagnostic(diagnostic: &str) -> bool {
     let diagnostic = diagnostic.to_ascii_lowercase();
-    [
+    let messages = [
         "no space left on device",
         "enospc",
+        "errno 28",
+        "os error 28",
         "disk quota exceeded",
         "read-only file system",
         "cannot allocate memory",
         "out of memory",
+        "outofmemoryerror",
+        "could not reserve enough space",
         "internal compiler error",
         "unable to create native thread",
         "resource temporarily unavailable",
         "failed to create thread",
         "error while loading shared libraries",
         "nsjail error",
-    ]
-    .iter()
-    .any(|message| diagnostic.contains(message))
+    ];
+    diagnostic.lines().any(|line| {
+        let line = line.trim();
+        // Compilers echo offending source lines. A string literal in learner
+        // code is not a host diagnostic, even when it mentions ENOSPC/OOM.
+        if [
+            "undeclared",
+            "was not declared",
+            "cannot find symbol",
+            "unresolved reference",
+        ]
+        .iter()
+        .any(|message| line.contains(message))
+        {
+            return false;
+        }
+        let reporter = line.starts_with("error ")
+            || line.starts_with("nsjail ")
+            || line.starts_with("could not reserve enough space")
+            || [
+                "error:",
+                "fatal:",
+                "ioexception:",
+                "filesystemexception:",
+                "oserror:",
+                "ioerror:",
+                "os error",
+                "errno",
+                "cc1:",
+                "cc1plus:",
+            ]
+            .iter()
+            .any(|prefix| {
+                line.find(prefix)
+                    .is_some_and(|at| !line[..at].contains(['"', '\'', '=', ';', '{', '}']))
+            });
+        messages
+            .iter()
+            .any(|message| line == *message || (reporter && line.contains(message)))
+    })
 }
 
 #[derive(Debug, Error)]

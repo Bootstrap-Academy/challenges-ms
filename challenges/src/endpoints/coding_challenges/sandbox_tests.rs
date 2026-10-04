@@ -181,11 +181,14 @@ async fn coding_sandbox_failure_paths_and_recovery_postgres() {
     let f = Fixture::new().await;
     let executor = Executor::new().await;
     let syntax =
-        json!({"error":"compile_error","details":run_result(1,"Main.java:1: error: ';' expected")})
+        json!({"error":"compile_error","details":run_result(1,"Main.java:1: error: ';' expected\nSystem.out.println(\"No space left on device\")")})
             .to_string();
     let mut resource = run_result(1, "");
     resource["resource_usage"]["memory"] = (128 * 1024).into();
+    let mut interrupted_run = success("42");
+    interrupted_run["run"]["status"] = 137.into();
     let mut faults = vec![
+        ("solution", StatusCode::OK, interrupted_run.to_string()),
         ("solution", StatusCode::BAD_REQUEST, json!({"error":"compile_error","details":run_result(1,"java.io.IOException: No space left on device")}).to_string()),
         ("solution", StatusCode::BAD_REQUEST, json!({"error":"compile_error","details":run_result(137,"")}).to_string()),
         ("solution", StatusCode::BAD_REQUEST, json!({"error":"compile_error","details":resource}).to_string()),
@@ -296,6 +299,46 @@ async fn coding_sandbox_failure_paths_and_recovery_postgres() {
         count(&f, "challenge_benefit_earnings", "user_id", user).await,
         0
     );
+    // Genuine runtime failure and actual lesson resource violations remain learner errors.
+    for (status, time, memory, verdict) in [
+        (1, 10, 1024, ChallengesVerdict::RuntimeError),
+        (137, 1001, 1024, ChallengesVerdict::TimeLimitExceeded),
+        (137, 10, 129 * 1024, ChallengesVerdict::MemoryLimitExceeded),
+    ] {
+        let user = Uuid::new_v4();
+        let (_, submission) = seed(&f, user).await;
+        let mut output = success("42");
+        output["run"]["status"] = status.into();
+        output["run"]["resource_usage"]["time"] = time.into();
+        output["run"]["resource_usage"]["memory"] = memory.into();
+        output["run"]["stderr"] = "No space left on device".into();
+        executor.state.lock().unwrap().fault =
+            Some(("solution".into(), StatusCode::OK, output.to_string()));
+        let claim = queue::claim(&f.state.db, Uuid::new_v4(), 30)
+            .await
+            .unwrap()
+            .unwrap();
+        execute_claim(f.state.clone(), &executor.client, claim)
+            .await
+            .unwrap();
+        assert_eq!(
+            challenges_coding_challenge_result::Entity::find_by_id(submission.id)
+                .one(&f.state.db)
+                .await
+                .unwrap()
+                .unwrap()
+                .verdict,
+            verdict
+        );
+        assert_eq!(
+            count(&f, "challenge_heart_operations", "user_id", user).await,
+            1
+        );
+        assert_eq!(
+            count(&f, "challenge_benefit_earnings", "user_id", user).await,
+            0
+        );
+    }
 }
 
 #[tokio::test]

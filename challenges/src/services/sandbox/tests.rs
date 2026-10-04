@@ -86,6 +86,23 @@ async fn compilation_requires_documented_http_status_and_regular_compiler_exit()
         response(StatusCode::NOT_FOUND, body).await,
         Err(Error::InvalidExecution)
     ));
+    for phrase in [
+        "No space left on device",
+        "out of memory",
+        "ENOSPC",
+        "error: ENOSPC",
+    ] {
+        let stderr = format!("Main.java:3: error: ';' expected\nSystem.out.println(\"{phrase}\")\n                                   ^\n1 error");
+        assert!(
+            matches!(response(StatusCode::BAD_REQUEST, compile_error(run_result(1, &stderr))).await,
+            Err(Error::Rejected(error)) if matches!(*error, ErrorResponse::Inner(BuildRunError::CompileError(_))))
+        );
+    }
+    assert!(
+        matches!(response(StatusCode::BAD_REQUEST, compile_error(run_result(1,
+        "main.c:3: error: 'ENOSPC' undeclared"))).await,
+        Err(Error::Rejected(error)) if matches!(*error, ErrorResponse::Inner(BuildRunError::CompileError(_))))
+    );
 }
 
 #[tokio::test]
@@ -93,10 +110,13 @@ async fn host_and_compiler_failures_are_technical_without_relying_on_one_message
     for diagnostic in [
         "java.io.IOException: No space left on device",
         "write failed: ENOSPC (os error 28)",
+        "OSError: [Errno 28] Speichermedium voll",
         "Disk quota exceeded",
         "Read-only file system",
         "Cannot allocate memory",
         "Out of memory",
+        "java.lang.OutOfMemoryError: Java heap space",
+        "Could not reserve enough space for object heap",
         "Internal compiler error",
         "Unable to create native thread",
         "Resource temporarily unavailable",

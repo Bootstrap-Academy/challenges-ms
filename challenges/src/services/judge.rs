@@ -207,7 +207,7 @@ impl Judge<'_> {
             }
             x => x?,
         };
-        if let Some(verdict) = match (time_limit, memory_limit) {
+        let verdict = match (time_limit, memory_limit) {
             (Some(time_limit), _) if output.run.resource_usage.time > time_limit => {
                 Some(ChallengesVerdict::TimeLimitExceeded)
             }
@@ -217,7 +217,16 @@ impl Judge<'_> {
             _ if output.run.status != 0 => Some(ChallengesVerdict::RuntimeError),
             _ if output.run.stdout.is_empty() => Some(ChallengesVerdict::NoOutput),
             _ => None,
-        } {
+        };
+        // A kill/launcher failure without a reached learner resource limit is
+        // insufficient evidence of a code mistake (e.g. host OOM or restart).
+        // Actual lesson time/memory violations keep their existing verdicts.
+        if verdict == Some(ChallengesVerdict::RuntimeError)
+            && matches!(output.run.status, -9 | -15 | 124..=127 | 137 | 143)
+        {
+            return Err(Error::ExecutionInterrupted);
+        }
+        if let Some(verdict) = verdict {
             return Ok(CheckResult {
                 verdict,
                 reason: None,
@@ -265,6 +274,8 @@ pub enum Error {
     SerdeJson(#[from] serde_json::Error),
     #[error("environment does not exist")]
     EnvironmentNotFound,
+    #[error("sandbox execution was interrupted before reaching a learner resource limit")]
+    ExecutionInterrupted,
     #[error("failed to execute evaluator: {0:?}")]
     EvaluatorFailed(BuildRunResult),
     #[error("evaluator failed to produce valid output: {0:?}")]
