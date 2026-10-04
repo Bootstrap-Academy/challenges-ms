@@ -207,26 +207,11 @@ impl Judge<'_> {
             }
             x => x?,
         };
-        let verdict = match (time_limit, memory_limit) {
-            (Some(time_limit), _) if output.run.resource_usage.time > time_limit => {
-                Some(ChallengesVerdict::TimeLimitExceeded)
-            }
-            (_, Some(memory_limit)) if output.run.resource_usage.memory / 1024 > memory_limit => {
-                Some(ChallengesVerdict::MemoryLimitExceeded)
-            }
-            _ if output.run.status != 0 => Some(ChallengesVerdict::RuntimeError),
-            _ if output.run.stdout.is_empty() => Some(ChallengesVerdict::NoOutput),
-            _ => None,
-        };
-        // A kill/launcher failure without a reached learner resource limit is
-        // insufficient evidence of a code mistake (e.g. host OOM or restart).
-        // Actual lesson time/memory violations keep their existing verdicts.
-        if verdict == Some(ChallengesVerdict::RuntimeError)
-            && matches!(output.run.status, -9 | -15 | 124..=127 | 137 | 143)
-        {
-            return Err(Error::ExecutionInterrupted);
+        // nsjail could not start the program; the learner code never ran.
+        if super::sandbox::launcher_failure(&output.run) {
+            return Err(Error::LauncherFailed);
         }
-        if let Some(verdict) = verdict {
+        if let Some(verdict) = run_verdict(&output.run, time_limit, memory_limit) {
             return Ok(CheckResult {
                 verdict,
                 reason: None,
@@ -252,6 +237,40 @@ impl Judge<'_> {
     }
 }
 
+/// Verdict of a finished learner run before the evaluator compares output.
+/// An exit status alone never makes a run technical: `command not found`
+/// (127), `exit 137` or a kill by the learner's own memory use are the
+/// learner's program. Only nsjail's own launch failure is technical, checked
+/// before this with `sandbox::launcher_failure`.
+pub(crate) fn run_verdict(
+    run: &RunResult,
+    time_limit: Option<u64>,   // ms
+    memory_limit: Option<u64>, // mb
+) -> Option<ChallengesVerdict> {
+    match (time_limit, memory_limit) {
+        (Some(time_limit), _) if run.resource_usage.time > time_limit => {
+            Some(ChallengesVerdict::TimeLimitExceeded)
+        }
+        (_, Some(memory_limit)) if run.resource_usage.memory / 1024 > memory_limit => {
+            Some(ChallengesVerdict::MemoryLimitExceeded)
+        }
+        _ if cgroup_memory_kill(run) => Some(ChallengesVerdict::MemoryLimitExceeded),
+        _ if run.status != 0 => Some(ChallengesVerdict::RuntimeError),
+        _ if run.stdout.is_empty() => Some(ChallengesVerdict::NoOutput),
+        _ => None,
+    }
+}
+
+/// The cgroup limit is `limits.memory` × 10⁶ bytes. Its OOM kill (SIGKILL,
+/// shell status 137) leaves the measured peak RSS just at that limit (real
+/// Sandkasten 0.2.2: 100.2–103.5 %), below the MiB check above. 95 % keeps
+/// room for measurement noise while a low-memory kill stays a runtime error.
+fn cgroup_memory_kill(run: &RunResult) -> bool {
+    matches!(run.status, 137 | -9)
+        && u128::from(run.resource_usage.memory) * 1024 * 100
+            >= u128::from(run.limits.memory) * 1_000_000 * 95
+}
+
 pub async fn get_executor_config(
     cache: &Cache<JsonFormatter>,
     sandkasten: &SandkastenClient,
@@ -274,8 +293,8 @@ pub enum Error {
     SerdeJson(#[from] serde_json::Error),
     #[error("environment does not exist")]
     EnvironmentNotFound,
-    #[error("sandbox execution was interrupted before reaching a learner resource limit")]
-    ExecutionInterrupted,
+    #[error("sandbox could not launch the learner program")]
+    LauncherFailed,
     #[error("failed to execute evaluator: {0:?}")]
     EvaluatorFailed(BuildRunResult),
     #[error("evaluator failed to produce valid output: {0:?}")]

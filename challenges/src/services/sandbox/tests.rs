@@ -100,7 +100,7 @@ async fn compilation_requires_documented_http_status_and_regular_compiler_exit()
     }
     assert!(
         matches!(response(StatusCode::BAD_REQUEST, compile_error(run_result(1,
-        "main.c:3: error: 'ENOSPC' undeclared"))).await,
+        "code.c:3:12: error: 'ENOSPC' undeclared (first use in this function)"))).await,
         Err(Error::Rejected(error)) if matches!(*error, ErrorResponse::Inner(BuildRunError::CompileError(_))))
     );
 }
@@ -205,6 +205,87 @@ async fn malformed_incomplete_and_inconsistent_replies_never_grade_a_learner() {
     runtime["run"]["status"] = 1.into();
     runtime["run"]["stderr"] = "out of memory".into();
     assert!(response(StatusCode::OK, runtime.to_string()).await.is_ok());
+}
+
+#[derive(serde::Deserialize)]
+struct RealReply {
+    source: String,
+    environment: String,
+    http: u16,
+    expect: String,
+    body: Value,
+}
+
+/// Recorded replies of a local Sandkasten 0.2.2 with the production config
+/// and limits (cgroup mode as in production, plus rlimit mode), a full
+/// artifact cache and an nsjail that cannot start. `expect` records how each
+/// reply was produced. Lesson limits follow the judge's request mapping.
+#[tokio::test]
+async fn real_sandbox_replies_keep_learner_errors_and_detect_outages() {
+    let replies: Vec<RealReply> = serde_json::from_str(include_str!("real_replies.json")).unwrap();
+    assert_eq!(replies.len(), 104);
+    for reply in replies {
+        let label = format!("{} ({})", reply.source, reply.environment);
+        if reply.body["error"] == "compile_error" {
+            // The judgment guard for cached results agrees with the adapter.
+            let details: RunResult = serde_json::from_value(reply.body["details"].clone()).unwrap();
+            assert_eq!(
+                technical_compilation(&details),
+                reply.expect == "technical",
+                "{label}"
+            );
+        }
+        let status = StatusCode::from_u16(reply.http).unwrap();
+        let actual = match response(status, reply.body.to_string()).await {
+            Err(Error::Rejected(error)) => match *error {
+                ErrorResponse::Inner(BuildRunError::CompileError(_)) => "compilation_error".into(),
+                other => panic!("{label}: unexpected rejection {other:?}"),
+            },
+            Err(_) => "technical".into(),
+            Ok(output) if launcher_failure(&output.run) => "technical".into(),
+            Ok(output) => {
+                let limits = &output.run.limits;
+                let lesson_time = (limits.time - 1) * 1000;
+                crate::services::judge::run_verdict(
+                    &output.run,
+                    Some(lesson_time),
+                    Some(limits.memory),
+                )
+                .map_or("Ok".into(), |verdict| format!("{verdict:?}"))
+            }
+        };
+        assert_eq!(actual, reply.expect, "{label}");
+    }
+}
+
+#[test]
+fn compiler_controlled_wording_is_technical_even_at_a_learner_location() {
+    let technical = |stderr: &str| {
+        technical_compilation(&serde_json::from_value(run_result(1, stderr)).unwrap())
+    };
+    for stderr in [
+        "code.c:3:1: internal compiler error: Segmentation fault",
+        "error: the compiler unexpectedly panicked. this is a bug.",
+        "code.java:1: error: error while writing Main: No space left on device\nclass Main {}\n^",
+        "/tmp/ccA1.s: Fatal error: can't write 4 bytes to section .text of /tmp/ccB2.o: 'No space left on device'",
+    ] {
+        assert!(technical(stderr), "{stderr}");
+    }
+    for stderr in [
+        "code.c:1:2: error: #error internal compiler error",
+        "code.c:1:2: error: #error error while writing X: No space left on device",
+        "code.cpp:1:2: error: #error No space left on device\n    1 | #error No space left on device\n      |  ^~~~~",
+        "error: No space left on device\n --> code.rs:1:1",
+        "error[E0277]: the compiler unexpectedly panicked\n --> code.rs:4:5",
+        "  = note: No space left on device",
+        "/box/code.go:2:8: invalid import path: No space left on device",
+        "/tmp/code.cs(1,8): error CS1029: #error: 'No space left on device' [/tmp/tmp.csproj]",
+        "code.c:4:5: error: unknown type name 'NOENOSPCX'",
+        "code.c:4:5: error: 'myenospc' undeclared",
+        "code.hs:1:18: error: [GHC-83865]\n    • In the first argument of ‘length’, namely ‘\"No space left on device\"’",
+    ] {
+        assert!(!technical(stderr), "{stderr}");
+    }
 }
 
 #[tokio::test]

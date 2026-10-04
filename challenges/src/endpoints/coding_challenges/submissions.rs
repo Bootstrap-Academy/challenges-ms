@@ -26,7 +26,7 @@ use sea_orm::{
 };
 use thiserror::Error;
 use tokio::task::JoinSet;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 use uuid::Uuid;
 
 use super::{check_challenge, CheckChallenge, CheckError, CheckTestcaseError};
@@ -395,6 +395,10 @@ pub async fn run_worker(
         slots.spawn(async move {
             loop {
                 match queue::claim(&state.db, owner, settings.lease_seconds).await {
+                    Ok(Some(claim)) if !queue::attempt_allowed(&settings, claim) => {
+                        // Earlier attempts lost their lease or crashed the worker.
+                        abandon(&state, claim).await;
+                    }
                     Ok(Some(claim)) => {
                         let work = tokio::time::timeout(
                             Duration::from_secs(u64::from(settings.max_execution_seconds)),
@@ -417,9 +421,14 @@ pub async fn run_worker(
                         if let Err(err) = result {
                             // Dropping work stops local evaluation. A remote request may
                             // already be running; only a current generation can commit.
-                            error!(submission = %claim.submission, "coding execution deferred: {err}");
-                            if let Err(err) = queue::retry(&state.db, claim, settings.retry_seconds).await {
-                                error!(submission = %claim.submission, "could not defer coding execution: {err}");
+                            if queue::last_attempt(&settings, claim) {
+                                warn!(submission = %claim.submission, attempt = claim.generation, "coding execution failed technically: {err}");
+                                abandon(&state, claim).await;
+                            } else {
+                                error!(submission = %claim.submission, attempt = claim.generation, "coding execution deferred: {err}");
+                                if let Err(err) = queue::retry(&state.db, claim, queue::retry_delay(&settings, claim)).await {
+                                    error!(submission = %claim.submission, "could not defer coding execution: {err}");
+                                }
                             }
                         } else if let Err(err) = crate::services::hearts::settle(
                             &state.db, &state.services, claim.submission,
@@ -442,6 +451,21 @@ pub async fn run_worker(
         tokio::select! {
             _ = heartbeat.tick() => queue::advertise(&state.db, owner, capacity, settings.lease_seconds).await?,
             ended = slots.join_next() => anyhow::bail!("coding worker slot stopped: {ended:?}"),
+        }
+    }
+}
+
+/// The attempt cap is reached: close without a verdict and without cost.
+async fn abandon(state: &SharedState, claim: Claim) {
+    match queue::abandon(&state.db, claim).await {
+        Ok(true) => {
+            warn!(submission = %claim.submission, attempt = claim.generation, "coding submission closed without verdict after technical failures")
+        }
+        // A newer claim or a stored result already owns the submission.
+        Ok(false) => {}
+        // The lease expires; the next claim is over the cap and closes it.
+        Err(err) => {
+            error!(submission = %claim.submission, "could not close coding submission: {err}")
         }
     }
 }

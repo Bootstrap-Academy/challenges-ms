@@ -11,8 +11,7 @@ pub mod learning_history;
 pub mod lesson_milestones;
 pub mod moderation;
 pub mod request_transactions;
+pub mod sandbox;
 pub mod subtasks;
 pub mod tasks;
 pub mod users;
-
-pub mod sandbox;

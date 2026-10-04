@@ -571,7 +571,7 @@ async fn coding_inline_sandbox_failures_are_free_and_retryable_postgres() {
     let (task, subtask) = f.seed("coding_challenge").await;
     let user = Uuid::new_v4();
     let endpoint = app(&f).await;
-    for (status, details) in [
+    let mut failures: Vec<(StatusCode, String)> = [
         (
             StatusCode::BAD_REQUEST,
             run_result(1, "No space left on device"),
@@ -581,12 +581,37 @@ async fn coding_inline_sandbox_failures_are_free_and_retryable_postgres() {
             StatusCode::SERVICE_UNAVAILABLE,
             run_result(1, "syntax error"),
         ),
-    ] {
-        executor.state.lock().unwrap().reply = Some((
-            "solution".into(),
+    ]
+    .into_iter()
+    .map(|(status, details)| {
+        (
             status,
             json!({"error":"compile_error","details":details}).to_string(),
+        )
+    })
+    .collect();
+    // Real full-cache replies (C/C++/Go/Rust link or write step) and nsjail
+    // launch failures recorded from a local Sandkasten with production limits.
+    let replies: Vec<Value> =
+        serde_json::from_str(include_str!("../../services/sandbox/real_replies.json")).unwrap();
+    for source in [
+        "claude-fix:cache_full_cgroup:c_valid",
+        "claude-fix:cache_full_cgroup:cpp_valid",
+        "claude-fix:cache_full_cgroup:go_valid",
+        "claude-fix:cache_full_cgroup:rust_valid",
+        "claude-fix:launcher_failure:python_launcher_failure",
+    ] {
+        let reply = replies
+            .iter()
+            .find(|reply| reply["source"] == source)
+            .unwrap();
+        failures.push((
+            StatusCode::from_u16(reply["http"].as_u64().unwrap() as u16).unwrap(),
+            reply["body"].to_string(),
         ));
+    }
+    for (status, reply) in failures {
+        executor.state.lock().unwrap().reply = Some(("solution".into(), status, reply));
         let mut data = solution();
         data["code"] = Uuid::new_v4().to_string().into();
         let (status, body) = f
@@ -628,6 +653,32 @@ async fn coding_inline_sandbox_failures_are_free_and_retryable_postgres() {
         .await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["verdict"], "COMPILATION_ERROR");
+    // A real Bash typo (status 127) is the learner's runtime error, with output.
+    let typo = replies
+        .iter()
+        .find(|reply| reply["source"] == "claude-fix:cgroup_prod_config:bash_command_typo")
+        .unwrap();
+    executor.state.lock().unwrap().reply =
+        Some(("solution".into(), StatusCode::OK, typo["body"].to_string()));
+    let mut data = solution();
+    data["code"] = Uuid::new_v4().to_string().into();
+    let (status, body) = f
+        .call(
+            &endpoint,
+            user,
+            false,
+            Method::POST,
+            &path(task, subtask),
+            data,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["verdict"], "RUNTIME_ERROR");
+    assert_eq!(body["run"]["status"], 127);
+    assert!(body["run"]["stderr"]
+        .as_str()
+        .unwrap()
+        .contains("ech: command not found"));
     executor.state.lock().unwrap().reply = None;
     let mut data = solution();
     data["code"] = Uuid::new_v4().to_string().into();

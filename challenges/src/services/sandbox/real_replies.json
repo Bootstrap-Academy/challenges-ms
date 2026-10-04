@@ -1,0 +1,3178 @@
+[
+ {
+  "source": "review:cache_full_rlimit:c",
+  "environment": "c",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 29432,
+     "time": 28
+    },
+    "status": 1,
+    "stderr": "/nix/store/i7mdvmliqcb5lz0nqija8rq55vws6gi8-binutils-2.44/bin/ld: final link failed: No space left on device\ncollect2: error: ld returned 1 exit status\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_rlimit:cpp",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 31672,
+     "time": 46
+    },
+    "status": 1,
+    "stderr": "/nix/store/i7mdvmliqcb5lz0nqija8rq55vws6gi8-binutils-2.44/bin/ld: final link failed: No space left on device\ncollect2: error: ld returned 1 exit status\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_rlimit:rust",
+  "environment": "rust",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 150716,
+     "time": 48
+    },
+    "status": 101,
+    "stderr": "rustc-LLVM ERROR: IO failure on output stream: No space left on device\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_rlimit:go",
+  "environment": "go",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 257812,
+     "time": 2384
+    },
+    "status": 1,
+    "stderr": "command-line-arguments: go build command-line-arguments: copying /tmp/go-build1172289999/b001/exe/a.out to /program/binary: write /program/binary: no space left on device\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_rlimit:kotlin",
+  "environment": "kotlin",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 29000,
+     "time": 47
+    },
+    "status": 1,
+    "stderr": "OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.\n",
+    "stdout": "Error occurred during initialization of VM\nCould not reserve enough space for the card marking array\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_rlimit:java",
+  "environment": "java",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 28896,
+     "time": 20
+    },
+    "status": 1,
+    "stderr": "",
+    "stdout": "Error occurred during initialization of VM\nCould not reserve enough space for the card marking array\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_cgroup:java",
+  "environment": "java",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 96752,
+     "time": 453
+    },
+    "status": 1,
+    "stderr": "code.java:1: error: error while writing Main: No space left on device\nclass Main { public static void main(String[] a) { System.out.println(1); } }\n^\n1 error\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_cgroup:kotlin",
+  "environment": "kotlin",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 445528,
+     "time": 2821
+    },
+    "status": 2,
+    "stderr": "exception: org.jetbrains.kotlin.cli.jvm.compiler.CompileEnvironmentException: Failed to generate jar file\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CompileEnvironmentUtil.doWriteToJar(CompileEnvironmentUtil.java:103)\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CompileEnvironmentUtil.writeToJar(CompileEnvironmentUtil.java:123)\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CliCompilerUtilsKt.writeOutput(cliCompilerUtils.kt:83)\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CliCompilerUtilsKt.writeOutputsIfNeeded(cliCompilerUtils.kt:119)\n\tat org.jetbrains.kotlin.cli.pipeline.jvm.JvmWriteOutputsPhase.executePhase(JvmWriteOutputsPhase.kt:17)\n\tat org.jetbrains.kotlin.cli.pipeline.jvm.JvmWriteOutputsPhase.executePhase(JvmWriteOutputsPhase.kt:12)\n\tat org.jetbrains.kotlin.cli.pipeline.PipelinePhase.phaseBody(PipelinePhase.kt:68)\n\tat org.jetbrains.kotlin.cli.pipeline.PipelinePhase.phaseBody(PipelinePhase.kt:58)\n\tat org.jetbrains.kotlin.config.phaser.NamedCompilerPhase.invoke(CompilerPhase.kt:102)\n\tat org.jetbrains.kotlin.backend.common.phaser.CompositePhase.invoke(PhaseBuilders.kt:22)\n\tat org.jetbrains.kotlin.config.phaser.CompilerPhaseKt.invokeToplevel(CompilerPhase.kt:53)\n\tat org.jetbrains.kotlin.cli.pipeline.AbstractCliPipeline.runPhasedPipeline(AbstractCliPipeline.kt:109)\n\tat org.jetbrains.kotlin.cli.pipeline.AbstractCliPipeline.execute(AbstractCliPipeline.kt:68)\n\tat org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecutePhased(K2JVMCompiler.kt:79)\n\tat org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecutePhased(K2JVMCompiler.kt:45)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler.execImpl(CLICompiler.kt:90)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:352)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:330)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:294)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler$Companion.doMainNoExit(CLICompiler.kt:431)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler$Companion.doMainNoExit$default(CLICompiler.kt:426)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler$Companion.doMain(CLICompiler.kt:418)\n\tat org.jetbrains.kotlin.cli.jvm.K2JVMCompiler$Companion.main(K2JVMCompiler.kt:252)\n\tat org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.main(K2JVMCompiler.kt)\n\tat java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:580)\n\tat org.jetbrains.kotlin.preloading.Preloader.run(Preloader.java:87)\n\tat org.jetbrains.kotlin.preloading.Preloader.main(Preloader.java:44)\nCaused by: java.io.IOException: No space left on device\n\tat java.base/java.io.FileOutputStream.writeBytes(Native Method)\n\tat java.base/java.io.FileOutputStream.write(FileOutputStream.java:367)\n\tat java.base/java.io.BufferedOutputStream.flushBuffer(BufferedOutputStream.java:125)\n\tat java.base/java.io.BufferedOutputStream.implFlush(BufferedOutputStream.java:252)\n\tat java.base/java.io.BufferedOutputStream.flush(BufferedOutputStream.java:240)\n\tat java.base/java.util.zip.DeflaterOutputStream.flush(DeflaterOutputStream.java:320)\n\tat java.base/java.io.BufferedOutputStream.implFlush(BufferedOutputStream.java:253)\n\tat java.base/java.io.BufferedOutputStream.flush(BufferedOutputStream.java:240)\n\tat java.base/java.io.DataOutputStream.flush(DataOutputStream.java:131)\n\tat java.base/java.util.jar.Manifest.write(Manifest.java:214)\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CompileEnvironmentUtil.doWriteToJar(CompileEnvironmentUtil.java:84)\n\t... 27 more\n\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_cgroup:c",
+  "environment": "c",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 29232,
+     "time": 51
+    },
+    "status": 1,
+    "stderr": "/nix/store/i7mdvmliqcb5lz0nqija8rq55vws6gi8-binutils-2.44/bin/ld: final link failed: No space left on device\ncollect2: error: ld returned 1 exit status\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cache_full_cgroup:python",
+  "environment": "python",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "review:cache_full_cgroup:bash",
+  "environment": "bash",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:python_memory_hog_list_lesson_64mb",
+  "environment": "python",
+  "http": 200,
+  "expect": "MemoryLimitExceeded",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "8d0a4c47-d10f-c887-8efa-9863f42612f3",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 69136,
+     "time": 51
+    },
+    "status": 137,
+    "stderr": "/nix/store/8s20r9arlsw6h6pbfxxwni8d3j4j8r9y-sandkasten-python-3.13.12-run: line 3:     2 Killed                     python /program/\"$@\"\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:c_memory_touch_lesson_64mb",
+  "environment": "c",
+  "http": 200,
+  "expect": "Ok",
+  "body": {
+   "build": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 32316,
+     "time": 43
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "cached": false,
+   "program_id": "917216ab-431c-d6ce-3988-b21d25e304bd",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7436,
+     "time": 26
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": "1"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:java_ok",
+  "environment": "java",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 100696,
+     "time": 548
+    },
+    "status": 1,
+    "stderr": "code.java:1: error: class Main is public, should be declared in a file named Main.java\npublic class Main { public static void main(String[] a) { System.out.println(new java.util.Scanner(System.in).nextLine()); } }\n       ^\n1 error\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:java_heap_hog_lesson_128mb",
+  "environment": "java",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 97388,
+     "time": 448
+    },
+    "status": 1,
+    "stderr": "code.java:1: error: class Main is public, should be declared in a file named Main.java\npublic class Main { public static void main(String[] a) { long[][] x = new long[64][]; for (int i = 0; i < 64; i++) x[i] = new long[2 << 20]; System.out.println(x.length); } }\n       ^\n1 error\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:bash_ok",
+  "environment": "bash",
+  "http": 200,
+  "expect": "Ok",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "8998ee71-d62b-1bfc-f8a8-5afe704bf9aa",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7444,
+     "time": 30
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": "hello\n"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:bash_command_typo",
+  "environment": "bash",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "e3b9a1ae-384a-0183-e8a1-906b7c3bf1d9",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7948,
+     "time": 7
+    },
+    "status": 127,
+    "stderr": "/program/code.sh: line 1: ech: command not found\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:bash_not_executable",
+  "environment": "bash",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "9649eb4e-11e7-2944-328a-c11bc673c0a8",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7464,
+     "time": 7
+    },
+    "status": 126,
+    "stderr": "/program/code.sh: line 1: /dev/null: Permission denied\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:python_ok",
+  "environment": "python",
+  "http": 200,
+  "expect": "Ok",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "7a07e373-2268-646c-50c4-02627aee06d8",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 11300,
+     "time": 14
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": "hello\n"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:python_exit_137",
+  "environment": "python",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "1b69964e-fe93-ec6d-21f2-2720b32f02df",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 11308,
+     "time": 16
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": "hello\n"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:python_exit_1",
+  "environment": "python",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "f18503dd-ca73-96ee-954d-96e25bc5b254",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 13184,
+     "time": 22
+    },
+    "status": 1,
+    "stderr": "Traceback (most recent call last):\n  File \"/program/code.py\", line 1, in <module>\n    raise ValueError(\"wrong\")\nValueError: wrong\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:python_busy_loop_lesson_1000ms",
+  "environment": "python",
+  "http": 200,
+  "expect": "TimeLimitExceeded",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "bcbefe3b-6763-e977-7f14-82dd4efed70e",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 2,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7484,
+     "time": 2004
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:python_sleep_lesson_1000ms",
+  "environment": "python",
+  "http": 200,
+  "expect": "TimeLimitExceeded",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "9c80b413-8812-030f-ce41-0a98b589a12b",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 2,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7672,
+     "time": 2005
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:python_memory_hog_lesson_64mb",
+  "environment": "python",
+  "http": 200,
+  "expect": "MemoryLimitExceeded",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "d4132e4f-c0e0-8b70-8d21-05172a8d9183",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 69136,
+     "time": 52
+    },
+    "status": 137,
+    "stderr": "/nix/store/8s20r9arlsw6h6pbfxxwni8d3j4j8r9y-sandkasten-python-3.13.12-run: line 3:     2 Killed                     python /program/\"$@\"\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:c_compile_error",
+  "environment": "c",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 22008,
+     "time": 12
+    },
+    "status": 1,
+    "stderr": "code.c: In function 'main':\ncode.c:1:25: error: 'x' undeclared (first use in this function)\n    1 | int main(void) { return x; }\n      |                         ^\ncode.c:1:25: note: each undeclared identifier is reported only once for each function it appears in\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:cpp_compile_error",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 73372,
+     "time": 155
+    },
+    "status": 1,
+    "stderr": "code.cpp: In function 'int main()':\ncode.cpp:2:27: error: 'y' was not declared in this scope\n    2 | int main() { std::cout << y; }\n      |                           ^\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:cpp_error_directive_out_of_memory",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 24052,
+     "time": 31
+    },
+    "status": 1,
+    "stderr": "code.cpp:1:2: error: #error out of memory\n    1 | #error out of memory\n      |  ^~~~~\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:cpp_static_assert_out_of_memory",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 24124,
+     "time": 14
+    },
+    "status": 1,
+    "stderr": "code.cpp:1:27: error: static assertion failed: out of memory\n    1 | static_assert(sizeof(int) == 3, \"out of memory\");\n      |               ~~~~~~~~~~~~^~~~\ncode.cpp:1:27: note: the comparison reduces to '(4 == 3)'\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:java_compile_error",
+  "environment": "java",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 97272,
+     "time": 403
+    },
+    "status": 1,
+    "stderr": "code.java:1: error: class Main is public, should be declared in a file named Main.java\npublic class Main { public static void main(String[] a) { int x = \"s\"; } }\n       ^\ncode.java:1: error: incompatible types: String cannot be converted to int\npublic class Main { public static void main(String[] a) { int x = \"s\"; } }\n                                                                  ^\n2 errors\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:rust_compile_error",
+  "environment": "rust",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 145316,
+     "time": 47
+    },
+    "status": 1,
+    "stderr": "error[E0308]: mismatched types\n --> code.rs:1:26\n  |\n1 | fn main() { let x: i32 = \"s\"; }\n  |                    ---   ^^^ expected `i32`, found `&str`\n  |                    |\n  |                    expected due to this\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:cgroup_prod_config:go_compile_error",
+  "environment": "go",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 258468,
+     "time": 2347
+    },
+    "status": 1,
+    "stderr": "# command-line-arguments\n./code.go:2:15: declared and not used: x\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:rlimit:bash_ok",
+  "environment": "bash",
+  "http": 200,
+  "expect": "Ok",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "8998ee71-d62b-1bfc-f8a8-5afe704bf9aa",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7788,
+     "time": 7
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": "hello\n"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:bash_command_typo",
+  "environment": "bash",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "e3b9a1ae-384a-0183-e8a1-906b7c3bf1d9",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7340,
+     "time": 7
+    },
+    "status": 127,
+    "stderr": "/program/code.sh: line 1: ech: command not found\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:bash_not_executable",
+  "environment": "bash",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "9649eb4e-11e7-2944-328a-c11bc673c0a8",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7496,
+     "time": 5
+    },
+    "status": 126,
+    "stderr": "/program/code.sh: line 1: /dev/null: Permission denied\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:python_ok",
+  "environment": "python",
+  "http": 200,
+  "expect": "Ok",
+  "body": {
+   "build": null,
+   "cached": true,
+   "program_id": "7a07e373-2268-646c-50c4-02627aee06d8",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 11276,
+     "time": 18
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": "hello\n"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:python_exit_137",
+  "environment": "python",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "1b69964e-fe93-ec6d-21f2-2720b32f02df",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 11324,
+     "time": 16
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": "hello\n"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:python_exit_1",
+  "environment": "python",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "f18503dd-ca73-96ee-954d-96e25bc5b254",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 13120,
+     "time": 23
+    },
+    "status": 1,
+    "stderr": "Traceback (most recent call last):\n  File \"/program/code.py\", line 1, in <module>\n    raise ValueError(\"wrong\")\nValueError: wrong\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:python_busy_loop_lesson_1000ms",
+  "environment": "python",
+  "http": 200,
+  "expect": "TimeLimitExceeded",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "bcbefe3b-6763-e977-7f14-82dd4efed70e",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 2,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7780,
+     "time": 2002
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:python_sleep_lesson_1000ms",
+  "environment": "python",
+  "http": 200,
+  "expect": "TimeLimitExceeded",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "9c80b413-8812-030f-ce41-0a98b589a12b",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 2,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7324,
+     "time": 2003
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:python_memory_hog_lesson_64mb",
+  "environment": "python",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "d4132e4f-c0e0-8b70-8d21-05172a8d9183",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 13400,
+     "time": 28
+    },
+    "status": 1,
+    "stderr": "Traceback (most recent call last):\n  File \"/program/code.py\", line 1, in <module>\n    x = bytearray(400 * 1024 * 1024); print(len(x))\nMemoryError\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "review:rlimit:c_compile_error",
+  "environment": "c",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 21656,
+     "time": 30
+    },
+    "status": 1,
+    "stderr": "code.c: In function 'main':\ncode.c:1:25: error: 'x' undeclared (first use in this function)\n    1 | int main(void) { return x; }\n      |                         ^\ncode.c:1:25: note: each undeclared identifier is reported only once for each function it appears in\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:rlimit:cpp_compile_error",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 73364,
+     "time": 186
+    },
+    "status": 1,
+    "stderr": "code.cpp: In function 'int main()':\ncode.cpp:2:27: error: 'y' was not declared in this scope\n    2 | int main() { std::cout << y; }\n      |                           ^\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:rlimit:cpp_error_directive_out_of_memory",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 24104,
+     "time": 11
+    },
+    "status": 1,
+    "stderr": "code.cpp:1:2: error: #error out of memory\n    1 | #error out of memory\n      |  ^~~~~\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:rlimit:cpp_static_assert_out_of_memory",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 24116,
+     "time": 11
+    },
+    "status": 1,
+    "stderr": "code.cpp:1:27: error: static assertion failed: out of memory\n    1 | static_assert(sizeof(int) == 3, \"out of memory\");\n      |               ~~~~~~~~~~~~^~~~\ncode.cpp:1:27: note: the comparison reduces to '(4 == 3)'\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:rlimit:java_compile_error",
+  "environment": "java",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 29136,
+     "time": 62
+    },
+    "status": 1,
+    "stderr": "",
+    "stdout": "Error occurred during initialization of VM\nCould not reserve enough space for the card marking array\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:rlimit:rust_compile_error",
+  "environment": "rust",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 143512,
+     "time": 174
+    },
+    "status": 1,
+    "stderr": "error[E0308]: mismatched types\n --> code.rs:1:26\n  |\n1 | fn main() { let x: i32 = \"s\"; }\n  |                    ---   ^^^ expected `i32`, found `&str`\n  |                    |\n  |                    expected due to this\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "review:rlimit:go_compile_error",
+  "environment": "go",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 249780,
+     "time": 2414
+    },
+    "status": 1,
+    "stderr": "# command-line-arguments\n./code.go:2:15: declared and not used: x\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:bash_valid",
+  "environment": "bash",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:c_valid",
+  "environment": "c",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 31940,
+     "time": 61
+    },
+    "status": 1,
+    "stderr": "/nix/store/i7mdvmliqcb5lz0nqija8rq55vws6gi8-binutils-2.44/bin/ld: final link failed: No space left on device\ncollect2: error: ld returned 1 exit status\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:cpp_valid",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 83852,
+     "time": 221
+    },
+    "status": 1,
+    "stderr": "/nix/store/i7mdvmliqcb5lz0nqija8rq55vws6gi8-binutils-2.44/bin/ld: final link failed: No space left on device\ncollect2: error: ld returned 1 exit status\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:rust_valid",
+  "environment": "rust",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 166208,
+     "time": 59
+    },
+    "status": 101,
+    "stderr": "rustc-LLVM ERROR: IO failure on output stream: No space left on device\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:go_valid",
+  "environment": "go",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 245680,
+     "time": 5278
+    },
+    "status": 1,
+    "stderr": "command-line-arguments: go build command-line-arguments: copying /tmp/go-build1006626136/b001/exe/a.out to /program/binary: write /program/binary: no space left on device\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:java_valid",
+  "environment": "java",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 99436,
+     "time": 482
+    },
+    "status": 1,
+    "stderr": "code.java:1: error: error while writing Main: No space left on device\nclass Main { public static void main(String[] a) { System.out.println(new java.util.Scanner(System.in).nextLine()); } }\n^\n1 error\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:kotlin_valid",
+  "environment": "kotlin",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 444676,
+     "time": 3220
+    },
+    "status": 2,
+    "stderr": "exception: org.jetbrains.kotlin.cli.jvm.compiler.CompileEnvironmentException: Failed to generate jar file\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CompileEnvironmentUtil.doWriteToJar(CompileEnvironmentUtil.java:103)\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CompileEnvironmentUtil.writeToJar(CompileEnvironmentUtil.java:123)\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CliCompilerUtilsKt.writeOutput(cliCompilerUtils.kt:83)\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CliCompilerUtilsKt.writeOutputsIfNeeded(cliCompilerUtils.kt:119)\n\tat org.jetbrains.kotlin.cli.pipeline.jvm.JvmWriteOutputsPhase.executePhase(JvmWriteOutputsPhase.kt:17)\n\tat org.jetbrains.kotlin.cli.pipeline.jvm.JvmWriteOutputsPhase.executePhase(JvmWriteOutputsPhase.kt:12)\n\tat org.jetbrains.kotlin.cli.pipeline.PipelinePhase.phaseBody(PipelinePhase.kt:68)\n\tat org.jetbrains.kotlin.cli.pipeline.PipelinePhase.phaseBody(PipelinePhase.kt:58)\n\tat org.jetbrains.kotlin.config.phaser.NamedCompilerPhase.invoke(CompilerPhase.kt:102)\n\tat org.jetbrains.kotlin.backend.common.phaser.CompositePhase.invoke(PhaseBuilders.kt:22)\n\tat org.jetbrains.kotlin.config.phaser.CompilerPhaseKt.invokeToplevel(CompilerPhase.kt:53)\n\tat org.jetbrains.kotlin.cli.pipeline.AbstractCliPipeline.runPhasedPipeline(AbstractCliPipeline.kt:109)\n\tat org.jetbrains.kotlin.cli.pipeline.AbstractCliPipeline.execute(AbstractCliPipeline.kt:68)\n\tat org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecutePhased(K2JVMCompiler.kt:79)\n\tat org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecutePhased(K2JVMCompiler.kt:45)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler.execImpl(CLICompiler.kt:90)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:352)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:330)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:294)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler$Companion.doMainNoExit(CLICompiler.kt:431)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler$Companion.doMainNoExit$default(CLICompiler.kt:426)\n\tat org.jetbrains.kotlin.cli.common.CLICompiler$Companion.doMain(CLICompiler.kt:418)\n\tat org.jetbrains.kotlin.cli.jvm.K2JVMCompiler$Companion.main(K2JVMCompiler.kt:252)\n\tat org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.main(K2JVMCompiler.kt)\n\tat java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:580)\n\tat org.jetbrains.kotlin.preloading.Preloader.run(Preloader.java:87)\n\tat org.jetbrains.kotlin.preloading.Preloader.main(Preloader.java:44)\nCaused by: java.io.IOException: No space left on device\n\tat java.base/java.io.FileOutputStream.writeBytes(Native Method)\n\tat java.base/java.io.FileOutputStream.write(FileOutputStream.java:367)\n\tat java.base/java.io.BufferedOutputStream.flushBuffer(BufferedOutputStream.java:125)\n\tat java.base/java.io.BufferedOutputStream.implFlush(BufferedOutputStream.java:252)\n\tat java.base/java.io.BufferedOutputStream.flush(BufferedOutputStream.java:240)\n\tat java.base/java.util.zip.DeflaterOutputStream.flush(DeflaterOutputStream.java:320)\n\tat java.base/java.io.BufferedOutputStream.implFlush(BufferedOutputStream.java:253)\n\tat java.base/java.io.BufferedOutputStream.flush(BufferedOutputStream.java:240)\n\tat java.base/java.io.DataOutputStream.flush(DataOutputStream.java:131)\n\tat java.base/java.util.jar.Manifest.write(Manifest.java:214)\n\tat org.jetbrains.kotlin.cli.jvm.compiler.CompileEnvironmentUtil.doWriteToJar(CompileEnvironmentUtil.java:84)\n\t... 27 more\n\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:csharp_valid",
+  "environment": "csharp",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 122128,
+     "time": 11936
+    },
+    "status": 1,
+    "stderr": "",
+    "stdout": "\nWelcome to .NET 6.0!\r\n---------------------\r\nSDK Version: 6.0.427\n\n----------------\r\nInstalled an ASP.NET Core HTTPS development certificate.\r\nTo trust the certificate run 'dotnet dev-certs https --trust' (Windows and macOS only).\r\nLearn about HTTPS: https://aka.ms/dotnet-https\r\n----------------\r\nWrite your first app: https://aka.ms/dotnet-hello-world\r\nFind out what's new: https://aka.ms/dotnet-whats-new\r\nExplore documentation: https://aka.ms/dotnet-docs\r\nReport issues and find source on GitHub: https://github.com/dotnet/core\r\nUse 'dotnet --help' to see available commands or visit: https://aka.ms/dotnet-cli\r\n--------------------------------------------------------------------------------------\nThe template \"Console App\" was created successfully.\n\n  Determining projects to restore...\n  Restored /tmp/tmp.csproj (in 39 ms).\nMSBuild version 17.3.4+a400405ba for .NET\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 1 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 2 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 3 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 4 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 5 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 6 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 7 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 8 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 9 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 10 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): error MSB3027: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Exceeded retry count of 10. Failed.  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): error MSB3021: Unable to copy file \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". No space left on device [/tmp/tmp.csproj]\n\nBuild FAILED.\n\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 1 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 2 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 3 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 4 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 5 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 6 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 7 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 8 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 9 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): warning MSB3026: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Beginning retry 10 in 1000ms. No space left on device  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): error MSB3027: Could not copy \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". Exceeded retry count of 10. Failed.  [/tmp/tmp.csproj]\n/nix/store/2ashk2ig3vb8s54mpyc2w5dgr4saqcvj-dotnet-sdk-6.0.427/sdk/6.0.427/Microsoft.Common.CurrentVersion.targets(5097,5): error MSB3021: Unable to copy file \"/tmp/obj/Debug/net6.0/apphost\" to \"/program/tmp\". No space left on device [/tmp/tmp.csproj]\n    10 Warning(s)\n    2 Error(s)\n\nTime Elapsed 00:00:10.99\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:haskell_valid",
+  "environment": "haskell",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 168696,
+     "time": 331
+    },
+    "status": 1,
+    "stderr": "/nix/store/i7mdvmliqcb5lz0nqija8rq55vws6gi8-binutils-2.44/bin/ld.gold: fatal error: /program/binary: No space left on device\ncollect2: error: ld returned 1 exit status\nghc-9.10.3: `cc' failed in phase `Linker'. (Exit code: 1)\nHasCallStack backtrace:\n  collectBacktraces, called at libraries/ghc-internal/src/GHC/Internal/Exception.hs:169:13 in ghc-internal:GHC.Internal.Exception\n  toExceptionWithBacktrace, called at libraries/ghc-internal/src/GHC/Internal/IO.hs:260:11 in ghc-internal:GHC.Internal.IO\n  throwIO, called at libraries/exceptions/src/Control/Monad/Catch.hs:308:12 in exceptions-0.10.9-8ca3:Control.Monad.Catch\n  throwM, called at libraries/exceptions/src/Control/Monad/Catch.hs:797:84 in exceptions-0.10.9-8ca3:Control.Monad.Catch\n  onException, called at compiler/GHC/Driver/Make.hs:2983:23 in ghc-9.10.3-7ae9:GHC.Driver.Make\n\n\n",
+    "stdout": "[1 of 2] Compiling Main             ( code.hs, code.o )\n[2 of 2] Linking /program/binary\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:javascript_valid",
+  "environment": "javascript",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:typescript_valid",
+  "environment": "typescript",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 299964,
+     "time": 2819
+    },
+    "status": 2,
+    "stderr": "",
+    "stdout": "error TS5033: Could not write file '/program/code.js': ENOSPC: no space left on device, write.\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:lua_valid",
+  "environment": "lua",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:perl_valid",
+  "environment": "perl",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:php_valid",
+  "environment": "php",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:python_valid",
+  "environment": "python",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "claude-fix:cache_full_cgroup:ruby_valid",
+  "environment": "ruby",
+  "http": 500,
+  "expect": "technical",
+  "body": {
+   "error": "internal_server_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:bash_command_typo",
+  "environment": "bash",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "e3b9a1ae-384a-0183-e8a1-906b7c3bf1d9",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7948,
+     "time": 27
+    },
+    "status": 127,
+    "stderr": "/program/code.sh: line 1: ech: command not found\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:bash_not_executable",
+  "environment": "bash",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "9649eb4e-11e7-2944-328a-c11bc673c0a8",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7328,
+     "time": 8
+    },
+    "status": 126,
+    "stderr": "/program/code.sh: line 1: /dev/null: Permission denied\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:bash_exit_137",
+  "environment": "bash",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "6f5e8b62-a006-4236-3855-1c5ba0db262f",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7420,
+     "time": 8
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": "hello\n"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:python_exit_137",
+  "environment": "python",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "1b69964e-fe93-ec6d-21f2-2720b32f02df",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 11324,
+     "time": 17
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": "hello\n"
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:python_exit_1",
+  "environment": "python",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "f18503dd-ca73-96ee-954d-96e25bc5b254",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 13124,
+     "time": 40
+    },
+    "status": 1,
+    "stderr": "Traceback (most recent call last):\n  File \"/program/code.py\", line 1, in <module>\n    raise ValueError(\"wrong\")\nValueError: wrong\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:python_busy_loop_lesson_1000ms",
+  "environment": "python",
+  "http": 200,
+  "expect": "TimeLimitExceeded",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "bcbefe3b-6763-e977-7f14-82dd4efed70e",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 2,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7596,
+     "time": 2005
+    },
+    "status": 137,
+    "stderr": "",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:c_memory_lesson_64mb",
+  "environment": "c",
+  "http": 200,
+  "expect": "MemoryLimitExceeded",
+  "body": {
+   "build": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 33556,
+     "time": 48
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "cached": false,
+   "program_id": "8da3585e-1e6f-6f5f-5490-1ba79a2f43c5",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 62812,
+     "time": 41
+    },
+    "status": 137,
+    "stderr": "/nix/store/vnc26akim43ybkzbw1ic9ybxssdcjr9h-sandkasten-c-17-run: line 4:     2 Killed                     /program/binary \"$@\"\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:cpp_memory_lesson_64mb",
+  "environment": "cpp",
+  "http": 200,
+  "expect": "MemoryLimitExceeded",
+  "body": {
+   "build": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 88892,
+     "time": 212
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "cached": false,
+   "program_id": "69ac4432-8f8a-34cb-794b-76e0f178807d",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 64692,
+     "time": 31
+    },
+    "status": 137,
+    "stderr": "/nix/store/1g19f533wfd7fn0xi57anx926naqrilx-sandkasten-cpp-20-run: line 4:     2 Killed                     /program/binary \"$@\"\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:rust_memory_lesson_64mb",
+  "environment": "rust",
+  "http": 200,
+  "expect": "MemoryLimitExceeded",
+  "body": {
+   "build": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 164232,
+     "time": 95
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "cached": false,
+   "program_id": "231033e6-8999-9b37-3953-99e85c5e4f4c",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 63600,
+     "time": 37
+    },
+    "status": 137,
+    "stderr": "/nix/store/mvv49l7rh0rgvphdf2wvx1yd6qwnc224-sandkasten-rust-1.91.1-run: line 4:     2 Killed                     /program/binary \"$@\"\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:go_memory_lesson_64mb",
+  "environment": "go",
+  "http": 200,
+  "expect": "MemoryLimitExceeded",
+  "body": {
+   "build": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 245884,
+     "time": 4299
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "cached": false,
+   "program_id": "552d5b15-e421-1c6f-8acb-17b0d7d7289e",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 63100,
+     "time": 48
+    },
+    "status": 137,
+    "stderr": "/nix/store/sbwgsvw36b880n2h1ciwhm8cgxskmzil-sandkasten-go-1.25.10-run: line 4:     2 Killed                     /program/binary \"$@\"\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:python_memory_lesson_64mb",
+  "environment": "python",
+  "http": 200,
+  "expect": "MemoryLimitExceeded",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "399b87bd-945b-3cca-bf37-8575fd49ea08",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 64,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 69392,
+     "time": 47
+    },
+    "status": 137,
+    "stderr": "/nix/store/8s20r9arlsw6h6pbfxxwni8d3j4j8r9y-sandkasten-python-3.13.12-run: line 3:     2 Killed                     python /program/\"$@\"\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:java_memory_lesson_128mb",
+  "environment": "java",
+  "http": 200,
+  "expect": "RuntimeError",
+  "body": {
+   "build": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 99992,
+     "time": 1052
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "cached": false,
+   "program_id": "6d6d7983-6516-1685-14b4-281b1b90d988",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 128,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 80380,
+     "time": 80
+    },
+    "status": 1,
+    "stderr": "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space\n\tat Main.main(code.java:1)\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:c_memory_lesson_128mb",
+  "environment": "c",
+  "http": 200,
+  "expect": "MemoryLimitExceeded",
+  "body": {
+   "build": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 33556,
+     "time": 48
+    },
+    "status": 0,
+    "stderr": "",
+    "stdout": ""
+   },
+   "cached": true,
+   "program_id": "8da3585e-1e6f-6f5f-5490-1ba79a2f43c5",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 128,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 125276,
+     "time": 57
+    },
+    "status": 137,
+    "stderr": "/nix/store/vnc26akim43ybkzbw1ic9ybxssdcjr9h-sandkasten-c-17-run: line 4:     2 Killed                     /program/binary \"$@\"\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:c_compile_error",
+  "environment": "c",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 21940,
+     "time": 32
+    },
+    "status": 1,
+    "stderr": "code.c: In function 'main':\ncode.c:1:25: error: 'x' undeclared (first use in this function)\n    1 | int main(void) { return x; }\n      |                         ^\ncode.c:1:25: note: each undeclared identifier is reported only once for each function it appears in\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:cpp_compile_error",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 73548,
+     "time": 156
+    },
+    "status": 1,
+    "stderr": "code.cpp: In function 'int main()':\ncode.cpp:2:27: error: 'y' was not declared in this scope\n    2 | int main() { std::cout << y; }\n      |                           ^\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:rust_compile_error",
+  "environment": "rust",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 144504,
+     "time": 44
+    },
+    "status": 1,
+    "stderr": "error[E0308]: mismatched types\n --> code.rs:1:26\n  |\n1 | fn main() { let x: i32 = \"s\"; }\n  |                    ---   ^^^ expected `i32`, found `&str`\n  |                    |\n  |                    expected due to this\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:go_compile_error",
+  "environment": "go",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 253260,
+     "time": 2210
+    },
+    "status": 1,
+    "stderr": "# command-line-arguments\n./code.go:2:15: declared and not used: x\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:java_compile_error",
+  "environment": "java",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 96508,
+     "time": 402
+    },
+    "status": 1,
+    "stderr": "code.java:1: error: incompatible types: String cannot be converted to int\nclass Main { public static void main(String[] a) { int x = \"s\"; } }\n                                                           ^\n1 error\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:kotlin_compile_error",
+  "environment": "kotlin",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 411556,
+     "time": 2030
+    },
+    "status": 1,
+    "stderr": "code.kt:1:27: error: initializer type mismatch: expected 'Int', actual 'String'.\nfun main() { val x: Int = \"s\" }\n                          ^^^\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:csharp_compile_error",
+  "environment": "csharp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 121316,
+     "time": 1638
+    },
+    "status": 1,
+    "stderr": "",
+    "stdout": "\nWelcome to .NET 6.0!\r\n---------------------\r\nSDK Version: 6.0.427\n\n----------------\r\nInstalled an ASP.NET Core HTTPS development certificate.\r\nTo trust the certificate run 'dotnet dev-certs https --trust' (Windows and macOS only).\r\nLearn about HTTPS: https://aka.ms/dotnet-https\r\n----------------\r\nWrite your first app: https://aka.ms/dotnet-hello-world\r\nFind out what's new: https://aka.ms/dotnet-whats-new\r\nExplore documentation: https://aka.ms/dotnet-docs\r\nReport issues and find source on GitHub: https://github.com/dotnet/core\r\nUse 'dotnet --help' to see available commands or visit: https://aka.ms/dotnet-cli\r\n--------------------------------------------------------------------------------------\nThe template \"Console App\" was created successfully.\n\n  Determining projects to restore...\n  Restored /tmp/tmp.csproj (in 37 ms).\nMSBuild version 17.3.4+a400405ba for .NET\n/tmp/code.cs(1,40): error CS0029: Cannot implicitly convert type 'string' to 'int' [/tmp/tmp.csproj]\n\nBuild FAILED.\n\n/tmp/code.cs(1,40): error CS0029: Cannot implicitly convert type 'string' to 'int' [/tmp/tmp.csproj]\n    0 Warning(s)\n    1 Error(s)\n\nTime Elapsed 00:00:00.83\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:haskell_compile_error",
+  "environment": "haskell",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 159320,
+     "time": 69
+    },
+    "status": 1,
+    "stderr": "code.hs:1:18: error: [GHC-83865]\n    * Couldn't match type `Int' with `[Char]'\n      Expected: String\n        Actual: Int\n    * In the first argument of `putStrLn', namely `(1 :: Int)'\n      In the expression: putStrLn (1 :: Int)\n      In an equation for `main': main = putStrLn (1 :: Int)\n  |\n1 | main = putStrLn (1 :: Int)\n  |                  ^^^^^^^^\n\n",
+    "stdout": "[1 of 2] Compiling Main             ( code.hs, code.o )\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:typescript_compile_error",
+  "environment": "typescript",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 300820,
+     "time": 2683
+    },
+    "status": 2,
+    "stderr": "",
+    "stdout": "code.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:c_error_directive_enospc",
+  "environment": "c",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 22008,
+     "time": 32
+    },
+    "status": 1,
+    "stderr": "code.c:1:2: error: #error No space left on device\n    1 | #error No space left on device\n      |  ^~~~~\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:c_error_directive_out_of_memory",
+  "environment": "c",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 22152,
+     "time": 12
+    },
+    "status": 1,
+    "stderr": "code.c:1:2: error: #error out of memory\n    1 | #error out of memory\n      |  ^~~~~\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:cpp_static_assert_enospc",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 24360,
+     "time": 12
+    },
+    "status": 1,
+    "stderr": "code.cpp:1:27: error: static assertion failed: No space left on device\n    1 | static_assert(sizeof(int) == 3, \"No space left on device\");\n      |               ~~~~~~~~~~~~^~~~\ncode.cpp:1:27: note: the comparison reduces to '(4 == 3)'\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:cpp_static_assert_out_of_memory",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 24356,
+     "time": 11
+    },
+    "status": 1,
+    "stderr": "code.cpp:1:27: error: static assertion failed: out of memory\n    1 | static_assert(sizeof(int) == 3, \"out of memory\");\n      |               ~~~~~~~~~~~~^~~~\ncode.cpp:1:27: note: the comparison reduces to '(4 == 3)'\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:cpp_string_echo_enospc",
+  "environment": "cpp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 26528,
+     "time": 14
+    },
+    "status": 1,
+    "stderr": "code.cpp: In function 'int main()':\ncode.cpp:2:50: error: expected ';' before '}' token\n    2 | int main() { std::puts(\"No space left on device\") }\n      |                                                  ^~\n      |                                                  ;\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:rust_compile_error_macro_enospc",
+  "environment": "rust",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 118528,
+     "time": 23
+    },
+    "status": 1,
+    "stderr": "error: No space left on device\n --> code.rs:1:1\n  |\n1 | compile_error!(\"No space left on device\");\n  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nerror: aborting due to 1 previous error\n\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:rust_string_echo_enospc",
+  "environment": "rust",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 144484,
+     "time": 29
+    },
+    "status": 1,
+    "stderr": "error[E0308]: mismatched types\n --> code.rs:1:26\n  |\n1 | fn main() { let x: i32 = \"No space left on device\"; }\n  |                    ---   ^^^^^^^^^^^^^^^^^^^^^^^^^ expected `i32`, found `&str`\n  |                    |\n  |                    expected due to this\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:go_string_echo_enospc",
+  "environment": "go",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 254896,
+     "time": 2305
+    },
+    "status": 1,
+    "stderr": "# command-line-arguments\n./code.go:2:19: declared and not used: x\n./code.go:2:27: cannot use \"No space left on device\" (untyped string constant) as int value in variable declaration\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:go_import_enospc",
+  "environment": "go",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 17388,
+     "time": 36
+    },
+    "status": 1,
+    "stderr": "/box/code.go:2:8: invalid import path: No space left on device\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:java_string_echo_enospc",
+  "environment": "java",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 91800,
+     "time": 297
+    },
+    "status": 1,
+    "stderr": "code.java:1: error: ';' expected\nclass Main { public static void main(String[] a) { System.out.println(\"No space left on device\") } }\n                                                                                                ^\n1 error\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:java_string_echo_out_of_memory",
+  "environment": "java",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 97228,
+     "time": 392
+    },
+    "status": 1,
+    "stderr": "code.java:1: error: incompatible types: String cannot be converted to int\nclass Main { public static void main(String[] a) { int x = \"java.lang.OutOfMemoryError: out of memory\"; } }\n                                                           ^\n1 error\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:kotlin_string_echo_enospc",
+  "environment": "kotlin",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 406052,
+     "time": 1974
+    },
+    "status": 1,
+    "stderr": "code.kt:1:27: error: initializer type mismatch: expected 'Int', actual 'String'.\nfun main() { val x: Int = \"No space left on device\" }\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:csharp_error_directive_enospc",
+  "environment": "csharp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 121344,
+     "time": 1367
+    },
+    "status": 1,
+    "stderr": "",
+    "stdout": "\nWelcome to .NET 6.0!\r\n---------------------\r\nSDK Version: 6.0.427\n\n----------------\r\nInstalled an ASP.NET Core HTTPS development certificate.\r\nTo trust the certificate run 'dotnet dev-certs https --trust' (Windows and macOS only).\r\nLearn about HTTPS: https://aka.ms/dotnet-https\r\n----------------\r\nWrite your first app: https://aka.ms/dotnet-hello-world\r\nFind out what's new: https://aka.ms/dotnet-whats-new\r\nExplore documentation: https://aka.ms/dotnet-docs\r\nReport issues and find source on GitHub: https://github.com/dotnet/core\r\nUse 'dotnet --help' to see available commands or visit: https://aka.ms/dotnet-cli\r\n--------------------------------------------------------------------------------------\nThe template \"Console App\" was created successfully.\n\n  Determining projects to restore...\n  Restored /tmp/tmp.csproj (in 36 ms).\nMSBuild version 17.3.4+a400405ba for .NET\n/tmp/code.cs(1,8): error CS1029: #error: 'No space left on device' [/tmp/tmp.csproj]\n\nBuild FAILED.\n\n/tmp/code.cs(1,8): error CS1029: #error: 'No space left on device' [/tmp/tmp.csproj]\n    0 Warning(s)\n    1 Error(s)\n\nTime Elapsed 00:00:00.51\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:csharp_string_echo_enospc",
+  "environment": "csharp",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 121140,
+     "time": 1712
+    },
+    "status": 1,
+    "stderr": "",
+    "stdout": "\nWelcome to .NET 6.0!\r\n---------------------\r\nSDK Version: 6.0.427\n\n----------------\r\nInstalled an ASP.NET Core HTTPS development certificate.\r\nTo trust the certificate run 'dotnet dev-certs https --trust' (Windows and macOS only).\r\nLearn about HTTPS: https://aka.ms/dotnet-https\r\n----------------\r\nWrite your first app: https://aka.ms/dotnet-hello-world\r\nFind out what's new: https://aka.ms/dotnet-whats-new\r\nExplore documentation: https://aka.ms/dotnet-docs\r\nReport issues and find source on GitHub: https://github.com/dotnet/core\r\nUse 'dotnet --help' to see available commands or visit: https://aka.ms/dotnet-cli\r\n--------------------------------------------------------------------------------------\nThe template \"Console App\" was created successfully.\n\n  Determining projects to restore...\n  Restored /tmp/tmp.csproj (in 37 ms).\nMSBuild version 17.3.4+a400405ba for .NET\n/tmp/code.cs(1,40): error CS0029: Cannot implicitly convert type 'string' to 'int' [/tmp/tmp.csproj]\n\nBuild FAILED.\n\n/tmp/code.cs(1,40): error CS0029: Cannot implicitly convert type 'string' to 'int' [/tmp/tmp.csproj]\n    0 Warning(s)\n    1 Error(s)\n\nTime Elapsed 00:00:00.87\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:haskell_string_echo_enospc",
+  "environment": "haskell",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 164152,
+     "time": 89
+    },
+    "status": 1,
+    "stderr": "code.hs:1:18: error: [GHC-83865]\n    * Couldn't match type `Int' with `[Char]'\n      Expected: String\n        Actual: Int\n    * In the first argument of `putStrLn', namely\n        `(length \"No space left on device\")'\n      In the expression: putStrLn (length \"No space left on device\")\n      In an equation for `main':\n          main = putStrLn (length \"No space left on device\")\n  |\n1 | main = putStrLn (length \"No space left on device\")\n  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n",
+    "stdout": "[1 of 2] Compiling Main             ( code.hs, code.o )\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:cgroup_prod_config:typescript_string_echo_enospc",
+  "environment": "typescript",
+  "http": 400,
+  "expect": "compilation_error",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 299804,
+     "time": 2721
+    },
+    "status": 2,
+    "stderr": "",
+    "stdout": "code.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.\n"
+   },
+   "error": "compile_error"
+  }
+ },
+ {
+  "source": "claude-fix:launcher_failure:python_launcher_failure",
+  "environment": "python",
+  "http": 200,
+  "expect": "technical",
+  "body": {
+   "build": null,
+   "cached": true,
+   "program_id": "7a07e373-2268-646c-50c4-02627aee06d8",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7296,
+     "time": 3
+    },
+    "status": 255,
+    "stderr": "[F][2026-10-04T03:49:16+0200][1] runChild():506 Launching child process failed\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:launcher_failure:bash_launcher_failure",
+  "environment": "bash",
+  "http": 200,
+  "expect": "technical",
+  "body": {
+   "build": null,
+   "cached": false,
+   "program_id": "8998ee71-d62b-1bfc-f8a8-5afe704bf9aa",
+   "run": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 512,
+     "network": false,
+     "processes": 64,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 5,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7836,
+     "time": 2
+    },
+    "status": 255,
+    "stderr": "[F][2026-10-04T03:49:16+0200][1] runChild():506 Launching child process failed\n",
+    "stdout": ""
+   },
+   "ttl": 300
+  }
+ },
+ {
+  "source": "claude-fix:launcher_failure:c_launcher_failure",
+  "environment": "c",
+  "http": 400,
+  "expect": "technical",
+  "body": {
+   "details": {
+    "limits": {
+     "cpus": 1,
+     "file_descriptors": 256,
+     "filesize": 16,
+     "memory": 1024,
+     "network": false,
+     "processes": 256,
+     "stderr_max_size": 65536,
+     "stdout_max_size": 65536,
+     "time": 30,
+     "tmpfs": 256
+    },
+    "resource_usage": {
+     "memory": 7408,
+     "time": 3
+    },
+    "status": 255,
+    "stderr": "[F][2026-10-04T03:49:16+0200][1] runChild():506 Launching child process failed\n",
+    "stdout": ""
+   },
+   "error": "compile_error"
+  }
+ }
+]
