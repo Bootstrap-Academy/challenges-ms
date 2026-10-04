@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use chrono::{DateTime, Utc};
 use entity::{challenges_coding_challenges, sea_orm_active_enums::ChallengesSubtaskType};
 use fnct::format::JsonFormatter;
@@ -15,7 +16,6 @@ use poem_openapi::{
     payload::Json,
     OpenApi,
 };
-use sandkasten_client::SandkastenClient;
 use schemas::challenges::coding_challenges::{
     CodingChallenge, CodingChallengeSummary, CreateCodingChallengeRequest, Example,
     SubmissionContent, UpdateCodingChallengeRequest,

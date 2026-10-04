@@ -1,20 +1,19 @@
 use entity::sea_orm_active_enums::ChallengesVerdict;
 use fnct::{format::JsonFormatter, key};
 use lib::{Cache, CacheError};
-use sandkasten_client::{
-    schemas::{
-        programs::{
-            BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, File, LimitsOpt,
-            MainFile, RunRequest, RunResult,
-        },
-        ErrorResponse,
+use sandkasten_client::schemas::{
+    programs::{
+        BuildRequest, BuildRunError, BuildRunRequest, BuildRunResult, File, LimitsOpt, MainFile,
+        RunRequest, RunResult,
     },
-    Error as SandkastenError, SandkastenClient,
+    ErrorResponse,
 };
 use schemas::challenges::coding_challenges::{CheckResult, Example, ExecutorConfig};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
+
+use super::sandbox::{Error as SandkastenError, SandboxClient as SandkastenClient};
 
 pub const EVALUATOR_TEMPLATE: &str = include_str!("../../assets/evaluator/template.py");
 pub const EVALUATOR_LIBRARY: &str = include_str!("../../assets/evaluator/lib.py");
@@ -37,6 +36,7 @@ impl Judge<'_> {
         self.cache
             .cached_result(
                 key!(
+                    "sandbox-execution-v2",
                     self.evaluator,
                     seed,
                     solution_environment,
@@ -191,7 +191,7 @@ impl Judge<'_> {
             })
             .await
         {
-            Err(SandkastenError::ErrorResponse(err)) => {
+            Err(SandkastenError::Rejected(err)) => {
                 return match *err {
                     ErrorResponse::Inner(BuildRunError::EnvironmentNotFound) => {
                         Err(Error::EnvironmentNotFound)
@@ -202,9 +202,7 @@ impl Judge<'_> {
                         compile: Some(result),
                         run: None,
                     }),
-                    err => Err(Error::Sandkasten(SandkastenError::ErrorResponse(Box::new(
-                        err,
-                    )))),
+                    err => Err(Error::Sandkasten(SandkastenError::Rejected(Box::new(err)))),
                 }
             }
             x => x?,
@@ -262,7 +260,7 @@ pub enum Error {
     #[error("cache error: {0}")]
     Cache(#[from] CacheError<JsonFormatter>),
     #[error("sandkasten error: {0}")]
-    Sandkasten(#[from] sandkasten_client::Error<BuildRunError>),
+    Sandkasten(#[from] SandkastenError),
     #[error("serde_json error: {0}")]
     SerdeJson(#[from] serde_json::Error),
     #[error("environment does not exist")]

@@ -73,16 +73,19 @@ def main():
                     raise RuntimeError("Local Redis failed to start")
                 time.sleep(0.1)
         for db, filters in [
-            ("access_regression", ["endpoints::", "--", "--ignored", "--skip", "coding_durable_execution_postgres", "--skip", "coding_inline_", "--test-threads=1"]),
+            ("access_regression", ["endpoints::", "--", "--ignored", "--skip", "coding_durable_execution_postgres", "--skip", "coding_inline_", "--skip", "coding_sandbox_", "--skip", "publication_tests", "--test-threads=1"]),
             ("queue_regression", ["coding_durable_execution_postgres", "--", "--ignored", "--test-threads=1"]),
             ("inline_regression", ["coding_inline_", "--", "--ignored", "--test-threads=1"]),
+            ("sandbox_regression", ["coding_sandbox_", "--", "--ignored", "--test-threads=1"]),
+            ("publication_regression", ["publication_tests", "--", "--ignored", "--test-threads=1"]),
         ]:
             run(f"create-{db}", ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-p", str(pg_port),
                                  "-U", user, "-d", "postgres"], stdin=f"CREATE DATABASE {db}")
             db_url = f"postgresql://{user}@127.0.0.1:{pg_port}/{db}"
             run(f"migrate-{db}", [str(target / "debug/migration"), "up"], {"DATABASE_URL": db_url})
             run(db, ["cargo", "test", "--locked", "--offline", "-j", "2", "-p", "challenges", *filters],
-                {"HEART_TEST_DATABASE_URL": db_url, "HEART_TEST_REDIS_URL": f"redis://127.0.0.1:{redis_port}/0"})
+                {"HEART_TEST_DATABASE_URL": db_url, "HEART_TEST_REDIS_URL": f"redis://127.0.0.1:{redis_port}/0",
+                 "PRIV01_TEST_DATABASE_URL": db_url, "PRIV01_TEST_REDIS_URL": f"redis://127.0.0.1:{redis_port}/0"})
         report["passed"] = True
     finally:
         if redis is not None:

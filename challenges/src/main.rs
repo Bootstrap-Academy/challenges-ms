@@ -3,6 +3,7 @@
 
 use std::{env, sync::Arc, time::Duration};
 
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use anyhow::bail;
 use fnct::{backend::AsyncRedisBackend, format::PostcardFormatter};
 use lib::{
@@ -15,7 +16,6 @@ use lib::{
 use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
 use poem_ext::{db::DbTransactionMiddleware, panic_handler::PanicHandler};
 use poem_openapi::OpenApiService;
-use sandkasten_client::SandkastenClient;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sentry::integrations::tracing::EventFilter;
 use tracing::{info, Level};

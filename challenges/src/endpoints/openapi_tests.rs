@@ -3,12 +3,12 @@
 //! schema name, which build, clippy and nix do not notice.
 use std::{collections::HashSet, future::Future, sync::Arc};
 
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use lib::{config::Config, SharedState};
 use poem_openapi::{
     registry::{MetaApi, Registry},
     Object, OpenApi,
 };
-use sandkasten_client::SandkastenClient;
 
 /// Takes the API type from the uncalled `setup_api` function item.
 fn register_setup_api<F, Fut, T>(_: F) -> (Registry, Vec<MetaApi>)

@@ -1,3 +1,4 @@
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Context;
@@ -17,7 +18,7 @@ use lib::{
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
-use sandkasten_client::{schemas::environments::Environment, SandkastenClient};
+use sandkasten_client::schemas::environments::Environment;
 use schemas::challenges::coding_challenges::{QueueStatus, Submission, SubmissionContent};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
@@ -520,6 +521,14 @@ async fn record_judgment(
     reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     state: Arc<SharedState>,
 ) -> Result<(), JudgeSubmissionError> {
+    // Also guard cached/legacy results before any progress or outbox mutation.
+    // A technical compiler failure must never enter the learner-error branch.
+    if matches!(&result, Err(CheckError::TestcaseFailed(CheckTestcaseError { result, .. }))
+        if result.verdict == ChallengesVerdict::CompilationError
+            && result.compile.as_ref().is_some_and(crate::services::sandbox::technical_compilation))
+    {
+        return Err(JudgeSubmissionError::TechnicalCompilation);
+    }
     // Both success and failure mutate progress. Serialize with erasure and
     // reread after judging, rather than using a pre-queue progress snapshot.
     let _guard = reward_lock
@@ -636,6 +645,8 @@ async fn record_judgment(
 
 #[derive(Debug, Error)]
 enum JudgeSubmissionError {
+    #[error("sandbox compilation unavailable; submission remains pending for a free retry")]
+    TechnicalCompilation,
     #[error("failed to judge submission: {0}")]
     Judge(Box<judge::Error>),
     #[error("database error: {0}")]
@@ -662,6 +673,10 @@ impl Api {
             .await??)
     }
 }
+
+#[cfg(test)]
+#[path = "sandbox_tests.rs"]
+mod sandbox_tests;
 
 #[cfg(test)]
 mod heart_tests {
