@@ -153,6 +153,10 @@ pub struct Submission {
     pub queue_position: Option<usize>,
     /// The verdict is final; its heart operation is still being reconciled.
     pub hearts_pending: bool,
+    /// Every check attempt failed for technical reasons, so there is no verdict.
+    /// It counts as no attempt and costs no heart; submitting again books no
+    /// further lesson start.
+    pub technical_failure: bool,
 }
 
 #[derive(Debug, Clone, Object)]
@@ -257,6 +261,8 @@ impl Submission {
             creator: submission.creator,
             creation_timestamp: submission.creation_timestamp.and_utc(),
             environment: submission.environment.clone(),
+            // Only the attempt cap closes a submission without a result.
+            technical_failure: !submission.judge_pending && result.is_none(),
             result,
             queue_position,
             hearts_pending: false,

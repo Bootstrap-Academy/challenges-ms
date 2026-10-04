@@ -2,11 +2,11 @@
 //! local skills stub. No live service is contacted.
 use std::time::Duration;
 
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use lib::jwt::{sign_jwt, InternalAuthToken, UserAccessToken, UserAccessTokenData};
 use poem::{Endpoint, EndpointExt, IntoResponse, Request, Route};
 use poem_ext::db::DbTransactionMiddleware;
 use poem_openapi::OpenApiService;
-use sandkasten_client::SandkastenClient;
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 use serde_json::{json, Value};
 use uuid::Uuid;

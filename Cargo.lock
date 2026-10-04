@@ -314,6 +314,7 @@ dependencies = [
  "poem-ext",
  "poem-openapi",
  "redis",
+ "reqwest",
  "sandkasten-client",
  "schemas",
  "sea-orm",

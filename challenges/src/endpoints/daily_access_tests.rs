@@ -1,10 +1,10 @@
 //! Native persistence with authenticated routes and local service authorities.
 //! Skills is a contract stub here; its counter/concurrency tests belong there.
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use fnct::format::JsonFormatter;
 use poem::{http::Method, Endpoint, EndpointExt, Route};
 use poem_ext::db::DbTransactionMiddleware;
 use poem_openapi::OpenApiService;
-use sandkasten_client::SandkastenClient;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde_json::{json, Value};
 use uuid::Uuid;

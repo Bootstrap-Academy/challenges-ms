@@ -1,5 +1,6 @@
 //! Native admission and real authenticated routes, with a synthetic HTTP
 //! executor. No learner code, live account or production service is used.
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use std::sync::Mutex;
 
 use fnct::format::JsonFormatter;
@@ -25,6 +26,7 @@ use crate::{
 struct ExecutorState {
     stall: Option<String>,
     fail: bool,
+    reply: Option<(String, StatusCode, String)>,
     phases: Vec<String>,
     authority: Option<Uuid>,
 }
@@ -72,10 +74,14 @@ impl Executor {
                             .as_str()
                             .unwrap_or("solution")
                             .to_owned();
-                        let (stall, fail) = {
+                        let (stall, fail, reply) = {
                             let mut state = state.lock().unwrap();
                             state.phases.push(phase.clone());
-                            (state.stall.as_ref() == Some(&phase), state.fail)
+                            (
+                                state.stall.as_ref() == Some(&phase),
+                                state.fail,
+                                state.reply.clone(),
+                            )
                         };
                         if stall {
                             tokio::time::sleep(Duration::from_secs(3)).await;
@@ -84,6 +90,11 @@ impl Executor {
                             return Response::builder()
                                 .status(StatusCode::SERVICE_UNAVAILABLE)
                                 .body("synthetic executor unavailable");
+                        }
+                        if let Some((at, status, body)) = reply {
+                            if at == phase {
+                                return Response::builder().status(status).body(body);
+                            }
                         }
                         let stdout = match phase.as_str() {
                             "examples" => json!(["example"]).to_string(),
@@ -546,6 +557,145 @@ async fn coding_inline_parallel_api_instances_are_bounded_postgres() {
     cleaned(&f, user).await;
     no_learning_effects(&f, user).await;
     assert_eq!(f.shop.lock().unwrap().balances[&user], 6);
+    remove_task(&f, task).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable PostgreSQL and Redis; run coding_inline tests separately"]
+async fn coding_inline_sandbox_failures_are_free_and_retryable_postgres() {
+    use crate::services::sandbox::tests::run_result;
+
+    let mut f = Fixture::new().await;
+    let executor = Executor::new().await;
+    configure(&mut f, &executor, 1, 1, 5);
+    let (task, subtask) = f.seed("coding_challenge").await;
+    let user = Uuid::new_v4();
+    let endpoint = app(&f).await;
+    let mut failures: Vec<(StatusCode, String)> = [
+        (
+            StatusCode::BAD_REQUEST,
+            run_result(1, "No space left on device"),
+        ),
+        (StatusCode::BAD_REQUEST, run_result(137, "")),
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            run_result(1, "syntax error"),
+        ),
+    ]
+    .into_iter()
+    .map(|(status, details)| {
+        (
+            status,
+            json!({"error":"compile_error","details":details}).to_string(),
+        )
+    })
+    .collect();
+    // Real full-cache replies (C/C++/Go/Rust link or write step) and nsjail
+    // launch failures recorded from a local Sandkasten with production limits.
+    let replies: Vec<Value> =
+        serde_json::from_str(include_str!("../../services/sandbox/real_replies.json")).unwrap();
+    for source in [
+        "claude-fix:cache_full_cgroup:c_valid",
+        "claude-fix:cache_full_cgroup:cpp_valid",
+        "claude-fix:cache_full_cgroup:go_valid",
+        "claude-fix:cache_full_cgroup:rust_valid",
+        "claude-fix:launcher_failure:python_launcher_failure",
+    ] {
+        let reply = replies
+            .iter()
+            .find(|reply| reply["source"] == source)
+            .unwrap();
+        failures.push((
+            StatusCode::from_u16(reply["http"].as_u64().unwrap() as u16).unwrap(),
+            reply["body"].to_string(),
+        ));
+    }
+    for (status, reply) in failures {
+        executor.state.lock().unwrap().reply = Some(("solution".into(), status, reply));
+        let mut data = solution();
+        data["code"] = Uuid::new_v4().to_string().into();
+        let (status, body) = f
+            .call(
+                &endpoint,
+                user,
+                false,
+                Method::POST,
+                &path(task, subtask),
+                data,
+            )
+            .await;
+        assert_eq!(status, 503, "{body}");
+        assert_eq!(body["error"], "coding_execution_unavailable");
+        assert!(body["detail"].as_str().unwrap().contains("keine Herzen"));
+        cleaned(&f, user).await;
+        no_learning_effects(&f, user).await;
+        // Admission books the initial lesson once; technical retries book none.
+        assert_eq!(f.shop.lock().unwrap().started.len(), 1);
+    }
+    // A genuine source error still reaches the learner, and the next test can run.
+    executor.state.lock().unwrap().reply = Some((
+        "solution".into(),
+        StatusCode::BAD_REQUEST,
+        json!({"error":"compile_error","details":run_result(1,"Main.java:1: error: ';' expected")})
+            .to_string(),
+    ));
+    let mut data = solution();
+    data["code"] = Uuid::new_v4().to_string().into();
+    let (status, body) = f
+        .call(
+            &endpoint,
+            user,
+            false,
+            Method::POST,
+            &path(task, subtask),
+            data,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["verdict"], "COMPILATION_ERROR");
+    // A real Bash typo (status 127) is the learner's runtime error, with output.
+    let typo = replies
+        .iter()
+        .find(|reply| reply["source"] == "claude-fix:cgroup_prod_config:bash_command_typo")
+        .unwrap();
+    executor.state.lock().unwrap().reply =
+        Some(("solution".into(), StatusCode::OK, typo["body"].to_string()));
+    let mut data = solution();
+    data["code"] = Uuid::new_v4().to_string().into();
+    let (status, body) = f
+        .call(
+            &endpoint,
+            user,
+            false,
+            Method::POST,
+            &path(task, subtask),
+            data,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["verdict"], "RUNTIME_ERROR");
+    assert_eq!(body["run"]["status"], 127);
+    assert!(body["run"]["stderr"]
+        .as_str()
+        .unwrap()
+        .contains("ech: command not found"));
+    executor.state.lock().unwrap().reply = None;
+    let mut data = solution();
+    data["code"] = Uuid::new_v4().to_string().into();
+    let (status, body) = f
+        .call(
+            &endpoint,
+            user,
+            false,
+            Method::POST,
+            &path(task, subtask),
+            data,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["verdict"], "WRONG_ANSWER");
+    cleaned(&f, user).await;
+    no_learning_effects(&f, user).await;
     remove_task(&f, task).await;
 }
 

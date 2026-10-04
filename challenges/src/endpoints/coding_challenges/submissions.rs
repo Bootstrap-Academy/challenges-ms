@@ -1,3 +1,4 @@
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Context;
@@ -17,7 +18,7 @@ use lib::{
 use poem::web::Data;
 use poem_ext::{db::DbTxn, response, responses::ErrorResponse};
 use poem_openapi::{param::Path, payload::Json, OpenApi};
-use sandkasten_client::{schemas::environments::Environment, SandkastenClient};
+use sandkasten_client::schemas::environments::Environment;
 use schemas::challenges::coding_challenges::{QueueStatus, Submission, SubmissionContent};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ModelTrait,
@@ -25,7 +26,7 @@ use sea_orm::{
 };
 use thiserror::Error;
 use tokio::task::JoinSet;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 use uuid::Uuid;
 
 use super::{check_challenge, CheckChallenge, CheckError, CheckTestcaseError};
@@ -394,6 +395,10 @@ pub async fn run_worker(
         slots.spawn(async move {
             loop {
                 match queue::claim(&state.db, owner, settings.lease_seconds).await {
+                    Ok(Some(claim)) if !queue::attempt_allowed(&settings, claim) => {
+                        // Earlier attempts lost their lease or crashed the worker.
+                        abandon(&state, claim).await;
+                    }
                     Ok(Some(claim)) => {
                         let work = tokio::time::timeout(
                             Duration::from_secs(u64::from(settings.max_execution_seconds)),
@@ -416,9 +421,14 @@ pub async fn run_worker(
                         if let Err(err) = result {
                             // Dropping work stops local evaluation. A remote request may
                             // already be running; only a current generation can commit.
-                            error!(submission = %claim.submission, "coding execution deferred: {err}");
-                            if let Err(err) = queue::retry(&state.db, claim, settings.retry_seconds).await {
-                                error!(submission = %claim.submission, "could not defer coding execution: {err}");
+                            if queue::last_attempt(&settings, claim) {
+                                warn!(submission = %claim.submission, attempt = claim.generation, "coding execution failed technically: {err}");
+                                abandon(&state, claim).await;
+                            } else {
+                                error!(submission = %claim.submission, attempt = claim.generation, "coding execution deferred: {err}");
+                                if let Err(err) = queue::retry(&state.db, claim, queue::retry_delay(&settings, claim)).await {
+                                    error!(submission = %claim.submission, "could not defer coding execution: {err}");
+                                }
                             }
                         } else if let Err(err) = crate::services::hearts::settle(
                             &state.db, &state.services, claim.submission,
@@ -441,6 +451,21 @@ pub async fn run_worker(
         tokio::select! {
             _ = heartbeat.tick() => queue::advertise(&state.db, owner, capacity, settings.lease_seconds).await?,
             ended = slots.join_next() => anyhow::bail!("coding worker slot stopped: {ended:?}"),
+        }
+    }
+}
+
+/// The attempt cap is reached: close without a verdict and without cost.
+async fn abandon(state: &SharedState, claim: Claim) {
+    match queue::abandon(&state.db, claim).await {
+        Ok(true) => {
+            warn!(submission = %claim.submission, attempt = claim.generation, "coding submission closed without verdict after technical failures")
+        }
+        // A newer claim or a stored result already owns the submission.
+        Ok(false) => {}
+        // The lease expires; the next claim is over the cap and closes it.
+        Err(err) => {
+            error!(submission = %claim.submission, "could not close coding submission: {err}")
         }
     }
 }
@@ -520,6 +545,14 @@ async fn record_judgment(
     reward_lock: Arc<KeyRwLock<(Uuid, Uuid)>>,
     state: Arc<SharedState>,
 ) -> Result<(), JudgeSubmissionError> {
+    // Also guard cached/legacy results before any progress or outbox mutation.
+    // A technical compiler failure must never enter the learner-error branch.
+    if matches!(&result, Err(CheckError::TestcaseFailed(CheckTestcaseError { result, .. }))
+        if result.verdict == ChallengesVerdict::CompilationError
+            && result.compile.as_ref().is_some_and(crate::services::sandbox::technical_compilation))
+    {
+        return Err(JudgeSubmissionError::TechnicalCompilation);
+    }
     // Both success and failure mutate progress. Serialize with erasure and
     // reread after judging, rather than using a pre-queue progress snapshot.
     let _guard = reward_lock
@@ -636,6 +669,8 @@ async fn record_judgment(
 
 #[derive(Debug, Error)]
 enum JudgeSubmissionError {
+    #[error("sandbox compilation unavailable; submission remains pending for a free retry")]
+    TechnicalCompilation,
     #[error("failed to judge submission: {0}")]
     Judge(Box<judge::Error>),
     #[error("database error: {0}")]
@@ -662,6 +697,10 @@ impl Api {
             .await??)
     }
 }
+
+#[cfg(test)]
+#[path = "sandbox_tests.rs"]
+mod sandbox_tests;
 
 #[cfg(test)]
 mod heart_tests {

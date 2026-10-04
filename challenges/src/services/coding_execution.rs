@@ -40,7 +40,29 @@ pub fn validate(config: &CodingExecution, concurrency: usize) -> anyhow::Result<
         config.retry_seconds > 0 && config.max_execution_seconds > 0,
         "coding retry and execution timeouts must be positive"
     );
+    anyhow::ensure!(
+        (1..=20).contains(&config.max_technical_attempts),
+        "coding max_technical_attempts must be 1..=20"
+    );
     Ok(())
+}
+
+/// Whether this claim may still run. A claim beyond the cap follows only
+/// technical failures, including workers that lost their lease or crashed.
+pub fn attempt_allowed(config: &CodingExecution, claim: Claim) -> bool {
+    claim.generation <= i64::from(config.max_technical_attempts)
+}
+
+/// Whether a technical failure of this claim used up the last attempt.
+pub fn last_attempt(config: &CodingExecution, claim: Claim) -> bool {
+    claim.generation >= i64::from(config.max_technical_attempts)
+}
+
+/// Exponential backoff gives a full artifact cache or a restarting sandbox
+/// time to recover, without retrying a persistent failure every few seconds.
+pub fn retry_delay(config: &CodingExecution, claim: Claim) -> u32 {
+    let doublings = claim.generation.clamp(1, 7) - 1;
+    config.retry_seconds.saturating_mul(1 << doublings)
 }
 
 /// Caller holds the subject lock, and inserts a submission or inline lease in
@@ -221,6 +243,16 @@ pub async fn retry(
     Ok(())
 }
 
+/// Close a submission whose attempts all failed technically. It stays without
+/// a result, so it records no attempt, heart operation, XP or further lesson
+/// start, and it frees its pending slot. `technical_failure` reports it.
+/// The same fence as `retry` keeps a stale worker from closing a newer claim.
+pub async fn abandon(db: &impl ConnectionTrait, claim: Claim) -> Result<bool, DbErr> {
+    Ok(db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+        "UPDATE challenges_coding_challenge_submissions s SET judge_pending=false, judge_lease_owner=NULL, judge_lease_until=NULL WHERE id=$1 AND judge_generation=$2 AND judge_lease_owner=$3 AND judge_pending AND judge_lease_until > clock_timestamp() AND NOT EXISTS (SELECT 1 FROM challenges_coding_challenge_result r WHERE r.submission_id=s.id)",
+        [claim.submission.into(), claim.generation.into(), claim.owner.into()])).await?.rows_affected() == 1)
+}
+
 pub async fn advertise(
     db: &impl ConnectionTrait,
     owner: Uuid,
@@ -258,4 +290,42 @@ pub async fn positions(
     db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,
         "SELECT id, position FROM (SELECT id, creator, CASE WHEN judge_lease_until > clock_timestamp() THEN 0 ELSE count(*) FILTER (WHERE judge_lease_until IS NULL OR judge_lease_until <= clock_timestamp()) OVER (ORDER BY judge_available_at, creation_timestamp, id) END AS position FROM challenges_coding_challenge_submissions s WHERE judge_pending AND NOT EXISTS (SELECT 1 FROM challenges_coding_challenge_result r WHERE r.submission_id=s.id)) pending WHERE creator=$1",
         [user.into()])).await?.into_iter().map(|row| Ok((row.try_get("", "id")?, row.try_get::<i64>("", "position")? as usize))).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn claim(generation: i64) -> Claim {
+        Claim {
+            submission: Uuid::nil(),
+            user: Uuid::nil(),
+            owner: Uuid::nil(),
+            generation,
+        }
+    }
+
+    #[test]
+    fn technical_attempts_are_capped_with_backoff() {
+        let config = CodingExecution {
+            retry_seconds: 10,
+            max_technical_attempts: 3,
+            ..Default::default()
+        };
+        assert!((1..=3).all(|generation| attempt_allowed(&config, claim(generation))));
+        assert!(!attempt_allowed(&config, claim(4)));
+        assert!(!last_attempt(&config, claim(2)));
+        assert!(last_attempt(&config, claim(3)) && last_attempt(&config, claim(9)));
+        let delays: Vec<_> = (1..=9).map(|g| retry_delay(&config, claim(g))).collect();
+        assert_eq!(delays, [10, 20, 40, 80, 160, 320, 640, 640, 640]);
+        assert!(validate(&config, 1).is_ok());
+        for attempts in [0, 21] {
+            let config = CodingExecution {
+                max_technical_attempts: attempts,
+                ..Default::default()
+            };
+            assert!(validate(&config, 1).is_err());
+        }
+        assert!(validate(&CodingExecution::default(), 1).is_ok());
+    }
 }
