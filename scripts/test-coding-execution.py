@@ -10,6 +10,7 @@ import http.server
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
@@ -151,10 +152,12 @@ def main():
                 return False
         wait_for(redis_ready)
 
-        for db in ("migration_check", "coding_queue", "heart_regression", "export_regression", "benefit_regression", "process_check"):
+        for db in ("migration_check", "export_regression", "benefit_regression", "process_check"):
             sql("postgres", f"CREATE DATABASE {db}")
-        migration_count = (work / "migration/src/lib.rs").read_text().count("Box::new(")
-        migrate("migration_check", migration_count - 1)
+        migrations = re.findall(r"Box::new\((\w+)::Migration\)", (work / "migration/src/lib.rs").read_text())
+        predecessor_count = migrations.index("m20260913_180000_coding_execution")
+        # Later migrations must not move the queue migration's predecessor.
+        migrate("migration_check", predecessor_count)
         completed = seed("migration_check", True)
         pending = seed("migration_check")
         before = sql("migration_check", "SELECT id,code,creation_timestamp,charge_on_failure FROM challenges_coding_challenge_submissions ORDER BY id")
@@ -163,14 +166,14 @@ def main():
         assert sql("migration_check", f"SELECT judge_pending,judge_generation FROM challenges_coding_challenge_submissions WHERE id='{completed}'") == "f|0"
         assert sql("migration_check", f"SELECT judge_pending,judge_generation FROM challenges_coding_challenge_submissions WHERE id='{pending}'") == "t|0"
         report["migration_preserves_existing_submissions"] = True
+        report["migration_predecessor"] = migrations[predecessor_count - 1]
 
-        for db in ("coding_queue", "heart_regression", "export_regression", "process_check"):
+        for db in ("export_regression", "process_check"):
             migrate(db)
-        test_env = {"HEART_TEST_REDIS_URL": f"redis://127.0.0.1:{redis_port}/0"}
-        run("durable-queue", ["cargo", "test", "--locked", "--offline", "-p", "challenges", "coding_durable_execution_postgres", "--", "--ignored", "--test-threads=1"],
-            extra={**test_env, "HEART_TEST_DATABASE_URL": db_url("coding_queue")})
-        run("heart-and-authority-regression", ["cargo", "test", "--locked", "--offline", "-p", "challenges", "endpoints::", "--", "--ignored", "--skip", "coding_durable_execution_postgres", "--test-threads=1"],
-            extra={**test_env, "HEART_TEST_DATABASE_URL": db_url("heart_regression")})
+        # Reuse the runner that isolates access, queue, inline, sandbox and
+        # publication groups and supplies their respective database variables.
+        run("learning-access-and-sandbox-regression", ["python3", "-B", str(work / "scripts/test-learning-access.py"),
+            "--output", str(out / "learning-access")], timeout=600)
         run("private-export-regression", ["cargo", "test", "--locked", "--offline", "-p", "challenges", "users::export_tests::", "--", "--ignored", "--test-threads=1"],
             extra={"T11_TEST_DATABASE_URL": db_url("export_regression")})
         run("benefit-regression", ["cargo", "test", "--locked", "--offline", "-p", "challenges", "owning_producer_transaction", "--", "--ignored", "--test-threads=1"],

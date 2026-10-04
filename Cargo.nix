@@ -1006,6 +1006,12 @@ rec {
             features = [ "tokio-comp" "connection-manager" ];
           }
           {
+            name = "reqwest";
+            packageId = "reqwest";
+            usesDefaultFeatures = false;
+            features = [ "rustls-tls" "blocking" "json" ];
+          }
+          {
             name = "sandkasten-client";
             packageId = "sandkasten-client";
             usesDefaultFeatures = false;

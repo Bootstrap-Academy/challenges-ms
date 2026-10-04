@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use fnct::format::JsonFormatter;
 use lib::{config::Config, SharedState};
 use poem_openapi::OpenApi;
-use sandkasten_client::SandkastenClient;
 
 use self::{
     challenges::Challenges, coding_challenges::CodingChallenges, course_tasks::CourseTasks,

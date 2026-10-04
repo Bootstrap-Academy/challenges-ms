@@ -1,3 +1,4 @@
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use std::{future::Future, sync::Arc, time::Duration};
 
 use entity::challenges_coding_challenges;
@@ -6,10 +7,7 @@ use lib::{auth::VerifiedUserAuth, config::Config, Cache, SharedState};
 use poem::{http::StatusCode, web::Data, Response};
 use poem_ext::{db::DbTxn, response, responses::InnerResponse};
 use poem_openapi::{param::Path, payload::Json, ApiResponse, Object, OpenApi};
-use sandkasten_client::{
-    schemas::{environments::ListEnvironmentsResponse, programs::RunResult},
-    SandkastenClient,
-};
+use sandkasten_client::schemas::{environments::ListEnvironmentsResponse, programs::RunResult};
 use schemas::challenges::coding_challenges::{CheckResult, ExecutorConfig, SubmissionContent};
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use tracing::error;

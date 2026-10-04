@@ -1,13 +1,11 @@
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use std::{sync::Arc, time::Duration};
 
 use fnct::format::JsonFormatter;
 use lib::{config::Config, Cache, SharedState};
 use poem_ext::response;
 use poem_openapi::{Object, OpenApi};
-use sandkasten_client::{
-    schemas::programs::{BuildRunResult, RunResult},
-    SandkastenClient,
-};
+use sandkasten_client::schemas::programs::{BuildRunResult, RunResult};
 use schemas::challenges::coding_challenges::CheckResult;
 use sea_orm::{ConnectOptions, Database};
 use uuid::Uuid;

@@ -74,8 +74,12 @@ pub struct CodingExecution {
     pub max_pending_per_user: u32,
     pub lease_seconds: u32,
     pub poll_milliseconds: u32,
+    /// Delay before the first technical retry; later retries double it.
     pub retry_seconds: u32,
     pub max_execution_seconds: u32,
+    /// Executions per submission, lost leases included. After the last one
+    /// fails technically, the submission closes without a verdict or cost.
+    pub max_technical_attempts: u32,
 }
 
 impl Default for CodingExecution {
@@ -88,6 +92,7 @@ impl Default for CodingExecution {
             poll_milliseconds: 500,
             retry_seconds: 10,
             max_execution_seconds: 600,
+            max_technical_attempts: 5,
         }
     }
 }

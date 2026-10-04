@@ -2,9 +2,9 @@
 //! opening connections, invoking handlers or starting background judge workers.
 use std::{collections::BTreeMap, future::Future, sync::Arc};
 
+use crate::services::sandbox::SandboxClient as SandkastenClient;
 use lib::{config::Config, SharedState};
 use poem_openapi::{registry::Registry, OpenApi};
-use sandkasten_client::SandkastenClient;
 use serde_json::{json, Value};
 
 fn assembled<A, F>(_: impl FnOnce(Arc<SharedState>, Arc<Config>, SandkastenClient) -> F) -> Value

@@ -17,6 +17,7 @@ poem = { workspace = true }
 poem-ext = { workspace = true }
 poem-openapi = { workspace = true }
 redis = { workspace = true }
+reqwest = { workspace = true }
 sandkasten-client = { workspace = true }
 schemas = { workspace = true }
 sea-orm = { workspace = true }
