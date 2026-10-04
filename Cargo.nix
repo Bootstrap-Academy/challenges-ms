@@ -350,21 +350,13 @@ rec {
       };
       "anyhow" = rec {
         crateName = "anyhow";
-        version = "1.0.89";
-        edition = "2018";
-        sha256 = "1xh1vg89n56h6nqikcmgbpmkixjds33492klrp9m96xrbmhgizc6";
+        version = "1.0.103";
+        edition = "2021";
+        sha256 = "1wsav2g6vxcvf2c0fv3jhxfr55l0p2g8nygy7rmmvcsfwgi8ahra";
         authors = [
           "David Tolnay <dtolnay@gmail.com>"
         ];
-        dependencies = [
-          {
-            name = "backtrace";
-            packageId = "backtrace";
-            optional = true;
-          }
-        ];
         features = {
-          "backtrace" = [ "dep:backtrace" ];
           "default" = [ "std" ];
         };
         resolvedDefaultFeatures = [ "backtrace" "default" "std" ];
