@@ -411,6 +411,8 @@ fn url_pairs(query: &str) -> HashMap<String, String> {
 async fn publication_all_six_routes_sql_caches_and_revocation() {
     let f = Fixture::new().await;
     let owner = Some((f.ids[0], false, true));
+    let admin = Some((f.ids[0], true, true));
+    let shared_owner = Some((f.ids[1], false, true));
     let legacy = f.app(false);
     // Warm the exact legacy namespaces and verify all six old route shapes.
     for route in f.lists() {
@@ -430,6 +432,26 @@ async fn publication_all_six_routes_sql_caches_and_revocation() {
             .call(&legacy, &format!("{route}/{}", f.ids[0]), owner)
             .await;
         assert_eq!((status, rank), (200, json!({"score":900,"rank":1})));
+        assert_eq!(
+            f.call(&legacy, &format!("{route}/{}", f.ids[0]), shared_owner)
+                .await
+                .0,
+            403,
+            "legacy private ranks remain hidden from other users"
+        );
+        assert_eq!(
+            f.call(&legacy, &format!("{route}/{}", f.ids[0]), admin)
+                .await
+                .0,
+            200
+        );
+        assert_eq!(
+            f.call(&legacy, &format!("{route}/{}", f.ids[1]), owner)
+                .await
+                .0,
+            200,
+            "legacy public rank lookups stay compatible"
+        );
     }
     {
         let mut a = f.authority.lock().unwrap();
@@ -480,11 +502,22 @@ async fn publication_all_six_routes_sql_caches_and_revocation() {
             assert_eq!(private, absent);
             assert_eq!(private, (404, json!({"error":"not_found"})));
         }
+        assert_eq!(
+            f.call(&active, &format!("{route}/{}", f.ids[1]), owner)
+                .await,
+            (404, json!({"error":"not_found"})),
+            "shared accounts cannot be linked to a leaderboard row by UUID"
+        );
         let (status, rank) = f
-            .call(&active, &format!("{route}/{}", f.ids[1]), owner)
+            .call(&active, &format!("{route}/{}", f.ids[1]), shared_owner)
             .await;
         assert_eq!(status, 200);
         assert_eq!(rank["public_rank"], 1);
+        let (status, support_rank) = f
+            .call(&active, &format!("{route}/{}", f.ids[1]), admin)
+            .await;
+        assert_eq!(status, 200);
+        assert_eq!(support_rank, rank);
         for viewer in [
             None,
             Some((f.ids[1], false, false)),
@@ -576,7 +609,8 @@ async fn publication_all_six_routes_sql_caches_and_revocation() {
             } else {
                 format!("{route}?limit=100&offset=0")
             };
-            let (status, value) = f.call(&active, &path, owner).await;
+            let viewer = if single_rank { admin } else { owner };
+            let (status, value) = f.call(&active, &path, viewer).await;
             if single_rank {
                 assert_eq!((status, value), (404, json!({"error":"not_found"})));
             } else {
@@ -617,7 +651,7 @@ async fn publication_all_six_routes_sql_caches_and_revocation() {
                 503
             );
             assert_eq!(
-                f.call(&app, &format!("{route}/{}", f.ids[1]), owner)
+                f.call(&app, &format!("{route}/{}", f.ids[1]), shared_owner)
                     .await
                     .0,
                 503
