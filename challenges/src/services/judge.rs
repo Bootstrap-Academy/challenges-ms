@@ -132,9 +132,9 @@ impl Judge<'_> {
             })
             .await?;
         if out.run.status != 0 {
-            return Err(Error::EvaluatorFailed(out));
+            return Err(Error::EvaluatorFailed(Box::new(out)));
         }
-        serde_json::from_str(&out.run.stdout).map_err(|_| Error::InvalidOutput(out))
+        serde_json::from_str(&out.run.stdout).map_err(|_| Error::InvalidOutput(Box::new(out)))
     }
 
     pub async fn run_solution(
@@ -296,9 +296,9 @@ pub enum Error {
     #[error("sandbox could not launch the learner program")]
     LauncherFailed,
     #[error("failed to execute evaluator: {0:?}")]
-    EvaluatorFailed(BuildRunResult),
+    EvaluatorFailed(Box<BuildRunResult>),
     #[error("evaluator failed to produce valid output: {0:?}")]
-    InvalidOutput(BuildRunResult),
+    InvalidOutput(Box<BuildRunResult>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

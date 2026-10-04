@@ -70,10 +70,10 @@ async fn check_challenge(
 ) -> Result<Result<(), CheckError>, JudgeError> {
     let examples = match judge.examples().await {
         Err(JudgeError::EvaluatorFailed(err)) => {
-            return Ok(Err(CheckError::EvaluatorFailed(err)));
+            return Ok(Err(CheckError::EvaluatorFailed(*err)));
         }
         Err(JudgeError::InvalidOutput(err)) => {
-            return Ok(Err(CheckError::InvalidOutput(err)));
+            return Ok(Err(CheckError::InvalidOutput(*err)));
         }
         x => x?,
     };
@@ -100,10 +100,10 @@ async fn check_challenge(
                 return Ok(Err(CheckError::EnvironmentNotFound));
             }
             Err(JudgeError::EvaluatorFailed(err)) => {
-                return Ok(Err(CheckError::EvaluatorFailed(err)));
+                return Ok(Err(CheckError::EvaluatorFailed(*err)));
             }
             Err(JudgeError::InvalidOutput(err)) => {
-                return Ok(Err(CheckError::InvalidOutput(err)));
+                return Ok(Err(CheckError::InvalidOutput(*err)));
             }
             x => x?,
         };

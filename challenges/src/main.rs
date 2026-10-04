@@ -17,15 +17,14 @@ use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Serve
 use poem_ext::panic_handler::PanicHandler;
 use poem_openapi::OpenApiService;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
-use sentry::integrations::tracing::EventFilter;
-use tracing::{info, Level};
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing::info;
 
 use crate::{endpoints::setup_api, sweep::sweep_deleted_users};
 
 mod endpoints;
 mod services;
 mod sweep;
+mod telemetry;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,23 +35,12 @@ async fn main() -> anyhow::Result<()> {
             sentry_config.dsn.as_str(),
             sentry::ClientOptions {
                 release: Some(env!("CARGO_PKG_VERSION").into()),
-                attach_stacktrace: true,
-                ..Default::default()
+                ..telemetry::options()
             },
         ))
     });
 
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().with_filter(EnvFilter::from_default_env()))
-        .with(
-            sentry::integrations::tracing::layer().event_filter(|md| match md.level() {
-                &Level::ERROR => EventFilter::Exception,
-                &Level::WARN => EventFilter::Event,
-                &Level::INFO | &Level::DEBUG => EventFilter::Breadcrumb,
-                &Level::TRACE => EventFilter::Ignore,
-            }),
-        )
-        .init();
+    telemetry::init_tracing();
 
     match env::args().nth(1) {
         None => serve(config, false, false).await,
