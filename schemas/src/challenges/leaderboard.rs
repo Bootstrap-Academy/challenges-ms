@@ -21,7 +21,6 @@ pub struct LeaderboardUser {
 
 #[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct User {
-    pub id: Uuid,
     pub name: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
@@ -38,7 +37,6 @@ pub struct Rank {
 impl From<services::auth::User> for User {
     fn from(value: services::auth::User) -> Self {
         Self {
-            id: value.id,
             name: value.name,
             display_name: value.display_name,
             avatar_url: value.avatar_url,
@@ -60,7 +58,6 @@ impl From<services::skills::Rank> for Rank {
 /// A fixed allowlist, never a serialization of the ordinary account DTO.
 #[derive(Debug, Clone, Object, Serialize, Deserialize)]
 pub struct PublishedUser {
-    pub id: Uuid,
     pub display_name: String,
     pub avatar_url: Option<String>,
 }
@@ -113,5 +110,36 @@ impl From<Leaderboard> for LeaderboardResponse {
 impl From<Rank> for RankResponse {
     fn from(value: Rank) -> Self {
         Self::Legacy(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use poem_openapi::types::ToJSON;
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn legacy_identity_drops_account_id_even_from_old_cache_entries() {
+        let old = json!({"id": Uuid::new_v4(), "name": "nickname", "display_name": "Display", "avatar_url": null, "registration": "2026-01-01T00:00:00Z", "admin": false});
+        let user: User = serde_json::from_value(old).unwrap();
+        let wire = user.to_json().unwrap();
+        assert!(wire.get("id").is_none());
+        assert_eq!(wire["display_name"], "Display");
+        let cached = serde_json::to_value(user).unwrap();
+        assert!(cached.get("id").is_none());
+        assert_eq!(cached["display_name"], "Display");
+    }
+
+    #[test]
+    fn publication_identity_contains_only_the_approved_display_fields() {
+        let user: PublishedUser = serde_json::from_value(
+            json!({"id": Uuid::new_v4(), "display_name": "Display", "avatar_url": null}),
+        )
+        .unwrap();
+        let expected = json!({"display_name": "Display", "avatar_url": null});
+        assert_eq!(user.to_json().unwrap(), expected);
+        assert_eq!(serde_json::to_value(user).unwrap(), expected);
     }
 }

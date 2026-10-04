@@ -115,10 +115,11 @@ impl Fixture {
                 },
                 participants: ids[1..]
                     .iter()
-                    .map(|id| PublicationParticipant {
+                    .enumerate()
+                    .map(|(index, id)| PublicationParticipant {
                         user_id: *id,
                         visibility_revision: 1,
-                        display_name: format!("Shared {id}"),
+                        display_name: format!("Shared {}", index + 1),
                         avatar_url: Value::Null,
                     })
                     .collect(),
@@ -369,7 +370,17 @@ impl Fixture {
             assert_eq!(response.headers()["Cache-Control"], "private, no-store");
             assert_eq!(response.headers()["Vary"], "Authorization");
         }
-        (status, response.into_body().into_json().await.unwrap())
+        let body: Value = response.into_body().into_json().await.unwrap();
+        if status == 200 && body.get("leaderboard").is_some() {
+            let wire = body.to_string();
+            for id in &self.ids {
+                assert!(
+                    !wire.contains(&id.to_string()),
+                    "account ID escaped in a leaderboard"
+                );
+            }
+        }
+        (status, body)
     }
     fn lists(&self) -> Vec<String> {
         vec![
@@ -439,12 +450,8 @@ async fn publication_all_six_routes_sql_caches_and_revocation() {
         assert_eq!(page["leaderboard"][0]["rank"], 1);
         assert_eq!(page["leaderboard"][1]["rank"], 2);
         let user = page["leaderboard"][0]["user"].as_object().unwrap();
-        assert_eq!(user.len(), 3);
-        assert!(
-            user.contains_key("id")
-                && user.contains_key("display_name")
-                && user["avatar_url"].is_null()
-        );
+        assert_eq!(user.len(), 2);
+        assert!(user.contains_key("display_name") && user["avatar_url"].is_null());
         let epoch = page["publication_epoch"].as_str().unwrap();
         let (status, next) = f
             .call(
@@ -531,7 +538,7 @@ async fn publication_all_six_routes_sql_caches_and_revocation() {
         let (_, page) = f
             .call(&active, &format!("{route}?limit=100&offset=0"), owner)
             .await;
-        assert_eq!(page["leaderboard"][0]["user"]["id"], f.ids[4].to_string());
+        assert_eq!(page["leaderboard"][0]["user"]["display_name"], "Shared 4");
         assert_eq!(page["leaderboard"][0]["score"], 50);
     }
     let old_epoch = f.authority.lock().unwrap().snapshot.epoch.publication_epoch;
