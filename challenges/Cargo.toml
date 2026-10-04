@@ -10,7 +10,6 @@ chrono = { workspace = true }
 entity = { workspace = true }
 fnct = { workspace = true }
 futures = { version = "0.3.31", default-features = false, features = ["std"] }
-itertools = { workspace = true }
 key-rwlock = { version = "0.1.2", default-features = false }
 lib = { workspace = true }
 poem = { workspace = true }
