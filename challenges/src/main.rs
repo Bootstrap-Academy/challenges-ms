@@ -13,7 +13,7 @@ use lib::{
     Cache, SharedState,
 };
 use poem::{listener::TcpListener, middleware::Tracing, EndpointExt, Route, Server};
-use poem_ext::{db::DbTransactionMiddleware, panic_handler::PanicHandler};
+use poem_ext::panic_handler::PanicHandler;
 use poem_openapi::OpenApiService;
 use sandkasten_client::SandkastenClient;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
@@ -150,7 +150,7 @@ async fn serve(config: Arc<Config>, api_only: bool, worker_only: bool) -> anyhow
         .nest("/", api_service)
         .with(Tracing)
         .with(PanicHandler::middleware())
-        .with(DbTransactionMiddleware::new(db))
+        .with(services::request_transactions::RequestTransactions::connect(db, &config).await?)
         .with(services::hearts::SettlementMiddleware(shared_state.clone()))
         .with(services::leaderboard::published::Headers(
             config.challenges.profile_publications_enabled,

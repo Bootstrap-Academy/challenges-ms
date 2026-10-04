@@ -65,7 +65,8 @@ pub struct Challenge {
     pub title: String,
     /// The description of the challenge
     pub description: String,
-    /// The creator of the challenge
+    /// Technical content-author reference for filters and ownership checks.
+    /// It grants no access to the author's profile or learning progress.
     pub creator: Uuid,
     /// The creation timestamp of the challenge
     pub creation_timestamp: DateTime<Utc>,
