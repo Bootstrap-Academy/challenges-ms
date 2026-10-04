@@ -300,6 +300,11 @@ pub async fn rank(
     if !viewer.email_verified {
         return Err(Error::Unverified);
     }
+    // A UUID on an old task must not link its author to an anonymous ranking row.
+    // Lists expose shared scores; individual lookups are for the owner and support.
+    if viewer.id != user_id && !viewer.admin {
+        return Err(Error::NotFound);
+    }
     for _ in 0..2 {
         let snapshot = fresh_snapshot(services, None).await?;
         let shared = snapshot.participant(user_id).is_some();
