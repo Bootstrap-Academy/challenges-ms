@@ -150,6 +150,13 @@ Deploy this endpoint before the Skills consumer that uses its evidence to
 preserve historical lesson starts. The two services may call each other during
 admission, but this history lookup has no upstream dependency or subject lock.
 
+The API gives this exact POST route a separate database pool with at most one
+additional connection per API process. Its read-only snapshot can finish when
+all ten primary connections are held by attempts waiting for Skills admission.
+Other routes keep the original request transaction, commit/rollback behavior,
+and primary pool; the callback keeps the same authentication and batch limits.
+Workers and deletion sweeps do not create the callback pool.
+
 Run the native access, heart, historical-authority and coding queue regressions
 with cached Cargo dependencies and PostgreSQL/Redis tools on `PATH`:
 
