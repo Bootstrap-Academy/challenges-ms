@@ -267,7 +267,6 @@ pub async fn leaderboard(
                             .iter()
                             .map(|(id, rank)| PublishedLeaderboardUser {
                                 user: PublishedUser {
-                                    id: *id,
                                     display_name: people[id].display_name.clone(),
                                     avatar_url: None,
                                 },
