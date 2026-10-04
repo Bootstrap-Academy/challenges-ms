@@ -51,6 +51,14 @@ pub(crate) struct Shop {
     pub heart_policies: HashMap<(Uuid, Uuid), String>,
     pub heart_status: Option<u16>,
     pub malformed_receipt: bool,
+    /// Confirmed monthly renewal whose paid time ended. Backend's policy read
+    /// answers 500 for it; its Premium read settles it (renews or, if the
+    /// coins no longer cover it, ends the agreement).
+    pub renewal_due: HashSet<Uuid>,
+    pub renewal_unfunded: HashSet<Uuid>,
+    pub renewals: usize,
+    pub premium_reads: usize,
+    pub premium_status: Option<u16>,
 }
 
 impl Shop {
@@ -192,6 +200,11 @@ impl Fixture {
                                 .status(poem::http::StatusCode::from_u16(status).unwrap())
                                 .body("policy unavailable");
                         }
+                        if shop.renewal_due.contains(&user) {
+                            return Response::builder()
+                                .status(poem::http::StatusCode::INTERNAL_SERVER_ERROR)
+                                .body("Confirmed premium renewal is awaiting settlement");
+                        }
                         shop.policy_body.clone().unwrap_or_else(|| json!({"mode":shop.modes.get(&user).map(String::as_str).unwrap_or("legacy"),"premium":shop.premium.contains(&user),"single_course_sales":true,"heart_sales":true}))
                     } else if path.contains("/learning-access/") {
                         let parts: Vec<_> = path.rsplit('/').collect();
@@ -270,7 +283,19 @@ impl Fixture {
                         json!({"operation_id":operation,"request":exact,"state":"applied","applied":true})
                     } else if path.contains("/premium/") {
                         let user: Uuid = path.rsplit('/').next().unwrap().parse().unwrap();
-                        json!(shop.lock().unwrap().premium.contains(&user))
+                        let mut shop = shop.lock().unwrap();
+                        shop.premium_reads += 1;
+                        if let Some(status) = shop.premium_status {
+                            return Response::builder()
+                                .status(poem::http::StatusCode::from_u16(status).unwrap())
+                                .body("renewal rolled back");
+                        }
+                        // Backend serializes this under the account lock.
+                        if shop.renewal_due.remove(&user) && !shop.renewal_unfunded.remove(&user) {
+                            shop.premium.insert(user);
+                            shop.renewals += 1;
+                        }
+                        json!(shop.premium.contains(&user))
                     } else if path.contains("/hearts/") {
                         let user: Uuid = path.rsplit('/').next().unwrap().parse().unwrap();
                         let mut shop = shop.lock().unwrap();
@@ -627,4 +652,132 @@ async fn heart_lost_reply_and_parallel_settlement_postgres() {
         .await
         .unwrap()
         .is_none());
+}
+
+async fn wrong_answer(f: &Fixture, app: &impl Endpoint, path: &str, user: Uuid) -> (u16, Value) {
+    f.call(
+        app,
+        user,
+        false,
+        poem::http::Method::POST,
+        path,
+        json!({"answers":[false,true]}),
+    )
+    .await
+}
+
+async fn user_rows(f: &Fixture, table: &str, user: Uuid) -> i64 {
+    f.state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            format!("SELECT count(*) AS n FROM {table} WHERE user_id=$1"),
+            [user.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "n")
+        .unwrap()
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn premium_renewal_due_during_open_exercise_postgres() {
+    let f = Fixture::new().await;
+    let app = f.app();
+    let (task, subtask) = f.seed("multiple_choice_question").await;
+    let path = format!("/tasks/{task}/multiple_choice/{subtask}/attempts");
+    let attempts = "challenges_multiple_choice_attempts";
+    let debits = "challenge_heart_operations";
+
+    // Paid time covers the start of the exercise.
+    let user = Uuid::new_v4();
+    f.shop.lock().unwrap().premium.insert(user);
+    let (status, body) = wrong_answer(&f, &app, &path, user).await;
+    assert_eq!(status, 201, "{body}");
+    // It ends while the exercise is open; the confirmed renewal is due. Two
+    // answers arrive at once: both are admitted, the renewal settles once.
+    {
+        let mut shop = f.shop.lock().unwrap();
+        shop.premium.remove(&user);
+        shop.renewal_due.insert(user);
+    }
+    let (a, b) = tokio::join!(
+        wrong_answer(&f, &app, &path, user),
+        wrong_answer(&f, &app, &path, user)
+    );
+    for (status, body) in [a, b] {
+        assert_eq!(status, 201, "{body}");
+        assert_eq!(body["solved"], false);
+        assert_eq!(body["hearts_pending"], false);
+    }
+    {
+        let shop = f.shop.lock().unwrap();
+        assert_eq!((shop.renewals, shop.premium_reads), (1, 1));
+        assert_eq!(shop.calls, 0);
+    }
+    assert_eq!(user_rows(&f, attempts, user).await, 3);
+    assert_eq!(user_rows(&f, debits, user).await, 0);
+
+    // Settlement fails before Backend commits: retryable 503, nothing saved.
+    let failed = Uuid::new_v4();
+    {
+        let mut shop = f.shop.lock().unwrap();
+        shop.renewal_due.insert(failed);
+        shop.premium_status = Some(500);
+    }
+    let (status, body) = wrong_answer(&f, &app, &path, failed).await;
+    assert_eq!(status, 503, "{body}");
+    assert_eq!(body["code"], "learning_access_unavailable");
+    assert_eq!(user_rows(&f, attempts, failed).await, 0);
+    assert_eq!(user_rows(&f, debits, failed).await, 0);
+    {
+        let mut shop = f.shop.lock().unwrap();
+        assert!(shop.renewal_due.contains(&failed));
+        assert_eq!(shop.renewals, 1);
+        shop.premium_status = None;
+    }
+    // The retried answer settles once and costs no heart.
+    let (status, body) = wrong_answer(&f, &app, &path, failed).await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(f.shop.lock().unwrap().renewals, 2);
+    assert_eq!(user_rows(&f, attempts, failed).await, 1);
+    assert_eq!(user_rows(&f, debits, failed).await, 0);
+
+    // The coins no longer cover the renewal: Backend ends the agreement and
+    // the wrong answer follows the ordinary heart rule.
+    let declined = Uuid::new_v4();
+    {
+        let mut shop = f.shop.lock().unwrap();
+        shop.renewal_due.insert(declined);
+        shop.renewal_unfunded.insert(declined);
+    }
+    let (status, body) = wrong_answer(&f, &app, &path, declined).await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(body["hearts_pending"], false);
+    {
+        let shop = f.shop.lock().unwrap();
+        assert_eq!(shop.renewals, 2);
+        assert!(!shop.renewal_due.contains(&declined));
+        assert_eq!(shop.balances[&declined], 4);
+    }
+    assert_eq!(user_rows(&f, debits, declined).await, 1);
+
+    // Other policy failures stay a retryable outage. Only a 500 triggers the
+    // settlement read, and a positive Premium read alone never admits.
+    let outage = Uuid::new_v4();
+    f.shop.lock().unwrap().premium.insert(outage);
+    for (status, reads) in [(500, 1), (503, 0)] {
+        let before = {
+            let mut shop = f.shop.lock().unwrap();
+            shop.policy_status = Some(status);
+            shop.premium_reads
+        };
+        let (code, body) = wrong_answer(&f, &app, &path, outage).await;
+        assert_eq!(code, 503, "{body}");
+        assert_eq!(f.shop.lock().unwrap().premium_reads, before + reads);
+    }
+    f.shop.lock().unwrap().policy_status = None;
+    assert_eq!(user_rows(&f, attempts, outage).await, 0);
 }

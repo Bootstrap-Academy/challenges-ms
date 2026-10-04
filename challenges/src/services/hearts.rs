@@ -4,7 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use lib::{
     auth::User,
-    services::{shop::LearningMode, ServiceError, Services},
+    services::{
+        shop::{LearningMode, LearningPolicy},
+        ServiceError, ServiceResult, Services,
+    },
     SharedState,
 };
 use poem::{Endpoint, IntoResponse, Middleware, Request, Response};
@@ -32,7 +35,7 @@ pub async fn admit(
     if subtask.retired || user.admin || user.id == subtask.creator {
         return Ok(Admission::Allowed { exempt: true });
     }
-    let policy = match services.shop.learning_policy(user.id).await {
+    let policy = match learning_policy(services, user.id).await {
         Ok(policy) => policy,
         Err(error) if temporary_policy_failure(&error) => {
             // Check is read-only and uses our own task/binding, never client
@@ -60,6 +63,23 @@ pub async fn admit(
             Admission::NoHearts
         },
     )
+}
+
+/// The policy read never debits. Backend answers 500 while a confirmed, funded
+/// monthly renewal is due, so admission settles it through the Premium read, as
+/// it did before the policy route. Backend renews under the account lock, so
+/// parallel attempts and retries renew once. Only a fresh policy decides.
+async fn learning_policy(services: &Services, user: Uuid) -> ServiceResult<LearningPolicy> {
+    let policy = services.shop.learning_policy(user).await;
+    if !matches!(&policy, Err(ServiceError::UnexpectedStatusCode(status))
+        if *status == reqwest::StatusCode::INTERNAL_SERVER_ERROR)
+    {
+        return policy;
+    }
+    match services.shop.has_premium(user).await {
+        Ok(_) => services.shop.learning_policy(user).await,
+        Err(_) => policy,
+    }
 }
 
 fn temporary_policy_failure(error: &ServiceError) -> bool {
