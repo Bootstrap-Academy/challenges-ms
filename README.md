@@ -85,7 +85,12 @@ Attempt admission reads the current Backend policy from
 the existing heart rules; `daily` bypasses both the balance requirement and
 new wrong-answer heart operations. Existing admin, author and retired-task
 exceptions remain. Missing users, unknown modes, invalid responses and service
-failures return an error before accepting an attempt.
+failures return an error before accepting an attempt. The policy read never
+debits; while a confirmed, funded monthly Premium renewal is due, Backend
+answers it with `500`. Admission then reads
+`GET /shop/_internal/premium/{user_id}` once, which settles the renewal like
+the Premium status read, and asks the policy again. Only that policy answer
+decides; if settlement fails, the attempt stays a retryable `503`.
 
 Skills owns course access, lesson binding resolution and the daily counter.
 Challenges supplies authenticated user IDs, task/subtask IDs and course,

@@ -194,12 +194,13 @@ impl ShopService {
         })
     }
 
+    /// Backend settles a due confirmed renewal on this read. Admission uses it
+    /// only for that settlement; the learning policy still decides.
     pub async fn has_premium(&self, user_id: Uuid) -> ServiceResult<bool> {
-        // This result authorizes actual attempts. An older cached negative
-        // must not deny or charge hearts after committed Premium activation.
         Ok(self
             .0
             .get(&format!("/premium/{user_id}"))
+            .timeout(std::time::Duration::from_secs(10))
             .send()
             .await?
             .error_for_status()?
