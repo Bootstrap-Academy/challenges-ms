@@ -1,5 +1,7 @@
 //! Owning-service case operations. All functions use the request transaction;
 //! state, statement and durable delivery work commit or roll back together.
+use std::collections::HashMap;
+
 use entity::{challenges_subtasks, sea_orm_active_enums::ChallengesReportReason};
 use poem_openapi::types::ToJSON;
 use sea_orm::{
@@ -197,9 +199,38 @@ pub async fn reload_subtask(
     effective_subtask(db, row).await
 }
 
+/// The three flags of `moderation_effect` for every listed subtask, decided in
+/// one statement with the rules of that SQL function. The lookup for a single
+/// subtask runs through this statement as well, because `effective_subtask`
+/// passes a list of one. `moderation_effect` remains the source for the other
+/// callers, such as the case detail and the SQL functions behind the queue,
+/// the inbox, decisions and the projection onto the subtask row. A list asks
+/// about all of its rows at once, and one function call per row repeated four
+/// hold lookups for each of them. The holds are read per target through
+/// `LATERAL`, because a prepared statement does not know the length of the
+/// list and this form keeps the plan at one hold lookup per listed target,
+/// whatever length the planner assumes.
+const EFFECTIVE_SUBTASKS: &str = r#"
+SELECT t.id,
+       t.base_enabled AND NOT t.withdrawn AND NOT coalesce(h.blocks, false) AS enabled,
+       t.base_retired OR coalesce(h.retires, false) AS retired,
+       t.withdrawn OR coalesce(h.removes, false) AS removed
+FROM moderation_targets t
+LEFT JOIN LATERAL (
+    SELECT bool_or(effect IN ('hide', 'remove', 'restrict')) AS blocks,
+           bool_or(effect = 'retire') AS retires,
+           bool_or(effect = 'remove') AS removes
+    FROM moderation_holds
+    WHERE target_kind = 'subtask' AND target_id = t.id AND active
+      AND starts_at <= clock_timestamp()
+      AND (ends_at IS NULL OR ends_at > clock_timestamp())
+) h ON true
+WHERE t.kind = 'subtask' AND t.id = ANY($1)"#;
+
 /// Read-only projection: finite visibility measures cease at their stored end,
 /// independently of the later worker that appends expiry notices/history.
 /// This also works in T11's READ ONLY transaction and never creates targets.
+/// A subtask without a moderation target keeps the flags of its own row.
 pub async fn effective_subtasks(
     db: &DatabaseTransaction,
     mut rows: Vec<challenges_subtasks::Model>,
@@ -208,18 +239,29 @@ pub async fn effective_subtasks(
         return Ok(rows);
     }
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
-    let states=value(db,"SELECT coalesce(jsonb_object_agg(id,moderation_effect('subtask',id)),'{}') AS value FROM moderation_targets WHERE kind='subtask' AND id=ANY($1)",vec![ids.into()]).await?;
+    let mut states = HashMap::with_capacity(rows.len());
+    for state in db
+        .query_all(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            EFFECTIVE_SUBTASKS,
+            [ids.into()],
+        ))
+        .await?
+    {
+        states.insert(
+            state.try_get::<Uuid>("", "id")?,
+            (
+                state.try_get::<bool>("", "enabled")?,
+                state.try_get::<bool>("", "retired")?,
+                state.try_get::<bool>("", "removed")?,
+            ),
+        );
+    }
     for row in &mut rows {
-        if let Some(state) = states.get(row.id.to_string()) {
-            row.enabled = state["enabled"]
-                .as_bool()
-                .ok_or_else(|| DbErr::Custom("Invalid moderation state".into()))?;
-            row.retired = state["retired"]
-                .as_bool()
-                .ok_or_else(|| DbErr::Custom("Invalid moderation state".into()))?;
-            row.moderation_removed = state["removed"]
-                .as_bool()
-                .ok_or_else(|| DbErr::Custom("Invalid moderation state".into()))?;
+        if let Some(&(enabled, retired, removed)) = states.get(&row.id) {
+            row.enabled = enabled;
+            row.retired = retired;
+            row.moderation_removed = removed;
         }
     }
     Ok(rows)
@@ -230,3 +272,7 @@ pub async fn effective_subtask(
 ) -> Result<challenges_subtasks::Model, DbErr> {
     Ok(effective_subtasks(db, vec![row]).await?.remove(0))
 }
+
+#[cfg(test)]
+#[path = "moderation_effect_tests.rs"]
+mod effect_tests;

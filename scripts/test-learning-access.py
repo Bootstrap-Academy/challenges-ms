@@ -78,6 +78,7 @@ def main():
             ("inline_regression", ["coding_inline_", "--", "--ignored", "--test-threads=1"]),
             ("sandbox_regression", ["coding_sandbox_", "--", "--ignored", "--test-threads=1"]),
             ("publication_regression", ["publication_", "--", "--ignored", "--test-threads=1"]),
+            ("moderation_regression", ["effective_subtasks_match_moderation_effect_postgres", "--", "--ignored", "--test-threads=1"]),
         ]:
             run(f"create-{db}", ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-p", str(pg_port),
                                  "-U", user, "-d", "postgres"], stdin=f"CREATE DATABASE {db}")
@@ -85,7 +86,8 @@ def main():
             run(f"migrate-{db}", [str(target / "debug/migration"), "up"], {"DATABASE_URL": db_url})
             run(db, ["cargo", "test", "--locked", "--offline", "-j", "2", "-p", "challenges", *filters],
                 {"HEART_TEST_DATABASE_URL": db_url, "HEART_TEST_REDIS_URL": f"redis://127.0.0.1:{redis_port}/0",
-                 "PRIV01_TEST_DATABASE_URL": db_url, "PRIV01_TEST_REDIS_URL": f"redis://127.0.0.1:{redis_port}/0"})
+                 "PRIV01_TEST_DATABASE_URL": db_url, "PRIV01_TEST_REDIS_URL": f"redis://127.0.0.1:{redis_port}/0",
+                 "MODERATION_TEST_DATABASE_URL": db_url})
         report["passed"] = True
     finally:
         if redis is not None:
