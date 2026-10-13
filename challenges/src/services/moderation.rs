@@ -1,5 +1,7 @@
 //! Owning-service case operations. All functions use the request transaction;
 //! state, statement and durable delivery work commit or roll back together.
+use std::collections::HashMap;
+
 use entity::{challenges_subtasks, sea_orm_active_enums::ChallengesReportReason};
 use poem_openapi::types::ToJSON;
 use sea_orm::{
@@ -197,9 +199,36 @@ pub async fn reload_subtask(
     effective_subtask(db, row).await
 }
 
+/// The three flags of `moderation_effect` for every listed subtask, decided in
+/// one statement. The rules are the ones of that SQL function, which remains
+/// the source for every caller that asks about a single target. A list asks
+/// about all of its rows at once, and one function call per row made the
+/// database repeat the same hold lookups for each of them. The holds are
+/// limited to the listed targets as well, so the lookup for one subtask stays
+/// an index read however many holds exist.
+const EFFECTIVE_SUBTASKS: &str = r#"
+SELECT t.id,
+       t.base_enabled AND NOT t.withdrawn AND NOT coalesce(h.blocks, false) AS enabled,
+       t.base_retired OR coalesce(h.retires, false) AS retired,
+       t.withdrawn OR coalesce(h.removes, false) AS removed
+FROM moderation_targets t
+LEFT JOIN (
+    SELECT target_id,
+           bool_or(effect IN ('hide', 'remove', 'restrict')) AS blocks,
+           bool_or(effect = 'retire') AS retires,
+           bool_or(effect = 'remove') AS removes
+    FROM moderation_holds
+    WHERE target_kind = 'subtask' AND target_id = ANY($1) AND active
+      AND starts_at <= clock_timestamp()
+      AND (ends_at IS NULL OR ends_at > clock_timestamp())
+    GROUP BY target_id
+) h ON h.target_id = t.id
+WHERE t.kind = 'subtask' AND t.id = ANY($1)"#;
+
 /// Read-only projection: finite visibility measures cease at their stored end,
 /// independently of the later worker that appends expiry notices/history.
 /// This also works in T11's READ ONLY transaction and never creates targets.
+/// A subtask without a moderation target keeps the flags of its own row.
 pub async fn effective_subtasks(
     db: &DatabaseTransaction,
     mut rows: Vec<challenges_subtasks::Model>,
@@ -208,18 +237,29 @@ pub async fn effective_subtasks(
         return Ok(rows);
     }
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
-    let states=value(db,"SELECT coalesce(jsonb_object_agg(id,moderation_effect('subtask',id)),'{}') AS value FROM moderation_targets WHERE kind='subtask' AND id=ANY($1)",vec![ids.into()]).await?;
+    let mut states = HashMap::with_capacity(rows.len());
+    for state in db
+        .query_all(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            EFFECTIVE_SUBTASKS,
+            [ids.into()],
+        ))
+        .await?
+    {
+        states.insert(
+            state.try_get::<Uuid>("", "id")?,
+            (
+                state.try_get::<bool>("", "enabled")?,
+                state.try_get::<bool>("", "retired")?,
+                state.try_get::<bool>("", "removed")?,
+            ),
+        );
+    }
     for row in &mut rows {
-        if let Some(state) = states.get(row.id.to_string()) {
-            row.enabled = state["enabled"]
-                .as_bool()
-                .ok_or_else(|| DbErr::Custom("Invalid moderation state".into()))?;
-            row.retired = state["retired"]
-                .as_bool()
-                .ok_or_else(|| DbErr::Custom("Invalid moderation state".into()))?;
-            row.moderation_removed = state["removed"]
-                .as_bool()
-                .ok_or_else(|| DbErr::Custom("Invalid moderation state".into()))?;
+        if let Some(&(enabled, retired, removed)) = states.get(&row.id) {
+            row.enabled = enabled;
+            row.retired = retired;
+            row.moderation_removed = removed;
         }
     }
     Ok(rows)
@@ -230,3 +270,7 @@ pub async fn effective_subtask(
 ) -> Result<challenges_subtasks::Model, DbErr> {
     Ok(effective_subtasks(db, vec![row]).await?.remove(0))
 }
+
+#[cfg(test)]
+#[path = "moderation_effect_tests.rs"]
+mod effect_tests;
