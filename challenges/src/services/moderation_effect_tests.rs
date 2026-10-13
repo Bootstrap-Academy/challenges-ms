@@ -1,7 +1,8 @@
 //! Opt-in PostgreSQL regression against the real migrated, disposable schema.
 //! Run with MODERATION_TEST_DATABASE_URL and `cargo test -p challenges
 //! effective_subtasks_match_moderation_effect_postgres -- --ignored --nocapture`.
-//! All inserts roll back.
+//! The fixture stops the clock of its transaction, so a hold can start or end
+//! at exactly the compared instant. Everything the test creates rolls back.
 use std::collections::HashSet;
 
 use entity::{challenges_subtasks, sea_orm_active_enums::ChallengesSubtaskType};
@@ -11,7 +12,7 @@ use uuid::Uuid;
 use super::{effective_subtask, effective_subtasks, value};
 
 const STATES: u32 = 8;
-const SCENARIOS: u32 = 29;
+const SCENARIOS: u32 = 33;
 
 /// The statement the list ran before: one call of `moderation_effect` per target.
 const REFERENCE: &str = "SELECT coalesce(jsonb_object_agg(id,moderation_effect('subtask',id)),'{}') AS value FROM moderation_targets WHERE kind='subtask' AND id=ANY($1)";
@@ -97,31 +98,40 @@ async fn effective_subtasks_match_moderation_effect_postgres() {
     };
 
     // Every flag of a known target starts as the opposite of its expected
-    // value, so a flag which the projection left alone cannot pass.
-    let known = ids.iter().map(|&id| {
-        let (enabled, retired, removed) = expected(id);
-        subtask(id, !enabled, !retired, !removed)
-    });
-    let rows = effective_subtasks(&txn, known.chain(unknown.clone()).collect())
+    // value, so a flag which the projection left alone cannot pass. The known
+    // targets are listed a second time behind the unknown ones, because every
+    // row of a list needs its flags, also when an id occurs more than once.
+    let known: Vec<_> = ids
+        .iter()
+        .map(|&id| {
+            let (enabled, retired, removed) = expected(id);
+            subtask(id, !enabled, !retired, !removed)
+        })
+        .collect();
+    let rows = effective_subtasks(&txn, [&known[..], &unknown[..], &known[..]].concat())
         .await
         .unwrap();
-    assert_eq!(rows.len(), ids.len() + unknown.len());
+    assert_eq!(rows.len(), 2 * ids.len() + unknown.len());
+    let (first, rest) = rows.split_at(ids.len());
+    let (untouched, second) = rest.split_at(unknown.len());
     let mut seen = HashSet::new();
-    for (row, (state, scenario, id)) in rows.iter().zip(&targets) {
-        assert_eq!(row.id, *id);
+    for (index, row) in first.iter().chain(second).enumerate() {
+        let (state, scenario, id) = targets[index % targets.len()];
+        assert_eq!(row.id, id);
         assert_eq!(
             flags(row),
-            expected(*id),
-            "target state {state}, hold scenario {scenario}"
+            expected(id),
+            "target state {state}, hold scenario {scenario}, occurrence {}",
+            index / targets.len() + 1
         );
         seen.insert(flags(row));
     }
-    assert_eq!(&rows[ids.len()..], &unknown[..]);
+    assert_eq!(untouched, &unknown[..]);
     // A removed or withdrawn target is never enabled, which leaves six of the
     // eight combinations. The data must reach each of them.
     assert_eq!(seen.len(), 6);
     println!(
-        "PASS {} targets match moderation_effect in a READ ONLY transaction, {} subtasks without a target unchanged",
+        "PASS {} targets, each listed twice, match moderation_effect in a READ ONLY transaction, {} subtasks without a target unchanged",
         ids.len(),
         unknown.len()
     );
@@ -144,6 +154,12 @@ async fn effective_subtasks_match_moderation_effect_postgres() {
         (0, 25, (false, false, false)),
         (0, 26, (false, true, true)),
         (0, 27, (true, false, false)),
+        // The edges: a hold decides from the instant of its start on and no
+        // longer at the instant of its stored end.
+        (0, 29, (false, false, false)),
+        (0, 30, (true, false, false)),
+        (0, 31, (true, false, false)),
+        (0, 32, (false, false, false)),
         (1, 0, (false, false, false)),
         (2, 0, (true, true, false)),
         (4, 0, (false, false, true)),

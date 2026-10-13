@@ -1,6 +1,18 @@
 -- Entirely synthetic. Eight target states meet every hold scenario once, so
 -- each rule of moderation_effect is exercised with and without each of the
 -- others. Scenario 0 is a target without any hold.
+
+-- The clock of this fixture stands still. pg_catalog is named last in the
+-- search path of this transaction, so every unqualified clock_timestamp()
+-- resolves to the function below: in this file, in moderation_effect and in
+-- the projection under test. A hold can therefore start or end at exactly the
+-- instant which both sides compare with, and a statement which read any other
+-- clock would compare with a different time.
+CREATE SCHEMA moderation_effect_fixture;
+CREATE FUNCTION moderation_effect_fixture.clock_timestamp() RETURNS timestamptz
+    LANGUAGE sql AS $$ SELECT timestamptz '2100-01-01 00:00:00+00' $$;
+SET LOCAL search_path = moderation_effect_fixture, public, pg_catalog;
+
 CREATE TEMP TABLE moderation_effect_fixture_holds ON COMMIT DROP AS
 SELECT * FROM (VALUES
     -- One hold in force and without a stored end, for each effect.
@@ -48,7 +60,13 @@ SELECT * FROM (VALUES
     (36, 27, 'retire',   false, interval '-1 day',  NULL),
     (37, 27, 'hide',     true,  interval '1 day',   NULL),
     (38, 28, 'hide',     true,  interval '-1 day',  NULL),
-    (39, 28, 'hide',     true,  interval '-1 day',  interval '1 day')
+    (39, 28, 'hide',     true,  interval '-1 day',  interval '1 day'),
+    -- The two edges of a hold. It is in force from the very instant of its
+    -- start, and it is no longer in force at the instant of its stored end.
+    (40, 29, 'hide',     true,  interval '0',             NULL),
+    (41, 30, 'retire',   true,  interval '1 microsecond', NULL),
+    (42, 31, 'remove',   true,  interval '-1 day',        interval '0'),
+    (43, 32, 'restrict', true,  interval '-1 day',        interval '1 microsecond')
 ) AS holds(hold, scenario, effect, active, starts_in, ends_in);
 
 INSERT INTO moderation_targets (kind, id, subject, base_enabled, base_retired, withdrawn)
@@ -56,7 +74,7 @@ SELECT 'subtask',
        ('00000000-0000-4000-8' || lpad(state::text, 3, '0') || '-' || lpad(scenario::text, 12, '0'))::uuid,
        '00000000-0000-4000-a000-000000000001',
        state & 1 = 0, state & 2 <> 0, state & 4 <> 0
-FROM generate_series(0, 7) AS state, generate_series(0, 28) AS scenario;
+FROM generate_series(0, 7) AS state, generate_series(0, 32) AS scenario;
 
 INSERT INTO moderation_cases (id, target_kind, target_id, subject, source, private_evidence)
 SELECT ('00000000-0000-4000-9' || lpad(state::text, 3, '0') || '-' || lpad(hold::text, 12, '0'))::uuid,

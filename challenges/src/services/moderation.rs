@@ -200,29 +200,31 @@ pub async fn reload_subtask(
 }
 
 /// The three flags of `moderation_effect` for every listed subtask, decided in
-/// one statement. The rules are the ones of that SQL function, which remains
-/// the source for every caller that asks about a single target. A list asks
-/// about all of its rows at once, and one function call per row made the
-/// database repeat the same hold lookups for each of them. The holds are
-/// limited to the listed targets as well, so the lookup for one subtask stays
-/// an index read however many holds exist.
+/// one statement with the rules of that SQL function. The lookup for a single
+/// subtask runs through this statement as well, because `effective_subtask`
+/// passes a list of one. `moderation_effect` remains the source for the other
+/// callers, such as the case detail and the SQL functions behind the queue,
+/// the inbox, decisions and the projection onto the subtask row. A list asks
+/// about all of its rows at once, and one function call per row repeated four
+/// hold lookups for each of them. The holds are read per target through
+/// `LATERAL`, because a prepared statement does not know the length of the
+/// list and this form keeps the plan at one hold lookup per listed target,
+/// whatever length the planner assumes.
 const EFFECTIVE_SUBTASKS: &str = r#"
 SELECT t.id,
        t.base_enabled AND NOT t.withdrawn AND NOT coalesce(h.blocks, false) AS enabled,
        t.base_retired OR coalesce(h.retires, false) AS retired,
        t.withdrawn OR coalesce(h.removes, false) AS removed
 FROM moderation_targets t
-LEFT JOIN (
-    SELECT target_id,
-           bool_or(effect IN ('hide', 'remove', 'restrict')) AS blocks,
+LEFT JOIN LATERAL (
+    SELECT bool_or(effect IN ('hide', 'remove', 'restrict')) AS blocks,
            bool_or(effect = 'retire') AS retires,
            bool_or(effect = 'remove') AS removes
     FROM moderation_holds
-    WHERE target_kind = 'subtask' AND target_id = ANY($1) AND active
+    WHERE target_kind = 'subtask' AND target_id = t.id AND active
       AND starts_at <= clock_timestamp()
       AND (ends_at IS NULL OR ends_at > clock_timestamp())
-    GROUP BY target_id
-) h ON h.target_id = t.id
+) h ON true
 WHERE t.kind = 'subtask' AND t.id = ANY($1)"#;
 
 /// Read-only projection: finite visibility measures cease at their stored end,
