@@ -199,3 +199,9 @@ The settings live in the `[deleted_user_sweep]` section of `config.toml` and can
 The base url of the auth microservice is `services.auth` (`SERVICES__AUTH`).
 
 In the NixOS module the sweep is a oneshot service with a timer, enabled through `academy.backend.challenges.sweepDeletedUsers.enable` (`interval`, default `daily`, and `randomizedDelay`, default `5m`).
+
+## License
+
+Copyright (C) 2023–2026 Cedric Mössner
+
+This project is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [`LICENSE`](LICENSE) for the full license text.
