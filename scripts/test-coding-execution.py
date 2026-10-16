@@ -170,8 +170,9 @@ def main():
 
         for db in ("export_regression", "process_check"):
             migrate(db)
-        # Reuse the runner that isolates access, queue, inline, sandbox and
-        # publication groups and supplies their respective database variables.
+        # Reuse the runner that isolates access, queue, inline, sandbox,
+        # publication and moderation-effect groups and supplies their
+        # respective database variables.
         run("learning-access-and-sandbox-regression", ["python3", "-B", str(work / "scripts/test-learning-access.py"),
             "--output", str(out / "learning-access")], timeout=600)
         run("private-export-regression", ["cargo", "test", "--locked", "--offline", "-p", "challenges", "users::export_tests::", "--", "--ignored", "--test-threads=1"],

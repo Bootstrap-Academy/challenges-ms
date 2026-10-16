@@ -206,25 +206,31 @@ pub async fn reload_subtask(
 /// callers, such as the case detail and the SQL functions behind the queue,
 /// the inbox, decisions and the projection onto the subtask row. A list asks
 /// about all of its rows at once, and one function call per row repeated four
-/// hold lookups for each of them. The holds are read per target through
-/// `LATERAL`, because a prepared statement does not know the length of the
-/// list and this form keeps the plan at one hold lookup per listed target,
-/// whatever length the planner assumes.
+/// hold lookups for each of them.
+///
+/// The statement reads the holds in force for the listed ids in one pass and
+/// asks each rule through a hashed subplan over that set. A prepared statement
+/// does not know the length of the list. Joining the holds to the targets left
+/// the planner choices whose cost grows with targets times holds when its
+/// guess is wrong: a nested loop over an aggregate of the holds, or a read of
+/// a small holds table for every listed target. Here every target costs one
+/// hash probe per rule, whatever length the planner assumes, and the lookup
+/// for a single subtask stays as cheap as before. `NOT IN` relies on
+/// `moderation_holds.target_id` being `NOT NULL`.
 const EFFECTIVE_SUBTASKS: &str = r#"
-SELECT t.id,
-       t.base_enabled AND NOT t.withdrawn AND NOT coalesce(h.blocks, false) AS enabled,
-       t.base_retired OR coalesce(h.retires, false) AS retired,
-       t.withdrawn OR coalesce(h.removes, false) AS removed
-FROM moderation_targets t
-LEFT JOIN LATERAL (
-    SELECT bool_or(effect IN ('hide', 'remove', 'restrict')) AS blocks,
-           bool_or(effect = 'retire') AS retires,
-           bool_or(effect = 'remove') AS removes
+WITH h AS MATERIALIZED (
+    SELECT target_id, effect
     FROM moderation_holds
-    WHERE target_kind = 'subtask' AND target_id = t.id AND active
+    WHERE target_kind = 'subtask' AND target_id = ANY($1) AND active
       AND starts_at <= clock_timestamp()
       AND (ends_at IS NULL OR ends_at > clock_timestamp())
-) h ON true
+)
+SELECT t.id,
+       t.base_enabled AND NOT t.withdrawn
+         AND t.id NOT IN (SELECT target_id FROM h WHERE effect IN ('hide', 'remove', 'restrict')) AS enabled,
+       t.base_retired OR t.id IN (SELECT target_id FROM h WHERE effect = 'retire') AS retired,
+       t.withdrawn OR t.id IN (SELECT target_id FROM h WHERE effect = 'remove') AS removed
+FROM moderation_targets t
 WHERE t.kind = 'subtask' AND t.id = ANY($1)"#;
 
 /// Read-only projection: finite visibility measures cease at their stored end,

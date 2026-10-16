@@ -1,21 +1,70 @@
-//! Opt-in PostgreSQL regression against the real migrated, disposable schema.
+//! Opt-in PostgreSQL regressions against the real migrated, disposable schema.
 //! Run with MODERATION_TEST_DATABASE_URL and `cargo test -p challenges
-//! effective_subtasks_match_moderation_effect_postgres -- --ignored --nocapture`.
-//! The fixture stops the clock of its transaction, so a hold can start or end
-//! at exactly the compared instant. Everything the test creates rolls back.
-use std::collections::HashSet;
+//! moderation::effect_tests:: -- --ignored --nocapture --test-threads=1`.
+//! The first fixture stops the clock of its transaction, so a hold can start
+//! or end at exactly the compared instant. The second builds realistic holds
+//! against the real clock. Everything the tests create rolls back.
+use std::collections::{HashMap, HashSet};
 
 use entity::{challenges_subtasks, sea_orm_active_enums::ChallengesSubtaskType};
-use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait};
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseTransaction, DbBackend, Statement, TransactionTrait,
+};
 use uuid::Uuid;
 
-use super::{effective_subtask, effective_subtasks, value};
+use super::{effective_subtask, effective_subtasks, value, EFFECTIVE_SUBTASKS};
 
 const STATES: u32 = 8;
 const SCENARIOS: u32 = 33;
 
-/// The statement the list ran before: one call of `moderation_effect` per target.
+/// The statement the list ran first: one call of `moderation_effect` per target.
 const REFERENCE: &str = "SELECT coalesce(jsonb_object_agg(id,moderation_effect('subtask',id)),'{}') AS value FROM moderation_targets WHERE kind='subtask' AND id=ANY($1)";
+
+/// The statement the list ran before it read the holds of the list in one
+/// pass: an aggregate over the holds of each target through `LATERAL`.
+const LATERAL: &str = r#"
+SELECT t.id,
+       t.base_enabled AND NOT t.withdrawn AND NOT coalesce(h.blocks, false) AS enabled,
+       t.base_retired OR coalesce(h.retires, false) AS retired,
+       t.withdrawn OR coalesce(h.removes, false) AS removed
+FROM moderation_targets t
+LEFT JOIN LATERAL (
+    SELECT bool_or(effect IN ('hide', 'remove', 'restrict')) AS blocks,
+           bool_or(effect = 'retire') AS retires,
+           bool_or(effect = 'remove') AS removes
+    FROM moderation_holds
+    WHERE target_kind = 'subtask' AND target_id = t.id AND active
+      AND starts_at <= clock_timestamp()
+      AND (ends_at IS NULL OR ends_at > clock_timestamp())
+) h ON true
+WHERE t.kind = 'subtask' AND t.id = ANY($1)"#;
+
+/// Every trait of a hold that one of the rules looks at, counted over the
+/// realistic holds. Each count has to stay above zero at every size.
+const COVERAGE: &str = r#"
+SELECT jsonb_build_object(
+    'hide in force at a subtask', count(*) FILTER (WHERE target_kind = 'subtask' AND in_force AND effect = 'hide'),
+    'remove in force at a subtask', count(*) FILTER (WHERE target_kind = 'subtask' AND in_force AND effect = 'remove'),
+    'restrict in force at a subtask', count(*) FILTER (WHERE target_kind = 'subtask' AND in_force AND effect = 'restrict'),
+    'retire in force at a subtask', count(*) FILTER (WHERE target_kind = 'subtask' AND in_force AND effect = 'retire'),
+    'switched off', count(*) FILTER (WHERE target_kind = 'subtask' AND NOT active),
+    'ended while still active', count(*) FILTER (WHERE target_kind = 'subtask' AND active AND ends_at <= clock_timestamp()),
+    'not started yet', count(*) FILTER (WHERE target_kind = 'subtask' AND active AND starts_at > clock_timestamp()),
+    'starting at -infinity', count(*) FILTER (WHERE target_kind = 'subtask' AND in_force AND starts_at = '-infinity'),
+    'ending at infinity', count(*) FILTER (WHERE target_kind = 'subtask' AND in_force AND ends_at = 'infinity'),
+    'in force at another kind with a subtask id', count(*) FILTER (WHERE target_kind <> 'subtask' AND in_force
+        AND EXISTS (SELECT 1 FROM moderation_targets s WHERE s.kind = 'subtask' AND s.id = target_id)),
+    'subtasks with several holds in force', (SELECT count(*) FROM (
+        SELECT 1 FROM moderation_holds WHERE target_kind = 'subtask' AND active AND starts_at <= clock_timestamp()
+          AND (ends_at IS NULL OR ends_at > clock_timestamp()) GROUP BY target_id HAVING count(*) > 1) AS s)
+) AS value
+FROM (SELECT *, active AND starts_at <= clock_timestamp() AND (ends_at IS NULL OR ends_at > clock_timestamp()) AS in_force
+      FROM moderation_holds) AS h"#;
+
+/// The flags of the listed subtask targets as if they had no hold at all.
+const WITHOUT_HOLDS: &str = "SELECT id, base_enabled AND NOT withdrawn AS enabled, base_retired AS retired, withdrawn AS removed FROM moderation_targets WHERE kind = 'subtask' AND id = ANY($1)";
+
+type Flags = (bool, bool, bool);
 
 fn target(state: u32, scenario: u32) -> Uuid {
     format!("00000000-0000-4000-8{state:03}-{scenario:012}")
@@ -38,8 +87,49 @@ fn subtask(id: Uuid, enabled: bool, retired: bool, removed: bool) -> challenges_
     }
 }
 
-fn flags(row: &challenges_subtasks::Model) -> (bool, bool, bool) {
+fn flags(row: &challenges_subtasks::Model) -> Flags {
     (row.enabled, row.retired, row.moderation_removed)
+}
+
+/// The flags one of the statements decides for the listed ids, by id. An id
+/// must not come back twice.
+async fn decided(txn: &DatabaseTransaction, statement: &str, ids: &[Uuid]) -> HashMap<Uuid, Flags> {
+    let mut decided = HashMap::new();
+    for row in txn
+        .query_all(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            statement,
+            [ids.to_vec().into()],
+        ))
+        .await
+        .unwrap()
+    {
+        let id: Uuid = row.try_get("", "id").unwrap();
+        let state = (
+            row.try_get("", "enabled").unwrap(),
+            row.try_get("", "retired").unwrap(),
+            row.try_get("", "removed").unwrap(),
+        );
+        assert!(decided.insert(id, state).is_none(), "{id} came back twice");
+    }
+    decided
+}
+
+fn assert_same(what: &str, got: &HashMap<Uuid, Flags>, want: &HashMap<Uuid, Flags>) {
+    let wrong: Vec<_> = want
+        .iter()
+        .filter(|(id, state)| got.get(id) != Some(state))
+        .collect();
+    assert!(
+        wrong.is_empty() && got.len() == want.len(),
+        "{what}: {} of {} targets differ, first {:?} got {:?}; {} rows for {} targets",
+        wrong.len(),
+        want.len(),
+        wrong.first(),
+        wrong.first().map(|(id, _)| got.get(id)),
+        got.len(),
+        want.len()
+    );
 }
 
 #[tokio::test]
@@ -182,6 +272,128 @@ async fn effective_subtasks_match_moderation_effect_postgres() {
         .unwrap()
         .is_empty());
     println!("PASS fixed expectations for single targets and an empty list");
+    txn.rollback().await.unwrap();
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires a migrated disposable PostgreSQL via MODERATION_TEST_DATABASE_URL"]
+async fn effective_subtasks_match_lateral_statement_on_realistic_holds_postgres() {
+    let db = Database::connect(std::env::var("MODERATION_TEST_DATABASE_URL").unwrap())
+        .await
+        .unwrap();
+    let txn = db.begin().await.unwrap();
+    txn.execute_unprepared(include_str!("fixtures/moderation_effect_realistic.sql"))
+        .await
+        .unwrap();
+    let listed: Vec<Uuid> = txn
+        .query_all(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT id FROM realistic_list ORDER BY position",
+        ))
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| row.try_get("", "id").unwrap())
+        .collect();
+    // Subtasks without a subtask target keep whatever their own row says.
+    let untouched = (true, false, true);
+
+    // The table grows from a few hundred holds on a few pages, where the
+    // planner read the holds per target sequentially for the LATERAL form, to
+    // sizes where it reads them through the partial index.
+    let mut holds = 0;
+    for size in [200, 2_000, 20_000] {
+        txn.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_temp.realistic_holds($1, $2)",
+            [(holds + 1).into(), size.into()],
+        ))
+        .await
+        .unwrap();
+        holds = size;
+        txn.execute_unprepared("ANALYZE moderation_targets, moderation_cases, moderation_holds")
+            .await
+            .unwrap();
+        let coverage = value(&txn, COVERAGE, Vec::new()).await.unwrap();
+        for (kind, count) in coverage.as_object().unwrap() {
+            assert!(count.as_i64().unwrap() > 0, "{size} holds: none {kind}");
+        }
+
+        let reference: HashMap<Uuid, Flags> = value(&txn, REFERENCE, vec![listed.clone().into()])
+            .await
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(id, state)| {
+                (
+                    id.parse().unwrap(),
+                    (
+                        state["enabled"].as_bool().unwrap(),
+                        state["retired"].as_bool().unwrap(),
+                        state["removed"].as_bool().unwrap(),
+                    ),
+                )
+            })
+            .collect();
+        // Holds have to turn each flag of some targets away from what the
+        // target alone would give.
+        let alone = decided(&txn, WITHOUT_HOLDS, &listed).await;
+        let turned = |flag: fn(&Flags) -> bool| {
+            reference
+                .iter()
+                .filter(|(id, state)| flag(state) != flag(&alone[*id]))
+                .count()
+        };
+        let turned = [turned(|s| s.0), turned(|s| s.1), turned(|s| s.2)];
+        assert!(
+            turned.iter().all(|&count| count > 0),
+            "{size} holds: holds turned (enabled, retired, removed) of {turned:?} targets"
+        );
+
+        for mode in ["force_custom_plan", "force_generic_plan"] {
+            txn.execute_unprepared(&format!("SET LOCAL plan_cache_mode = {mode}"))
+                .await
+                .unwrap();
+            let lateral = decided(&txn, LATERAL, &listed).await;
+            assert_same(
+                &format!("{size} holds, {mode}, LATERAL against moderation_effect"),
+                &lateral,
+                &reference,
+            );
+            let current = decided(&txn, EFFECTIVE_SUBTASKS, &listed).await;
+            assert_same(
+                &format!("{size} holds, {mode}, statement against LATERAL"),
+                &current,
+                &lateral,
+            );
+
+            // Through the service, every row starts with the opposite flags.
+            let rows: Vec<_> = listed
+                .iter()
+                .map(|&id| match reference.get(&id) {
+                    Some(&(enabled, retired, removed)) => subtask(id, !enabled, !retired, !removed),
+                    None => subtask(id, untouched.0, untouched.1, untouched.2),
+                })
+                .collect();
+            let rows = effective_subtasks(&txn, rows).await.unwrap();
+            assert_eq!(rows.len(), listed.len());
+            for (row, &id) in rows.iter().zip(&listed) {
+                assert_eq!(row.id, id);
+                assert_eq!(
+                    flags(row),
+                    reference.get(&id).copied().unwrap_or(untouched),
+                    "{size} holds, {mode}, effective_subtasks for {id}"
+                );
+            }
+        }
+        println!(
+            "PASS {size} holds: {} listed rows, {} targets, LATERAL, the statement and effective_subtasks match moderation_effect with custom and generic plans",
+            listed.len(),
+            reference.len()
+        );
+    }
     txn.rollback().await.unwrap();
     db.close().await.unwrap();
 }
