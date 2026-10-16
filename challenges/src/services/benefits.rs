@@ -90,6 +90,45 @@ async fn component(
     Ok(())
 }
 
+/// Remove the first-completion records of an erased account together with
+/// everything that hangs on them: the delivery components and their
+/// observations. Returns the number of deleted rows.
+///
+/// Runs inside the account erasure transaction, after `lock_subject`, so no
+/// new earning can appear for the account meanwhile. A component that is not
+/// delivered yet can no longer reach the account: skills-ms answers
+/// `recipient_erased` once its own erasure has run, and Backend answers a coin
+/// credit for a deleted account with 404, which would be retried forever.
+///
+/// The components are locked first. A delivery holds its component while it
+/// waits for the remote reply and records an observation before it commits,
+/// so the erasure waits for it and then removes that observation as well. The
+/// dispatcher skips the locked components until the erasure has committed.
+pub async fn erase(db: &DatabaseTransaction, user: Uuid) -> Result<u64, DbErr> {
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT c.id FROM challenge_benefit_components c JOIN challenge_benefit_earnings e ON e.id=c.earning_id WHERE e.user_id=$1 ORDER BY c.id FOR UPDATE OF c",
+        [user.into()],
+    ))
+    .await?;
+    let mut rows = 0;
+    for sql in [
+        "DELETE FROM challenge_benefit_observations o USING challenge_benefit_components c, challenge_benefit_earnings e WHERE o.component_id=c.id AND c.earning_id=e.id AND e.user_id=$1",
+        "DELETE FROM challenge_benefit_components c USING challenge_benefit_earnings e WHERE c.earning_id=e.id AND e.user_id=$1",
+        "DELETE FROM challenge_benefit_earnings WHERE user_id=$1",
+    ] {
+        rows += db
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                [user.into()],
+            ))
+            .await?
+            .rows_affected();
+    }
+    Ok(rows)
+}
+
 pub async fn dispatch(db: &DatabaseConnection, services: &Services) -> anyhow::Result<usize> {
     dispatch_with(db, |id, user, kind, request| async move {
         if kind == "xp" {
@@ -101,7 +140,10 @@ pub async fn dispatch(db: &DatabaseConnection, services: &Services) -> anyhow::R
     .await
 }
 
-async fn dispatch_with<F, Fut>(db: &DatabaseConnection, mut deliver: F) -> anyhow::Result<usize>
+pub(crate) async fn dispatch_with<F, Fut>(
+    db: &DatabaseConnection,
+    mut deliver: F,
+) -> anyhow::Result<usize>
 where
     F: FnMut(Uuid, Uuid, String, Value) -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<Value>>,
