@@ -181,6 +181,7 @@ The endpoint requires an internal token with the `challenges` audience and answe
 
 It deletes the bans the user issued or received, their subtask reports, their multiple choice, question and matching attempts, their coding challenge submissions and their user subtask rows, as well as the subtasks they created — including everything referencing those subtasks, which the database removes through `ON DELETE CASCADE`.
 Tasks are shared between users, so a task the user created is only deleted once no subtask is left in it.
+The records of the user's first completions (`challenge_benefit_earnings`) go in the same transaction, with their delivery components and observations; a component that has not been delivered yet is dropped, because the deleted account can no longer receive it.
 The cached values tagged with the user id are dropped afterwards.
 
 Because the auth microservice logs and swallows a failing call, a periodic sweep catches the deletions that were lost:
@@ -190,6 +191,7 @@ challenges sweep-deleted-users   # or `cargo run -- sweep-deleted-users` in the 
 ```
 
 It walks the distinct user ids referenced anywhere in the database in batches, asks the auth microservice for each one and deletes the data of every user that no longer exists there.
+The walk includes the first-completion records, so it also reaches an account that only completed lesson units, and the records that earlier versions left behind for deleted accounts.
 The settings live in the `[deleted_user_sweep]` section of `config.toml` and can be overridden with environment variables (`__` separates the section from the property):
 
 | Property | Environment variable | Default | Description |

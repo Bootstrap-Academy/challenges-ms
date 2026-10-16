@@ -146,7 +146,9 @@ pub async fn export_user_data(
 /// database takes care of via `ON DELETE CASCADE`. Tasks created by the user
 /// are shared between all users, so they are only deleted if no subtask is left
 /// in them. Bans the user has issued against somebody else are kept, because
-/// they restrict the banned user and not the creator.
+/// they restrict the banned user and not the creator. The records of the
+/// user's first completions go with their delivery components and
+/// observations.
 ///
 /// Returns the number of rows that have been deleted directly.
 pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result<u64, DbErr> {
@@ -159,6 +161,7 @@ pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result
     )
     .await?;
     let mut rows = 0;
+    rows += super::benefits::erase(db, user_id).await?;
     rows += super::coding_execution::erase_inline(db, user_id).await?;
     rows += db
         .execute(sea_orm::Statement::from_sql_and_values(
@@ -274,6 +277,10 @@ async fn delete_empty_tasks(db: &DatabaseTransaction, user_id: Uuid) -> Result<u
         .rows_affected)
 }
 
+/// User id columns of tables that have no entity and whose rows can exist
+/// without a row in any entity table, so the sweep has to read them directly.
+const UNMAPPED_USER_ID_COLUMNS: &[(&str, &str)] = &[("challenge_benefit_earnings", "user_id")];
+
 /// Return the distinct user ids that are referenced anywhere in the challenges
 /// database, starting after `after` and limited to `limit` ids.
 pub async fn referenced_user_ids(
@@ -327,6 +334,15 @@ fn referenced_user_ids_query(after: Uuid, limit: u64) -> SelectStatement {
         select_column(challenges_tasks::Entity, challenges_tasks::Column::Creator),
     ] {
         user_ids.union(UnionType::Distinct, query);
+    }
+    // A completed lesson unit leaves a milestone and a first-completion record
+    // without any attempt, so without this the sweep would never reach an
+    // account that only completed lesson units.
+    for (table, column) in UNMAPPED_USER_ID_COLUMNS {
+        user_ids.union(
+            UnionType::Distinct,
+            select_column(Alias::new(*table), Alias::new(*column)),
+        );
     }
 
     Query::select()
@@ -446,7 +462,7 @@ mod tests {
     #[test]
     fn test_referenced_user_ids_query_covers_all_columns() {
         let query = referenced_user_ids_query(Uuid::nil(), 500).to_string(PostgresQueryBuilder);
-        for (table, column) in USER_ID_COLUMNS {
+        for (table, column) in USER_ID_COLUMNS.iter().chain(UNMAPPED_USER_ID_COLUMNS) {
             assert!(
                 query.contains(&format!(r#"SELECT "{column}" FROM "{table}""#)),
                 "{table}.{column} is missing from {query}"
