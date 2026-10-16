@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run daily-access and existing heart/queue regressions on disposable databases.
+"""Run daily-access, existing heart/queue and moderation-effect regressions on disposable databases.
 
 Requires cargo, initdb, pg_ctl, psql and redis-server on PATH. Every HTTP peer is
 a loopback fixture; no real users, live executor or external service is used.
@@ -78,7 +78,7 @@ def main():
             ("inline_regression", ["coding_inline_", "--", "--ignored", "--test-threads=1"]),
             ("sandbox_regression", ["coding_sandbox_", "--", "--ignored", "--test-threads=1"]),
             ("publication_regression", ["publication_", "--", "--ignored", "--test-threads=1"]),
-            ("moderation_regression", ["effective_subtasks_match_moderation_effect_postgres", "--", "--ignored", "--test-threads=1"]),
+            ("moderation_regression", ["services::moderation::effect_tests::", "--", "--ignored", "--test-threads=1"]),
         ]:
             run(f"create-{db}", ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-p", str(pg_port),
                                  "-U", user, "-d", "postgres"], stdin=f"CREATE DATABASE {db}")

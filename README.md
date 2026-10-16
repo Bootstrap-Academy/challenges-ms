@@ -162,8 +162,9 @@ Other routes keep the original request transaction, commit/rollback behavior,
 and primary pool; the callback keeps the same authentication and batch limits.
 Workers and deletion sweeps do not create the callback pool.
 
-Run the native access, heart, historical-authority and coding queue regressions
-with cached Cargo dependencies and PostgreSQL/Redis tools on `PATH`:
+Run the native access, heart, historical-authority, coding queue and
+moderation-effect regressions with cached Cargo dependencies and
+PostgreSQL/Redis tools on `PATH`:
 
 ```bash
 python3 scripts/test-learning-access.py --output /tmp/learning-access-check
