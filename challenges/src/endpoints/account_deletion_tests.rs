@@ -517,3 +517,52 @@ async fn sweep_aborts_without_deleting_when_too_many_users_are_missing_postgres(
     }
     assert_eq!(task_creator(&f, shared).await, Some(Uuid::nil()));
 }
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn sweep_aborts_without_deleting_when_too_many_lookups_fail_postgres() {
+    let f = Fixture::new().await;
+    let gone = Uuid::new_v4();
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+    for user in [gone, first, second] {
+        earn(&f, user, 20, SKILLS).await;
+    }
+    deliver_all(&f).await;
+    {
+        let mut shop = f.shop.lock().unwrap();
+        shop.deleted_users.insert(gone);
+        shop.failing_lookups.extend([first, second]);
+    }
+
+    // One user is missing, which the limit of one allows, but two lookups fail,
+    // which it does not. Nothing is deleted, not even the missing user.
+    let error = sweep(&f, 1).await.unwrap_err();
+    assert!(
+        error.to_string().contains("2 could not be looked up"),
+        "{error}"
+    );
+    assert!(
+        error.to_string().contains("nothing has been deleted"),
+        "{error}"
+    );
+    for user in [gone, first, second] {
+        assert_eq!(benefit_rows(&f, user).await, rows(1, 2, 2));
+    }
+
+    // A 404 without the error of the auth service counts as a failed lookup
+    // as well.
+    f.shop.lock().unwrap().user_route_missing = true;
+    sweep(&f, 1).await.unwrap_err();
+    assert_eq!(benefit_rows(&f, gone).await, rows(1, 2, 2));
+    f.shop.lock().unwrap().user_route_missing = false;
+
+    // With a limit that allows the failed lookups, the run deletes the missing
+    // user and keeps the users it could not look up.
+    sweep(&f, 2).await.unwrap();
+    assert_eq!(benefit_rows(&f, gone).await, rows(0, 0, 0));
+    for user in [first, second] {
+        assert_eq!(benefit_rows(&f, user).await, rows(1, 2, 2));
+        assert!(is_referenced(&f, user).await);
+    }
+}

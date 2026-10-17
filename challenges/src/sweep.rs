@@ -20,9 +20,10 @@ use crate::services::users::{delete_user_data, referenced_user_ids};
 /// this microservice, e.g. because it was unreachable at that time.
 ///
 /// Every referenced user is looked up before anything is deleted. If more of
-/// them are missing than [`missing_limit`] allows, the run deletes nothing and
-/// fails, because a broken auth microservice is then more likely than that
-/// many lost deletions.
+/// them are missing, or more of the lookups fail, than [`abort_limit`] allows,
+/// the run deletes nothing and fails. A broken auth microservice is then more
+/// likely than that many lost deletions, and a run that cannot look up most
+/// users would otherwise end as if everything were fine.
 pub async fn sweep_deleted_users(
     db: &DatabaseConnection,
     services: &Services,
@@ -58,20 +59,23 @@ pub async fn sweep_deleted_users(
     }
     stats.missing = missing.len() as u64;
 
-    let limit = missing_limit(config, stats.checked);
-    if stats.missing > limit {
+    let limit = abort_limit(config, stats.checked);
+    if stats.exceeds(limit) {
         stats.log();
         error!(
-            "Deleted user sweep aborted, nothing has been deleted: {} of {} users are missing \
-             in the auth microservice, more than the limit of {limit}. Check the auth \
-             microservice. If these accounts really have been deleted, raise \
-             deleted_user_sweep.max_missing for one run.",
-            stats.missing, stats.checked
+            "Deleted user sweep aborted, nothing has been deleted: of {} users, {} are missing \
+             in the auth microservice and {} could not be looked up; each may be at most \
+             {limit}. Check the auth microservice. If the accounts really have been deleted \
+             and the failed lookups are understood, raise deleted_user_sweep.max_missing for \
+             one run.",
+            stats.checked, stats.missing, stats.errors
         );
         bail!(
-            "{} of {} users are missing, more than the limit of {limit}; nothing has been deleted",
+            "of {} users, {} are missing and {} could not be looked up (at most {limit} each); \
+             nothing has been deleted",
+            stats.checked,
             stats.missing,
-            stats.checked
+            stats.errors
         );
     }
 
@@ -99,14 +103,16 @@ pub async fn sweep_deleted_users(
     Ok(())
 }
 
-/// The largest number of missing users whose data one run deletes.
+/// The largest number of missing users, and separately of failed lookups, with
+/// which a run still deletes.
 ///
-/// A normal run finds a handful of missing users among thousands, while an
-/// auth microservice that has lost its users (an empty or wrong database, for
-/// example) reports most of them as missing. The share keeps the limit in
+/// A normal run finds a handful of missing users among thousands and no failed
+/// lookups, while an auth microservice that has lost its users (an empty or
+/// wrong database, for example) reports most of them as missing, and one that
+/// is down or has moved fails most lookups. The share keeps the limit in
 /// proportion to the number of users, and the absolute number keeps a small
 /// database from tripping over a few deletions.
-fn missing_limit(config: &DeletedUserSweep, checked: u64) -> u64 {
+fn abort_limit(config: &DeletedUserSweep, checked: u64) -> u64 {
     // `as` saturates, so a negative share counts as 0.
     let share = (checked as f64 * config.max_missing_share).floor() as u64;
     config.max_missing.max(share)
@@ -144,6 +150,14 @@ struct Stats {
 }
 
 impl Stats {
+    /// Whether the lookups went so wrong that the run must not delete anything:
+    /// more users are missing, or more lookups have failed, than `limit`.
+    ///
+    /// Asked before the deletions, so `errors` holds failed lookups only.
+    fn exceeds(&self, limit: u64) -> bool {
+        self.missing > limit || self.errors > limit
+    }
+
     fn log(&self) {
         info!(
             "Checked {} users ({} missing, {} deleted, {} errors)",
@@ -194,29 +208,59 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_missing_limit_grows_with_the_number_of_users() {
-        let config = DeletedUserSweep::default();
-        assert_eq!(missing_limit(&config, 10_000), 100);
-        assert_eq!(missing_limit(&config, 10_099), 100);
-        assert_eq!(missing_limit(&config, 1_000_000), 10_000);
+    fn after_lookups(missing: u64, errors: u64) -> Stats {
+        Stats {
+            checked: 10_000,
+            missing,
+            deleted: 0,
+            errors,
+        }
     }
 
     #[test]
-    fn test_missing_limit_never_falls_below_the_absolute_number() {
+    fn test_abort_limit_grows_with_the_number_of_users() {
         let config = DeletedUserSweep::default();
-        assert_eq!(missing_limit(&config, 0), 25);
-        assert_eq!(missing_limit(&config, 100), 25);
-        assert_eq!(missing_limit(&config, 2_599), 25);
-        assert_eq!(missing_limit(&config, 2_600), 26);
+        assert_eq!(abort_limit(&config, 10_000), 100);
+        assert_eq!(abort_limit(&config, 10_099), 100);
+        assert_eq!(abort_limit(&config, 1_000_000), 10_000);
     }
 
     #[test]
-    fn test_missing_limit_follows_the_configuration() {
-        assert_eq!(missing_limit(&limits(0, 0.0), 10_000), 0);
-        assert_eq!(missing_limit(&limits(3, 0.0), 10_000), 3);
-        assert_eq!(missing_limit(&limits(0, 0.5), 10_000), 5_000);
-        assert_eq!(missing_limit(&limits(0, -1.0), 10_000), 0);
-        assert_eq!(missing_limit(&limits(7, f64::NAN), 10_000), 7);
+    fn test_abort_limit_never_falls_below_the_absolute_number() {
+        let config = DeletedUserSweep::default();
+        assert_eq!(abort_limit(&config, 0), 25);
+        assert_eq!(abort_limit(&config, 100), 25);
+        assert_eq!(abort_limit(&config, 2_599), 25);
+        assert_eq!(abort_limit(&config, 2_600), 26);
+    }
+
+    #[test]
+    fn test_abort_limit_follows_the_configuration() {
+        assert_eq!(abort_limit(&limits(0, 0.0), 10_000), 0);
+        assert_eq!(abort_limit(&limits(3, 0.0), 10_000), 3);
+        assert_eq!(abort_limit(&limits(0, 0.5), 10_000), 5_000);
+        assert_eq!(abort_limit(&limits(0, -1.0), 10_000), 0);
+        assert_eq!(abort_limit(&limits(7, f64::NAN), 10_000), 7);
+    }
+
+    #[test]
+    fn test_too_many_missing_users_stop_the_run() {
+        assert!(after_lookups(101, 0).exceeds(100));
+        assert!(!after_lookups(100, 0).exceeds(100));
+    }
+
+    #[test]
+    fn test_too_many_failed_lookups_stop_the_run() {
+        assert!(after_lookups(0, 101).exceeds(100));
+        assert!(!after_lookups(0, 100).exceeds(100));
+        // An auth microservice that is down fails every lookup.
+        assert!(after_lookups(0, 10_000).exceeds(100));
+    }
+
+    #[test]
+    fn test_a_normal_run_goes_on() {
+        assert!(!after_lookups(0, 0).exceeds(100));
+        assert!(!after_lookups(11, 3).exceeds(100));
+        assert!(!after_lookups(100, 100).exceeds(100));
     }
 }

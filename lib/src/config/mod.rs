@@ -86,15 +86,17 @@ pub struct DeletedUserSweep {
     /// Maximum number of auth microservice requests per second (0 = unlimited).
     #[serde(default = "default_rate_limit")]
     pub rate_limit: u32,
-    /// Number of missing users a run always accepts.
+    /// Number of missing users, and separately of failed lookups, a run always
+    /// accepts.
     ///
-    /// If more users are missing than this and than [`Self::max_missing_share`]
-    /// of the checked users, the run deletes nothing and fails, because a broken
-    /// auth microservice is then more likely than that many deleted accounts.
+    /// If more users are missing, or more lookups fail, than this and than
+    /// [`Self::max_missing_share`] of the checked users, the run deletes nothing
+    /// and fails, because a broken auth microservice is then more likely than
+    /// that many deleted accounts.
     #[serde(default = "default_max_missing")]
     pub max_missing: u64,
-    /// Share of the checked users (between 0 and 1) that may be missing in one
-    /// run, see [`Self::max_missing`].
+    /// Share of the checked users (between 0 and 1) that may be missing, and
+    /// separately fail to be looked up, in one run, see [`Self::max_missing`].
     #[serde(default = "default_max_missing_share")]
     pub max_missing_share: f64,
 }

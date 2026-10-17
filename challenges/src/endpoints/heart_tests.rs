@@ -65,6 +65,8 @@ pub(crate) struct Shop {
     /// The auth lookup answers like a route that does not exist: `404`
     /// without a body, as axum does.
     pub user_route_missing: bool,
+    /// Users whose auth lookup fails with `503`.
+    pub failing_lookups: HashSet<Uuid>,
     /// Users looked up in the auth service, in order.
     pub user_lookups: Vec<Uuid>,
 }
@@ -317,6 +319,11 @@ impl Fixture {
                             return Response::builder()
                                 .status(poem::http::StatusCode::NOT_FOUND)
                                 .finish();
+                        }
+                        if shop.failing_lookups.contains(&user) {
+                            return Response::builder()
+                                .status(poem::http::StatusCode::SERVICE_UNAVAILABLE)
+                                .body("auth unavailable");
                         }
                         if shop.deleted_users.contains(&user) {
                             return Response::builder()

@@ -196,8 +196,8 @@ The walk includes the first-completion records, so it also reaches an account th
 
 A user counts as deleted only if the auth microservice answers `404` with its `UserNotFoundError` (`{"detail": "User not found"}`).
 Any other answer, including a `404` for a route that does not exist, keeps the user's data and counts as an error.
-If more users are missing than both `max_missing` and `max_missing_share` of the checked users allow, a broken auth microservice is more likely than that many lost deletions: the run deletes nothing, logs an error and exits with a failure.
-After checking that these accounts really have been deleted, run the sweep once with a higher limit, e.g. `DELETED_USER_SWEEP__MAX_MISSING=200 challenges sweep-deleted-users`.
+If more users are missing, or more lookups fail, than both `max_missing` and `max_missing_share` of the checked users allow, a broken auth microservice is more likely than that many lost deletions: the run deletes nothing, logs an error with the counts and exits with a failure.
+After checking that these accounts really have been deleted and why the lookups failed, run the sweep once with a higher limit, e.g. `DELETED_USER_SWEEP__MAX_MISSING=200 challenges sweep-deleted-users`.
 
 The settings live in the `[deleted_user_sweep]` section of `config.toml` and can be overridden with environment variables (`__` separates the section from the property):
 
@@ -205,8 +205,8 @@ The settings live in the `[deleted_user_sweep]` section of `config.toml` and can
 | --- | --- | --- | --- |
 | `batch_size` | `DELETED_USER_SWEEP__BATCH_SIZE` | `500` | Number of user ids loaded from the database per batch. |
 | `rate_limit` | `DELETED_USER_SWEEP__RATE_LIMIT` | `10` | Auth microservice requests per second; `0` means unlimited. |
-| `max_missing` | `DELETED_USER_SWEEP__MAX_MISSING` | `25` | Number of missing users a run always accepts. |
-| `max_missing_share` | `DELETED_USER_SWEEP__MAX_MISSING_SHARE` | `0.01` | Share of the checked users that may be missing in a run, if that is more than `max_missing`. |
+| `max_missing` | `DELETED_USER_SWEEP__MAX_MISSING` | `25` | Number of missing users, and separately of failed lookups, a run always accepts. |
+| `max_missing_share` | `DELETED_USER_SWEEP__MAX_MISSING_SHARE` | `0.01` | Share of the checked users that may be missing, and separately fail to be looked up, in a run, if that is more than `max_missing`. |
 
 The base url of the auth microservice is `services.auth` (`SERVICES__AUTH`).
 
