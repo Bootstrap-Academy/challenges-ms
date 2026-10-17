@@ -12,6 +12,7 @@ use std::{
 use lib::{
     config::DeletedUserSweep,
     jwt::{sign_jwt, InternalAuthToken},
+    services::{auth::USER_LOOKUP_TIMEOUT, ServiceError},
 };
 use poem::{http::Method, Endpoint, EndpointExt, IntoResponse, Request, Route};
 use poem_ext::db::DbTransactionMiddleware;
@@ -19,6 +20,7 @@ use poem_openapi::OpenApiService;
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 use serde_json::{json, Value};
 use tokio::sync::Notify;
+use tracing::Level;
 use uuid::Uuid;
 
 use super::heart_tests::Fixture;
@@ -472,11 +474,54 @@ async fn sweep_deletes_nothing_when_the_user_route_is_missing_postgres() {
     // without the error that says the user does not exist. The limit is off,
     // so only the answer itself decides.
     f.shop.lock().unwrap().user_route_missing = true;
+    let (captured, guard) = crate::sweep::log_capture::capture();
     sweep(&f, u64::MAX).await.unwrap();
+    drop(guard);
 
-    assert!(f.shop.lock().unwrap().user_lookups.contains(&user));
+    let lookups = f.shop.lock().unwrap().user_lookups.clone();
+    assert!(lookups.contains(&user));
     assert_eq!(benefit_rows(&f, user).await, rows(1, 2, 2));
     assert!(is_referenced(&f, user).await);
+
+    // Every failed lookup is in the log at info level, and error tracking,
+    // which receives every warning, gets a single one for the whole run.
+    let failures = captured
+        .messages(Level::INFO)
+        .into_iter()
+        .filter(|message| message.starts_with("Could not look up user"))
+        .count();
+    assert_eq!(failures, lookups.len());
+    assert_eq!(
+        captured.messages(Level::WARN),
+        [format!(
+            "{n} of {n} lookups in the auth microservice failed; each is logged at info level",
+            n = lookups.len()
+        )]
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn user_lookup_gives_up_on_a_stalled_auth_service_postgres() {
+    let f = Fixture::new().await;
+    let user = Uuid::new_v4();
+    f.shop.lock().unwrap().stalled_lookups.insert(user);
+
+    // The auth service accepts the request and never answers. The lookup used
+    // by the sweep, the leaderboards and moderation gives up on its own.
+    let started = std::time::Instant::now();
+    let result = tokio::time::timeout(
+        USER_LOOKUP_TIMEOUT * 3,
+        f.state.services.auth.get_user_by_id_uncached(user),
+    )
+    .await
+    .expect("the lookup is still waiting");
+    assert!(
+        matches!(&result, Err(ServiceError::ReqwestError(err)) if err.is_timeout()),
+        "{result:?}"
+    );
+    assert!(started.elapsed() >= USER_LOOKUP_TIMEOUT);
+    assert!(f.shop.lock().unwrap().user_lookups.contains(&user));
 }
 
 #[tokio::test]

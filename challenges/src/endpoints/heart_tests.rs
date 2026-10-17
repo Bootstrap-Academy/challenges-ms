@@ -67,6 +67,8 @@ pub(crate) struct Shop {
     pub user_route_missing: bool,
     /// Users whose auth lookup fails with `503`.
     pub failing_lookups: HashSet<Uuid>,
+    /// Users whose auth lookup is accepted and never answered.
+    pub stalled_lookups: HashSet<Uuid>,
     /// Users looked up in the auth service, in order.
     pub user_lookups: Vec<Uuid>,
 }
@@ -313,8 +315,15 @@ impl Fixture {
                         json!({"hearts":*shop.balances.entry(user).or_insert(6)})
                     } else if let Some(user) = path.strip_prefix("/auth/_internal/users/") {
                         let user: Uuid = user.parse().unwrap();
-                        let mut shop = shop.lock().unwrap();
-                        shop.user_lookups.push(user);
+                        let stalled = {
+                            let mut shop = shop.lock().unwrap();
+                            shop.user_lookups.push(user);
+                            shop.stalled_lookups.contains(&user)
+                        };
+                        if stalled {
+                            std::future::pending::<()>().await;
+                        }
+                        let shop = shop.lock().unwrap();
                         if shop.user_route_missing {
                             return Response::builder()
                                 .status(poem::http::StatusCode::NOT_FOUND)
