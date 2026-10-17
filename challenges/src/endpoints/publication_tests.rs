@@ -48,6 +48,9 @@ struct Authority {
     bad_epoch: bool,
     bad_snapshot: bool,
     outage: bool,
+    /// The epoch or the snapshot is accepted and never answered.
+    stalled_epoch: bool,
+    stalled_snapshot: bool,
     revoke_after_snapshot: Option<Uuid>,
 }
 
@@ -132,6 +135,8 @@ impl Fixture {
             bad_epoch: false,
             bad_snapshot: false,
             outage: false,
+            stalled_epoch: false,
+            stalled_snapshot: false,
             revoke_after_snapshot: None,
         }));
         let app = make({
@@ -158,6 +163,15 @@ impl Fixture {
                         .trim_start_matches("Bearer ");
                     let token: InternalAuthToken = verify_jwt(bearer, &secret).unwrap();
                     assert!(token.aud == "auth" || token.aud == "skills");
+                    let stalled = {
+                        let state = authority.lock().unwrap();
+                        (state.stalled_epoch && path.ends_with("profile-publications/epoch"))
+                            || (state.stalled_snapshot
+                                && path.ends_with("profile-publications/snapshot"))
+                    };
+                    if stalled {
+                        std::future::pending::<()>().await;
+                    }
                     let mut state = authority.lock().unwrap();
                     if state.outage && path.contains("profile-publications") {
                         return Response::builder()
@@ -671,5 +685,43 @@ async fn publication_all_six_routes_sql_caches_and_revocation() {
         assert_eq!(status, 200);
         assert_eq!(page["total"], 0);
         assert_eq!(page["leaderboard"], json!([]));
+    }
+}
+
+#[tokio::test]
+#[ignore = "Requires owned migrated PostgreSQL and Valkey"]
+async fn publication_reads_give_up_on_a_stalled_auth_service() {
+    let f = Fixture::new().await;
+    let shared_owner = Some((f.ids[1], false, true));
+    {
+        let mut a = f.authority.lock().unwrap();
+        a.snapshot.epoch.policy_active = true;
+        a.snapshot.epoch.publishing_enabled = true;
+    }
+    let app = f.app(true);
+    let path = format!("/leaderboard/by-task/{}?limit=2&offset=0", f.task);
+    assert_eq!(f.call(&app, &path, shared_owner).await.0, 200);
+
+    // Every shared leaderboard request reads the epoch and then the snapshot
+    // from the auth service. If either never answers, the request ends with
+    // the leaderboards' 503 after the time limit instead of holding its
+    // transaction indefinitely.
+    let limit = lib::services::auth::AUTH_TIMEOUT;
+    for stalled in ["epoch", "snapshot"] {
+        {
+            let mut a = f.authority.lock().unwrap();
+            a.stalled_epoch = stalled == "epoch";
+            a.stalled_snapshot = stalled == "snapshot";
+        }
+        let started = std::time::Instant::now();
+        let response = tokio::time::timeout(limit * 3, f.call(&app, &path, shared_owner))
+            .await
+            .unwrap_or_else(|_| panic!("the {stalled} read is still waiting"));
+        assert_eq!(
+            response,
+            (503, json!({"error":"leaderboard_unavailable"})),
+            "{stalled}"
+        );
+        assert!(started.elapsed() >= limit, "{stalled}");
     }
 }

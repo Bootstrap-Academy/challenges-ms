@@ -4,7 +4,10 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{auth::AuthService, ServiceError, ServiceResult};
+use super::{
+    auth::{AuthService, AUTH_TIMEOUT},
+    ServiceError, ServiceResult,
+};
 
 pub const SCOPE_VERSION: &str = "academy-verified-v1";
 
@@ -87,6 +90,7 @@ impl AuthService {
         let epoch: PublicationEpoch = self
             .0
             .get("/profile-publications/epoch")
+            .timeout(AUTH_TIMEOUT)
             .send()
             .await?
             .error_for_status()?
@@ -100,6 +104,7 @@ impl AuthService {
         let snapshot: PublicationSnapshot = self
             .0
             .get("/profile-publications/snapshot")
+            .timeout(AUTH_TIMEOUT)
             .send()
             .await?
             .error_for_status()?
