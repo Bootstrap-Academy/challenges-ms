@@ -145,9 +145,11 @@ pub async fn export_user_data(
 /// references them (such as attempts and submissions of other users), which the
 /// database takes care of via `ON DELETE CASCADE`. Tasks created by the user
 /// are shared between all users, so they are only deleted if no subtask is left
-/// in them. Bans the user has issued against somebody else are kept, because
-/// they restrict the banned user and not the creator. The records of the
-/// user's first completions go with their delivery components and
+/// in them; the others stay with the nil uuid as their creator. Bans the user
+/// has issued against somebody else are kept the same way, because they
+/// restrict the banned user and not the creator. Afterwards the id of the user
+/// is gone from the database, so the sweep does not find it again. The records
+/// of the user's first completions go with their delivery components and
 /// observations.
 ///
 /// Returns the number of rows that have been deleted directly.
@@ -219,6 +221,8 @@ pub async fn delete_user_data(db: &DatabaseTransaction, user_id: Uuid) -> Result
         .rows_affected;
 
     rows += delete_empty_tasks(db, user_id).await?;
+    // Only after the empty tasks are gone, which are found by their creator.
+    reset_creator_of_tasks_by(user_id).exec(db).await?;
 
     Ok(rows)
 }
@@ -238,6 +242,18 @@ fn reset_creator_of_bans_by(user_id: Uuid) -> UpdateMany<challenges_ban::Entity>
     challenges_ban::Entity::update_many()
         .col_expr(challenges_ban::Column::Creator, Expr::value(Uuid::nil()))
         .filter(challenges_ban::Column::Creator.eq(user_id))
+}
+
+/// Reset the creator of the tasks a user has created to the nil uuid.
+///
+/// These are the tasks that still contain subtasks of other users, because
+/// [`delete_empty_tasks`] has removed the rest. The nil uuid is the same
+/// placeholder that bans issued by a deleted user get, and it matches no user,
+/// so nobody gains the creator's access to the task.
+fn reset_creator_of_tasks_by(user_id: Uuid) -> UpdateMany<challenges_tasks::Entity> {
+    challenges_tasks::Entity::update_many()
+        .col_expr(challenges_tasks::Column::Creator, Expr::value(Uuid::nil()))
+        .filter(challenges_tasks::Column::Creator.eq(user_id))
 }
 
 /// Delete all tasks created by a user that do not contain any subtasks anymore.
@@ -349,8 +365,9 @@ fn referenced_user_ids_query(after: Uuid, limit: u64) -> SelectStatement {
         .column(user_id.clone())
         .from_subquery(user_ids, Alias::new("user_ids"))
         // Ids are traversed in ascending order starting at the nil uuid, which
-        // is the placeholder for bans that have not been created by a user and
-        // is therefore never returned. Null ids are skipped as well.
+        // is the placeholder creator of bans and tasks whose creator is not a
+        // user (anymore) and is therefore never returned. Null ids are skipped
+        // as well.
         .and_where(Expr::col(user_id.clone()).gt(after))
         .order_by(user_id, Order::Asc)
         .limit(limit)
@@ -449,6 +466,23 @@ mod tests {
             .into_query()
             .to_string(PostgresQueryBuilder);
         assert!(query.starts_with(r#"UPDATE "challenges_ban""#), "{query}");
+        assert!(
+            query.contains(&format!(r#"SET "creator" = '{}'"#, Uuid::nil())),
+            "{query}"
+        );
+        assert!(
+            query.contains(&format!(r#""creator" = '{user_id}'"#)),
+            "{query}"
+        );
+    }
+
+    #[test]
+    fn test_tasks_created_by_the_user_are_kept_and_anonymized() {
+        let user_id = Uuid::from_u128(0x42);
+        let query = reset_creator_of_tasks_by(user_id)
+            .into_query()
+            .to_string(PostgresQueryBuilder);
+        assert!(query.starts_with(r#"UPDATE "challenges_tasks""#), "{query}");
         assert!(
             query.contains(&format!(r#"SET "creator" = '{}'"#, Uuid::nil())),
             "{query}"

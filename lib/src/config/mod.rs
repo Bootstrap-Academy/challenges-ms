@@ -86,6 +86,17 @@ pub struct DeletedUserSweep {
     /// Maximum number of auth microservice requests per second (0 = unlimited).
     #[serde(default = "default_rate_limit")]
     pub rate_limit: u32,
+    /// Number of missing users a run always accepts.
+    ///
+    /// If more users are missing than this and than [`Self::max_missing_share`]
+    /// of the checked users, the run deletes nothing and fails, because a broken
+    /// auth microservice is then more likely than that many deleted accounts.
+    #[serde(default = "default_max_missing")]
+    pub max_missing: u64,
+    /// Share of the checked users (between 0 and 1) that may be missing in one
+    /// run, see [`Self::max_missing`].
+    #[serde(default = "default_max_missing_share")]
+    pub max_missing_share: f64,
 }
 
 impl Default for DeletedUserSweep {
@@ -93,6 +104,8 @@ impl Default for DeletedUserSweep {
         Self {
             batch_size: default_batch_size(),
             rate_limit: default_rate_limit(),
+            max_missing: default_max_missing(),
+            max_missing_share: default_max_missing_share(),
         }
     }
 }
@@ -103,6 +116,14 @@ fn default_batch_size() -> u64 {
 
 fn default_rate_limit() -> u32 {
     10
+}
+
+fn default_max_missing() -> u64 {
+    25
+}
+
+fn default_max_missing_share() -> f64 {
+    0.01
 }
 
 #[cfg(test)]
@@ -121,5 +142,7 @@ mod tests {
             .unwrap();
         assert_eq!(deleted_user_sweep.batch_size, 500);
         assert_eq!(deleted_user_sweep.rate_limit, 10);
+        assert_eq!(deleted_user_sweep.max_missing, 25);
+        assert_eq!(deleted_user_sweep.max_missing_share, 0.01);
     }
 }

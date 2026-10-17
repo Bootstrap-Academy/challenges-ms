@@ -1,13 +1,14 @@
 use std::{fmt::Display, time::Duration};
 
+use anyhow::bail;
 use lib::{
-    config::Config,
+    config::DeletedUserSweep,
     services::{auth::User, Services},
     Cache,
 };
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use tokio::time::{sleep_until, Instant};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::services::users::{delete_user_data, referenced_user_ids};
@@ -17,21 +18,27 @@ use crate::services::users::{delete_user_data, referenced_user_ids};
 ///
 /// This is a safety net for accounts whose deletion has not been propagated to
 /// this microservice, e.g. because it was unreachable at that time.
+///
+/// Every referenced user is looked up before anything is deleted. If more of
+/// them are missing than [`missing_limit`] allows, the run deletes nothing and
+/// fails, because a broken auth microservice is then more likely than that
+/// many lost deletions.
 pub async fn sweep_deleted_users(
     db: &DatabaseConnection,
     services: &Services,
     cache: &Cache,
-    config: &Config,
+    config: &DeletedUserSweep,
 ) -> anyhow::Result<()> {
     let interval = Duration::from_secs(1)
-        .checked_div(config.deleted_user_sweep.rate_limit)
+        .checked_div(config.rate_limit)
         .unwrap_or_default();
 
     let mut stats = Stats::default();
+    let mut missing = Vec::new();
     let mut next_request = Instant::now();
     let mut after = Uuid::nil();
     loop {
-        let user_ids = referenced_user_ids(db, after, config.deleted_user_sweep.batch_size).await?;
+        let user_ids = referenced_user_ids(db, after, config.batch_size).await?;
         let Some(&last) = user_ids.last() else {
             break;
         };
@@ -44,36 +51,65 @@ pub async fn sweep_deleted_users(
             stats.checked += 1;
             match decide(services.auth.get_user_by_id_uncached(user_id).await) {
                 Decision::Keep => {}
-                Decision::Delete => {
-                    stats.missing += 1;
-                    let result: anyhow::Result<()> = async {
-                        let txn = db.begin().await?;
-                        delete_user_data(&txn, user_id).await?;
-                        // Match the endpoint: failed cache invalidation leaves referenced
-                        // rows for a subsequent safety-net pass to find again.
-                        cache.pop_tag(&user_id.to_string()).await?;
-                        txn.commit().await?;
-                        Ok(())
-                    }
-                    .await;
-                    match result {
-                        Ok(()) => stats.deleted += 1,
-                        Err(_) => {
-                            stats.errors += 1;
-                            warn!("User erasure failed; continuing sweep");
-                        }
-                    }
-                }
+                Decision::Delete => missing.push(user_id),
                 Decision::Skip => stats.errors += 1,
             }
         }
     }
+    stats.missing = missing.len() as u64;
 
-    info!(
-        "Checked {} users ({} missing, {} deleted, {} errors)",
-        stats.checked, stats.missing, stats.deleted, stats.errors
-    );
+    let limit = missing_limit(config, stats.checked);
+    if stats.missing > limit {
+        stats.log();
+        error!(
+            "Deleted user sweep aborted, nothing has been deleted: {} of {} users are missing \
+             in the auth microservice, more than the limit of {limit}. Check the auth \
+             microservice. If these accounts really have been deleted, raise \
+             deleted_user_sweep.max_missing for one run.",
+            stats.missing, stats.checked
+        );
+        bail!(
+            "{} of {} users are missing, more than the limit of {limit}; nothing has been deleted",
+            stats.missing,
+            stats.checked
+        );
+    }
+
+    for user_id in missing {
+        let result: anyhow::Result<()> = async {
+            let txn = db.begin().await?;
+            delete_user_data(&txn, user_id).await?;
+            // Match the endpoint: failed cache invalidation leaves referenced
+            // rows for a subsequent safety-net pass to find again.
+            cache.pop_tag(&user_id.to_string()).await?;
+            txn.commit().await?;
+            Ok(())
+        }
+        .await;
+        match result {
+            Ok(()) => stats.deleted += 1,
+            Err(_) => {
+                stats.errors += 1;
+                warn!("User erasure failed; continuing sweep");
+            }
+        }
+    }
+
+    stats.log();
     Ok(())
+}
+
+/// The largest number of missing users whose data one run deletes.
+///
+/// A normal run finds a handful of missing users among thousands, while an
+/// auth microservice that has lost its users (an empty or wrong database, for
+/// example) reports most of them as missing. The share keeps the limit in
+/// proportion to the number of users, and the absolute number keeps a small
+/// database from tripping over a few deletions.
+fn missing_limit(config: &DeletedUserSweep, checked: u64) -> u64 {
+    // `as` saturates, so a negative share counts as 0.
+    let share = (checked as f64 * config.max_missing_share).floor() as u64;
+    config.max_missing.max(share)
 }
 
 /// What to do with the data of a user that is referenced in the database.
@@ -81,7 +117,8 @@ pub async fn sweep_deleted_users(
 enum Decision {
     /// The user still exists, so their data is kept.
     Keep,
-    /// The user does not exist anymore, so their data is deleted.
+    /// The user does not exist anymore, so their data is deleted, unless too
+    /// many users are missing.
     Delete,
     /// The user could not be looked up, so their data is kept for now.
     Skip,
@@ -106,6 +143,15 @@ struct Stats {
     errors: u64,
 }
 
+impl Stats {
+    fn log(&self) {
+        info!(
+            "Checked {} users ({} missing, {} deleted, {} errors)",
+            self.checked, self.missing, self.deleted, self.errors
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +165,14 @@ mod tests {
             registration: 0.0,
             admin: false,
             leaderboard_opt_out: false,
+        }
+    }
+
+    fn limits(max_missing: u64, max_missing_share: f64) -> DeletedUserSweep {
+        DeletedUserSweep {
+            max_missing,
+            max_missing_share,
+            ..Default::default()
         }
     }
 
@@ -138,5 +192,31 @@ mod tests {
             decide::<&str>(Err("unexpected response status code: 500")),
             Decision::Skip
         );
+    }
+
+    #[test]
+    fn test_missing_limit_grows_with_the_number_of_users() {
+        let config = DeletedUserSweep::default();
+        assert_eq!(missing_limit(&config, 10_000), 100);
+        assert_eq!(missing_limit(&config, 10_099), 100);
+        assert_eq!(missing_limit(&config, 1_000_000), 10_000);
+    }
+
+    #[test]
+    fn test_missing_limit_never_falls_below_the_absolute_number() {
+        let config = DeletedUserSweep::default();
+        assert_eq!(missing_limit(&config, 0), 25);
+        assert_eq!(missing_limit(&config, 100), 25);
+        assert_eq!(missing_limit(&config, 2_599), 25);
+        assert_eq!(missing_limit(&config, 2_600), 26);
+    }
+
+    #[test]
+    fn test_missing_limit_follows_the_configuration() {
+        assert_eq!(missing_limit(&limits(0, 0.0), 10_000), 0);
+        assert_eq!(missing_limit(&limits(3, 0.0), 10_000), 3);
+        assert_eq!(missing_limit(&limits(0, 0.5), 10_000), 5_000);
+        assert_eq!(missing_limit(&limits(0, -1.0), 10_000), 0);
+        assert_eq!(missing_limit(&limits(7, f64::NAN), 10_000), 7);
     }
 }

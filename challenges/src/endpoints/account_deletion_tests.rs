@@ -1,12 +1,18 @@
 //! Account deletion removes the first-completion records of a user with their
-//! delivery components and observations. Isolated PostgreSQL/Redis; the
-//! dispatcher runs with a local destination and no live service is contacted.
+//! delivery components and observations and leaves no trace of the user in
+//! shared tasks; the nightly sweep deletes only users the auth service really
+//! reports as gone. Isolated PostgreSQL/Redis; the dispatcher runs with a local
+//! destination, the auth service is a local stub and no live service is
+//! contacted.
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
 
-use lib::jwt::{sign_jwt, InternalAuthToken};
+use lib::{
+    config::DeletedUserSweep,
+    jwt::{sign_jwt, InternalAuthToken},
+};
 use poem::{http::Method, Endpoint, EndpointExt, IntoResponse, Request, Route};
 use poem_ext::db::DbTransactionMiddleware;
 use poem_openapi::OpenApiService;
@@ -148,6 +154,100 @@ async fn observations_of(f: &Fixture, components: &Value) -> Value {
     )
     .await["n"]
         .clone()
+}
+
+async fn execute(f: &Fixture, sql: &str, values: Vec<sea_orm::Value>) {
+    f.state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            values,
+        ))
+        .await
+        .unwrap();
+}
+
+/// A task of a lecture as the first user who added a subtask there created it.
+async fn course_task(f: &Fixture, creator: Uuid) -> Uuid {
+    let task = Uuid::new_v4();
+    execute(
+        f,
+        "INSERT INTO challenges_tasks(id,creator,creation_timestamp) VALUES($1,$2,now())",
+        vec![task.into(), creator.into()],
+    )
+    .await;
+    execute(
+        f,
+        "INSERT INTO challenges_course_tasks(task_id,course_id,section_id,lecture_id) VALUES($1,'synthetic-course',$2,'lecture')",
+        vec![task.into(), task.to_string().into()],
+    )
+    .await;
+    task
+}
+
+/// A question of `creator` in `task`.
+async fn subtask(f: &Fixture, task: Uuid, creator: Uuid) {
+    let subtask = Uuid::new_v4();
+    execute(
+        f,
+        "INSERT INTO challenges_subtasks(id,task_id,creator,creation_timestamp,xp,coins,enabled,retired,ty) VALUES($1,$2,$3,now(),0,0,true,false,'question')",
+        vec![subtask.into(), task.into(), creator.into()],
+    )
+    .await;
+    execute(
+        f,
+        "INSERT INTO challenges_questions(subtask_id,question,answers,case_sensitive,ascii_letters,digits,punctuation,blocks) VALUES($1,'Answer',ARRAY['yes'],false,true,true,true,ARRAY[]::text[])",
+        vec![subtask.into()],
+    )
+    .await;
+}
+
+/// The creator of a task, or `None` if the task is gone.
+async fn task_creator(f: &Fixture, task: Uuid) -> Option<Uuid> {
+    f.state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT creator FROM challenges_tasks WHERE id=$1",
+            [task.into()],
+        ))
+        .await
+        .unwrap()
+        .map(|row| row.try_get("", "creator").unwrap())
+}
+
+async fn subtasks_in(f: &Fixture, task: Uuid) -> Value {
+    value(
+        f,
+        "SELECT count(*) AS n FROM challenges_subtasks WHERE task_id=$1",
+        task.into(),
+    )
+    .await["n"]
+        .clone()
+}
+
+/// Whether the sweep, which walks the referenced user IDs in ascending order,
+/// finds the user.
+async fn is_referenced(f: &Fixture, user: Uuid) -> bool {
+    let before = Uuid::from_u128(user.as_u128() - 1);
+    users::referenced_user_ids(&f.state.db, before, 1)
+        .await
+        .unwrap()
+        .first()
+        == Some(&user)
+}
+
+/// The nightly sweep without pauses between the lookups, which deletes at most
+/// `max_missing` users.
+async fn sweep(f: &Fixture, max_missing: u64) -> anyhow::Result<()> {
+    let config = DeletedUserSweep {
+        rate_limit: 0,
+        max_missing,
+        max_missing_share: 0.0,
+        ..Default::default()
+    };
+    crate::sweep::sweep_deleted_users(&f.state.db, &f.state.services, &f.state.cache, &config).await
 }
 
 #[tokio::test]
@@ -292,4 +392,128 @@ async fn sweep_reaches_records_left_by_an_earlier_deletion_postgres() {
             .first(),
         Some(&user)
     );
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn account_deletion_resets_the_creator_of_shared_tasks_postgres() {
+    let f = Fixture::new().await;
+    let app = internal_app(&f);
+    let user = Uuid::new_v4();
+    let other = Uuid::new_v4();
+
+    // A task the user started that holds a subtask of somebody else, one with
+    // only the user's own subtask and one without any.
+    let shared = course_task(&f, user).await;
+    subtask(&f, shared, other).await;
+    let own = course_task(&f, user).await;
+    subtask(&f, own, user).await;
+    let empty = course_task(&f, user).await;
+
+    assert_eq!(delete_account(&f, &app, user).await, 204);
+
+    // The shared task stays for the other subtask, with the nil uuid as its
+    // creator; the two others go with the account as before.
+    assert_eq!(task_creator(&f, shared).await, Some(Uuid::nil()));
+    assert_eq!(subtasks_in(&f, shared).await, json!(1));
+    assert_eq!(task_creator(&f, own).await, None);
+    assert_eq!(task_creator(&f, empty).await, None);
+
+    // Nothing refers to the account anymore, so the nightly sweep does not
+    // find it again and run its deletion once more.
+    assert!(!is_referenced(&f, user).await);
+    assert!(is_referenced(&f, other).await);
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn sweep_finishes_an_earlier_deletion_and_then_leaves_the_account_alone_postgres() {
+    let f = Fixture::new().await;
+    // What an account deleted before shared tasks lost their creator left
+    // behind: its erasure event, its first completions and a shared task.
+    let gone = Uuid::new_v4();
+    let author = Uuid::new_v4();
+    earn(&f, gone, 20, SKILLS).await;
+    deliver_all(&f).await;
+    execute(
+        &f,
+        "INSERT INTO moderation_erasure_events(subject) VALUES($1)",
+        vec![gone.into()],
+    )
+    .await;
+    let shared = course_task(&f, gone).await;
+    subtask(&f, shared, author).await;
+    f.shop.lock().unwrap().deleted_users.insert(gone);
+
+    sweep(&f, u64::MAX).await.unwrap();
+    assert_eq!(benefit_rows(&f, gone).await, rows(0, 0, 0));
+    assert_eq!(task_creator(&f, shared).await, Some(Uuid::nil()));
+    assert_eq!(subtasks_in(&f, shared).await, json!(1));
+    assert!(!is_referenced(&f, gone).await);
+    assert!(is_referenced(&f, author).await);
+
+    // The next run does not even ask about the account anymore.
+    let lookups = std::mem::take(&mut f.shop.lock().unwrap().user_lookups);
+    assert!(lookups.contains(&gone) && lookups.contains(&author));
+    sweep(&f, u64::MAX).await.unwrap();
+    let lookups = std::mem::take(&mut f.shop.lock().unwrap().user_lookups);
+    assert!(!lookups.contains(&gone) && lookups.contains(&author));
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn sweep_deletes_nothing_when_the_user_route_is_missing_postgres() {
+    let f = Fixture::new().await;
+    let user = Uuid::new_v4();
+    earn(&f, user, 20, SKILLS).await;
+    deliver_all(&f).await;
+
+    // A backend release that renamed the route answers 404 for every user,
+    // without the error that says the user does not exist. The limit is off,
+    // so only the answer itself decides.
+    f.shop.lock().unwrap().user_route_missing = true;
+    sweep(&f, u64::MAX).await.unwrap();
+
+    assert!(f.shop.lock().unwrap().user_lookups.contains(&user));
+    assert_eq!(benefit_rows(&f, user).await, rows(1, 2, 2));
+    assert!(is_referenced(&f, user).await);
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly supplied disposable PostgreSQL and Redis"]
+async fn sweep_aborts_without_deleting_when_too_many_users_are_missing_postgres() {
+    let f = Fixture::new().await;
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+    let author = Uuid::new_v4();
+    earn(&f, first, 20, SKILLS).await;
+    earn(&f, second, 20, SKILLS).await;
+    deliver_all(&f).await;
+    let shared = course_task(&f, first).await;
+    subtask(&f, shared, author).await;
+    f.shop.lock().unwrap().deleted_users.extend([first, second]);
+
+    // The auth service reports both as deleted, with the right error, but the
+    // limit is one. Both are looked up before anything is deleted, and nothing
+    // is.
+    let error = sweep(&f, 1).await.unwrap_err();
+    assert!(
+        error.to_string().contains("nothing has been deleted"),
+        "{error}"
+    );
+    for user in [first, second] {
+        assert!(f.shop.lock().unwrap().user_lookups.contains(&user));
+        assert_eq!(benefit_rows(&f, user).await, rows(1, 2, 2));
+        assert!(is_referenced(&f, user).await);
+    }
+    assert_eq!(task_creator(&f, shared).await, Some(first));
+
+    // Once somebody has checked that these accounts are really gone, a run with
+    // a higher limit deletes them.
+    sweep(&f, 2).await.unwrap();
+    for user in [first, second] {
+        assert_eq!(benefit_rows(&f, user).await, rows(0, 0, 0));
+        assert!(!is_referenced(&f, user).await);
+    }
+    assert_eq!(task_creator(&f, shared).await, Some(Uuid::nil()));
 }

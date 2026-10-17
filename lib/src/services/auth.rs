@@ -3,7 +3,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{Service, ServiceResult};
+use super::{Service, ServiceError, ServiceResult};
 
 #[derive(Debug, Clone)]
 pub struct AuthService(pub(super) Service);
@@ -70,19 +70,31 @@ impl AuthService {
 
     /// Same as [`get_user_by_id`](Self::get_user_by_id), but always asks the
     /// auth microservice instead of using the cache.
+    ///
+    /// Returns [`None`] only if the auth microservice says that the user does
+    /// not exist. Any other `404`, such as the one for a route that does not
+    /// exist, is an error, because it says nothing about the user.
     pub async fn get_user_by_id_uncached(&self, id: Uuid) -> ServiceResult<Option<User>> {
-        match self
-            .0
-            .get(&format!("/users/{id}"))
-            .send()
-            .await?
-            .error_for_status()
-        {
-            Ok(resp) => Ok(Some(resp.json().await?)),
-            Err(err) if err.status() == Some(StatusCode::NOT_FOUND) => Ok(None),
-            Err(err) => Err(err.into()),
+        let response = self.0.get(&format!("/users/{id}")).send().await?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return if is_user_not_found(&response.bytes().await?) {
+                Ok(None)
+            } else {
+                Err(ServiceError::UnexpectedStatusCode(StatusCode::NOT_FOUND))
+            };
         }
+        Ok(Some(response.error_for_status()?.json().await?))
     }
+}
+
+/// Whether a `404` body is the `UserNotFoundError` of the auth microservice,
+/// `{"detail": "User not found"}`.
+fn is_user_not_found(body: &[u8]) -> bool {
+    #[derive(Deserialize)]
+    struct ErrorBody {
+        detail: String,
+    }
+    serde_json::from_slice::<ErrorBody>(body).is_ok_and(|body| body.detail == "User not found")
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -105,4 +117,40 @@ pub struct OrdinaryAuthority {
     pub id: Uuid,
     pub admin: bool,
     pub email_verified: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_not_found_error_means_the_user_is_gone() {
+        // `ApiError<UserNotFoundError>` of the backend, as it answers
+        // `GET /auth/_internal/users/{user_id}` for an unknown user.
+        assert!(is_user_not_found(br#"{"detail":"User not found"}"#));
+        assert!(is_user_not_found(
+            br#"{"detail": "User not found", "code": "user_not_found"}"#
+        ));
+    }
+
+    #[test]
+    fn test_other_not_found_bodies_say_nothing_about_the_user() {
+        for body in [
+            // axum without a fallback, for a route that does not exist
+            &b""[..],
+            // the default of FastAPI and Starlette for a route that does not exist
+            br#"{"detail":"Not Found"}"#,
+            br#"{"detail":"Invoice not found"}"#,
+            br#"{"detail":"user not found"}"#,
+            br#"{"error":"User not found"}"#,
+            b"<html><head><title>404 Not Found</title></head></html>",
+            b"User not found",
+        ] {
+            assert!(
+                !is_user_not_found(body),
+                "{}",
+                String::from_utf8_lossy(body)
+            );
+        }
+    }
 }

@@ -59,6 +59,14 @@ pub(crate) struct Shop {
     pub renewals: usize,
     pub premium_reads: usize,
     pub premium_status: Option<u16>,
+    /// Users the auth lookup answers with the backend's `UserNotFoundError`.
+    /// Every other user exists.
+    pub deleted_users: HashSet<Uuid>,
+    /// The auth lookup answers like a route that does not exist: `404`
+    /// without a body, as axum does.
+    pub user_route_missing: bool,
+    /// Users looked up in the auth service, in order.
+    pub user_lookups: Vec<Uuid>,
 }
 
 impl Shop {
@@ -301,6 +309,23 @@ impl Fixture {
                         let mut shop = shop.lock().unwrap();
                         shop.heart_reads += 1;
                         json!({"hearts":*shop.balances.entry(user).or_insert(6)})
+                    } else if let Some(user) = path.strip_prefix("/auth/_internal/users/") {
+                        let user: Uuid = user.parse().unwrap();
+                        let mut shop = shop.lock().unwrap();
+                        shop.user_lookups.push(user);
+                        if shop.user_route_missing {
+                            return Response::builder()
+                                .status(poem::http::StatusCode::NOT_FOUND)
+                                .finish();
+                        }
+                        if shop.deleted_users.contains(&user) {
+                            return Response::builder()
+                                .status(poem::http::StatusCode::NOT_FOUND)
+                                .content_type("application/json")
+                                .body(json!({"detail":"User not found"}).to_string());
+                        }
+                        json!({"id":user,"name":"user","display_name":"User","avatar_url":null,
+                            "registration":0.0,"admin":false,"leaderboard_opt_out":false})
                     } else {
                         panic!("unexpected local service request: {path}");
                     };

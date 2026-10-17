@@ -179,8 +179,9 @@ concurrency and real multi-service release acceptance are separate checks.
 When an account is deleted, the auth microservice calls `DELETE /_internal/users/:user_id` on this microservice.
 The endpoint requires an internal token with the `challenges` audience and answers `204`, also for a user that has no data here, so it can be retried safely.
 
-It deletes the bans the user issued or received, their subtask reports, their multiple choice, question and matching attempts, their coding challenge submissions and their user subtask rows, as well as the subtasks they created — including everything referencing those subtasks, which the database removes through `ON DELETE CASCADE`.
-Tasks are shared between users, so a task the user created is only deleted once no subtask is left in it.
+It deletes the bans the user received, their subtask reports, their multiple choice, question and matching attempts, their coding challenge submissions and their user subtask rows, as well as the subtasks they created — including everything referencing those subtasks, which the database removes through `ON DELETE CASCADE`.
+Bans the user issued stay in force with the nil uuid as their creator.
+Tasks are shared between users, so a task the user created is only deleted if no subtask is left in it; otherwise it stays with the nil uuid as its creator, so the user's id is gone from the database afterwards.
 The records of the user's first completions (`challenge_benefit_earnings`) go in the same transaction, with their delivery components and observations; a component that has not been delivered yet is dropped, because the deleted account can no longer receive it.
 The cached values tagged with the user id are dropped afterwards.
 
@@ -190,14 +191,22 @@ Because the auth microservice logs and swallows a failing call, a periodic sweep
 challenges sweep-deleted-users   # or `cargo run -- sweep-deleted-users` in the dev setup
 ```
 
-It walks the distinct user ids referenced anywhere in the database in batches, asks the auth microservice for each one and deletes the data of every user that no longer exists there.
+It walks the distinct user ids referenced anywhere in the database in batches, asks the auth microservice for each one and then deletes the data of every user that no longer exists there.
 The walk includes the first-completion records, so it also reaches an account that only completed lesson units, and the records that earlier versions left behind for deleted accounts.
+
+A user counts as deleted only if the auth microservice answers `404` with its `UserNotFoundError` (`{"detail": "User not found"}`).
+Any other answer, including a `404` for a route that does not exist, keeps the user's data and counts as an error.
+If more users are missing than both `max_missing` and `max_missing_share` of the checked users allow, a broken auth microservice is more likely than that many lost deletions: the run deletes nothing, logs an error and exits with a failure.
+After checking that these accounts really have been deleted, run the sweep once with a higher limit, e.g. `DELETED_USER_SWEEP__MAX_MISSING=200 challenges sweep-deleted-users`.
+
 The settings live in the `[deleted_user_sweep]` section of `config.toml` and can be overridden with environment variables (`__` separates the section from the property):
 
 | Property | Environment variable | Default | Description |
 | --- | --- | --- | --- |
 | `batch_size` | `DELETED_USER_SWEEP__BATCH_SIZE` | `500` | Number of user ids loaded from the database per batch. |
 | `rate_limit` | `DELETED_USER_SWEEP__RATE_LIMIT` | `10` | Auth microservice requests per second; `0` means unlimited. |
+| `max_missing` | `DELETED_USER_SWEEP__MAX_MISSING` | `25` | Number of missing users a run always accepts. |
+| `max_missing_share` | `DELETED_USER_SWEEP__MAX_MISSING_SHARE` | `0.01` | Share of the checked users that may be missing in a run, if that is more than `max_missing`. |
 
 The base url of the auth microservice is `services.auth` (`SERVICES__AUTH`).
 
