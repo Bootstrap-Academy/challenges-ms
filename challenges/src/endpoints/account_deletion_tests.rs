@@ -12,7 +12,7 @@ use std::{
 use lib::{
     config::DeletedUserSweep,
     jwt::{sign_jwt, InternalAuthToken},
-    services::{auth::USER_LOOKUP_TIMEOUT, ServiceError},
+    services::{auth::AUTH_TIMEOUT, ServiceError},
 };
 use poem::{http::Method, Endpoint, EndpointExt, IntoResponse, Request, Route};
 use poem_ext::db::DbTransactionMiddleware;
@@ -511,7 +511,7 @@ async fn user_lookup_gives_up_on_a_stalled_auth_service_postgres() {
     // by the sweep, the leaderboards and moderation gives up on its own.
     let started = std::time::Instant::now();
     let result = tokio::time::timeout(
-        USER_LOOKUP_TIMEOUT * 3,
+        AUTH_TIMEOUT * 3,
         f.state.services.auth.get_user_by_id_uncached(user),
     )
     .await
@@ -520,7 +520,7 @@ async fn user_lookup_gives_up_on_a_stalled_auth_service_postgres() {
         matches!(&result, Err(ServiceError::ReqwestError(err)) if err.is_timeout()),
         "{result:?}"
     );
-    assert!(started.elapsed() >= USER_LOOKUP_TIMEOUT);
+    assert!(started.elapsed() >= AUTH_TIMEOUT);
     assert!(f.shop.lock().unwrap().user_lookups.contains(&user));
 }
 
