@@ -69,6 +69,12 @@ pub(crate) struct Shop {
     pub failing_lookups: HashSet<Uuid>,
     /// Users whose auth lookup is accepted and never answered.
     pub stalled_lookups: HashSet<Uuid>,
+    /// The sign-in check (`/ordinary-authority`) is accepted and never
+    /// answered.
+    pub stalled_authority: bool,
+    /// The moderation basis (`/moderation/rule-evidence/…`) is accepted and
+    /// never answered.
+    pub stalled_basis: bool,
     /// Users looked up in the auth service, in order.
     pub user_lookups: Vec<Uuid>,
 }
@@ -148,6 +154,10 @@ impl Fixture {
                                     "file_descriptors":32,"processes":1,"stdout_max_size":4096,
                                     "stderr_max_size":4096,"network":false}}})
                     } else if path.ends_with("/ordinary-authority") {
+                        let stalled = shop.lock().unwrap().stalled_authority;
+                        if stalled {
+                            std::future::pending::<()>().await;
+                        }
                         let body: Value = request.take_body().into_json().await.unwrap();
                         let user: UserAccessToken =
                             verify_jwt(body["access_token"].as_str().unwrap(), &secret).unwrap();
@@ -313,6 +323,12 @@ impl Fixture {
                         let mut shop = shop.lock().unwrap();
                         shop.heart_reads += 1;
                         json!({"hearts":*shop.balances.entry(user).or_insert(6)})
+                    } else if path.starts_with("/auth/_internal/moderation/rule-evidence/") {
+                        let stalled = shop.lock().unwrap().stalled_basis;
+                        if stalled {
+                            std::future::pending::<()>().await;
+                        }
+                        json!({"recorded_acceptance":"synthetic","automatic_quality_basis_confirmed":false})
                     } else if let Some(user) = path.strip_prefix("/auth/_internal/users/") {
                         let user: Uuid = user.parse().unwrap();
                         let stalled = {

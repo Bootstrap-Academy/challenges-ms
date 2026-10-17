@@ -26,6 +26,8 @@ mod subtasks;
 #[cfg(test)]
 mod account_deletion_tests;
 #[cfg(test)]
+mod auth_service_timeout_tests;
+#[cfg(test)]
 mod creator_tests;
 #[cfg(test)]
 mod daily_access_tests;

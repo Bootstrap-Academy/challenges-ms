@@ -220,13 +220,27 @@ To run it once by hand:
 systemctl start academy-challenges-sweep-deleted-users
 ```
 
-To run it once with a higher limit, put the override into a runtime drop-in and remove it right afterwards; a drop-in that stays would raise the limit for every following night until the next reboot:
+To run it once with a higher limit, put the override into a runtime drop-in, start the run without waiting for it, and remove the drop-in as soon as the run's process has started; the process keeps the environment it started with.
+The drop-in then exists only for a few seconds, also if the shell session ends during the run.
+A drop-in that stayed would raise the limit for every following night until the next reboot.
+While the unit is idle, `ExecMainPID` still names the process of the previous run, so the script waits for a new `ExecMainStartTimestampMonotonic` instead.
+Run it as a script, for example through `ssh <host> bash -s`:
 
 ```bash
+set -eu
+u=academy-challenges-sweep-deleted-users
+test "$(systemctl show -p ActiveState --value "$u")" = inactive
+before=$(systemctl show -p ExecMainStartTimestampMonotonic --value "$u")
 printf '[Service]\nEnvironment=DELETED_USER_SWEEP__MAX_MISSING=200\n' \
-  | systemctl edit --runtime --stdin --drop-in=catch-up academy-challenges-sweep-deleted-users
-systemctl start academy-challenges-sweep-deleted-users
-systemctl revert academy-challenges-sweep-deleted-users
+  | systemctl edit --runtime --stdin --drop-in=catch-up "$u"
+systemctl start --no-block "$u"
+for _ in $(seq 300); do
+  test "$(systemctl show -p ExecMainStartTimestampMonotonic --value "$u")" != "$before" && break
+  sleep 0.2
+done
+systemctl revert "$u"
+while test "$(systemctl show -p ActiveState --value "$u")" = activating; do sleep 5; done
+systemctl show -p Result -p ExecMainStatus "$u"
 ```
 
 ## License

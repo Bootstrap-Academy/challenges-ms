@@ -10,9 +10,16 @@ use super::{Service, ServiceError, ServiceResult};
 #[derive(Debug, Clone)]
 pub struct AuthService(pub(super) Service);
 
-/// How long a user lookup waits for the auth microservice, like the other
-/// internal calls.
-pub const USER_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long every call of [`AuthService`] waits for the auth microservice, like
+/// the calls to shop and skills.
+///
+/// An auth microservice that accepts the connection and never answers then
+/// ends a signed-in request after this time with `503` from the sign-in check
+/// ([`AuthService::ordinary_authority`]), a lookup of a user with an error,
+/// and the moderation basis with an error that reports and feedback replace
+/// with their fallback. Without it each of them waited as long as the auth
+/// microservice did, holding the request's database transaction.
+pub const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Part of the cache key of a cached [`User`].
 ///
@@ -45,6 +52,7 @@ impl AuthService {
         let response = self
             .0
             .get(&format!("/moderation/rule-evidence/{id}"))
+            .timeout(AUTH_TIMEOUT)
             .send()
             .await?;
         if response.status() == StatusCode::NOT_FOUND {
@@ -64,6 +72,7 @@ impl AuthService {
             .0
             .post("/ordinary-authority")
             .json(&serde_json::json!({"access_token":token}))
+            .timeout(AUTH_TIMEOUT)
             .send()
             .await?;
         if response.status() == StatusCode::UNAUTHORIZED
@@ -81,14 +90,14 @@ impl AuthService {
     /// not exist. Any other `404`, such as the one for a route that does not
     /// exist, is an error, because it says nothing about the user.
     ///
-    /// Gives up after [`USER_LOOKUP_TIMEOUT`], so an auth microservice that
-    /// accepts the connection and never answers cannot hold the deleted user
-    /// sweep, a leaderboard or a moderation request indefinitely.
+    /// Gives up after [`AUTH_TIMEOUT`]. The deleted user sweep counts that as a
+    /// failed lookup. A leaderboard or a moderation request reaches this call
+    /// only after the sign-in check, which has the same limit.
     pub async fn get_user_by_id_uncached(&self, id: Uuid) -> ServiceResult<Option<User>> {
         let response = self
             .0
             .get(&format!("/users/{id}"))
-            .timeout(USER_LOOKUP_TIMEOUT)
+            .timeout(AUTH_TIMEOUT)
             .send()
             .await?;
         if response.status() == StatusCode::NOT_FOUND {
