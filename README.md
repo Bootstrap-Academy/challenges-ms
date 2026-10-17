@@ -224,13 +224,19 @@ To run it once with a higher limit, put the override into a runtime drop-in, sta
 The drop-in then exists only for a few seconds, also if the shell session ends during the run.
 A drop-in that stayed would raise the limit for every following night until the next reboot.
 While the unit is idle, `ExecMainPID` still names the process of the previous run, so the script waits for a new `ExecMainStartTimestampMonotonic` instead.
+The script accepts a unit in the state `failed`, which is what the aborted run that calls for a catch-up leaves behind; `systemctl start` needs no `reset-failed` before.
+If a step fails before the drop-in is removed, the `trap` removes it when the script ends.
 Run it as a script, for example through `ssh <host> bash -s`:
 
 ```bash
 set -eu
 u=academy-challenges-sweep-deleted-users
-test "$(systemctl show -p ActiveState --value "$u")" = inactive
+case "$(systemctl show -p ActiveState --value "$u")" in
+  inactive|failed) ;;
+  *) echo "$u is busy" >&2; exit 1 ;;
+esac
 before=$(systemctl show -p ExecMainStartTimestampMonotonic --value "$u")
+trap 'systemctl revert "$u"' EXIT
 printf '[Service]\nEnvironment=DELETED_USER_SWEEP__MAX_MISSING=200\n' \
   | systemctl edit --runtime --stdin --drop-in=catch-up "$u"
 systemctl start --no-block "$u"

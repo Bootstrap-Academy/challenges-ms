@@ -11,13 +11,15 @@ use super::{Service, ServiceError, ServiceResult};
 pub struct AuthService(pub(super) Service);
 
 /// How long every call of [`AuthService`] waits for the auth microservice, like
-/// the calls to shop and skills.
+/// the calls to shop and skills. That includes the publication reads in
+/// `publications.rs`.
 ///
 /// An auth microservice that accepts the connection and never answers then
 /// ends a signed-in request after this time with `503` from the sign-in check
 /// ([`AuthService::ordinary_authority`]), a lookup of a user with an error,
-/// and the moderation basis with an error that reports and feedback replace
-/// with their fallback. Without it each of them waited as long as the auth
+/// the moderation basis with an error that reports and feedback replace with
+/// their fallback, and a read of the publication epoch or snapshot with the
+/// leaderboards' `503`. Without it each of them waited as long as the auth
 /// microservice did, holding the request's database transaction.
 pub const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 
