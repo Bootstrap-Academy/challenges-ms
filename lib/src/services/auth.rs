@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use fnct::key;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -7,6 +9,10 @@ use super::{Service, ServiceError, ServiceResult};
 
 #[derive(Debug, Clone)]
 pub struct AuthService(pub(super) Service);
+
+/// How long a user lookup waits for the auth microservice, like the other
+/// internal calls.
+pub const USER_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Part of the cache key of a cached [`User`].
 ///
@@ -74,8 +80,17 @@ impl AuthService {
     /// Returns [`None`] only if the auth microservice says that the user does
     /// not exist. Any other `404`, such as the one for a route that does not
     /// exist, is an error, because it says nothing about the user.
+    ///
+    /// Gives up after [`USER_LOOKUP_TIMEOUT`], so an auth microservice that
+    /// accepts the connection and never answers cannot hold the deleted user
+    /// sweep, a leaderboard or a moderation request indefinitely.
     pub async fn get_user_by_id_uncached(&self, id: Uuid) -> ServiceResult<Option<User>> {
-        let response = self.0.get(&format!("/users/{id}")).send().await?;
+        let response = self
+            .0
+            .get(&format!("/users/{id}"))
+            .timeout(USER_LOOKUP_TIMEOUT)
+            .send()
+            .await?;
         if response.status() == StatusCode::NOT_FOUND {
             return if is_user_not_found(&response.bytes().await?) {
                 Ok(None)

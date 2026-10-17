@@ -58,6 +58,7 @@ pub async fn sweep_deleted_users(
         }
     }
     stats.missing = missing.len() as u64;
+    stats.warn_about_failed_lookups();
 
     let limit = abort_limit(config, stats.checked);
     if stats.exceeds(limit) {
@@ -135,7 +136,10 @@ fn decide<E: Display>(user: Result<Option<User>, E>) -> Decision {
         Ok(Some(_)) => Decision::Keep,
         Ok(None) => Decision::Delete,
         Err(err) => {
-            warn!("Could not look up user in auth microservice: {err}");
+            // Only info: every warning becomes an event in error tracking, and
+            // an outage of the auth microservice fails thousands of lookups.
+            // The run reports them once with `warn_about_failed_lookups`.
+            info!("Could not look up user in auth microservice: {err}");
             Decision::Skip
         }
     }
@@ -158,6 +162,17 @@ impl Stats {
         self.missing > limit || self.errors > limit
     }
 
+    /// One warning per run for all failed lookups, each of which is logged at
+    /// info level. Called before the deletions, like [`Self::exceeds`].
+    fn warn_about_failed_lookups(&self) {
+        if self.errors > 0 {
+            warn!(
+                "{} of {} lookups in the auth microservice failed; each is logged at info level",
+                self.errors, self.checked
+            );
+        }
+    }
+
     fn log(&self) {
         info!(
             "Checked {} users ({} missing, {} deleted, {} errors)",
@@ -166,8 +181,68 @@ impl Stats {
     }
 }
 
+/// Records the log events of the current thread, to check what reaches error
+/// tracking: there every warning becomes an event.
+#[cfg(test)]
+pub(crate) mod log_capture {
+    use std::sync::{Arc, Mutex};
+
+    use tracing::{
+        field::{Field, Visit},
+        subscriber::DefaultGuard,
+        Event, Level, Subscriber,
+    };
+    use tracing_subscriber::{layer::Context, prelude::*, Layer, Registry};
+
+    #[derive(Clone, Default)]
+    pub(crate) struct Captured(Arc<Mutex<Vec<(Level, String, String)>>>);
+
+    impl Captured {
+        /// The messages logged at `level` by this crate.
+        pub(crate) fn messages(&self, level: Level) -> Vec<String> {
+            self.0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(l, target, _)| *l == level && target.starts_with("challenges"))
+                .map(|(_, _, message)| message.clone())
+                .collect()
+        }
+    }
+
+    impl<S: Subscriber> Layer<S> for Captured {
+        fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
+            struct Message(String);
+            impl Visit for Message {
+                fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                    if field.name() == "message" {
+                        self.0 = format!("{value:?}");
+                    }
+                }
+            }
+            let mut message = Message(String::new());
+            event.record(&mut message);
+            let metadata = event.metadata();
+            self.0.lock().unwrap().push((
+                *metadata.level(),
+                metadata.target().to_owned(),
+                message.0,
+            ));
+        }
+    }
+
+    /// Capture the events of this thread until the guard is dropped.
+    pub(crate) fn capture() -> (Captured, DefaultGuard) {
+        let captured = Captured::default();
+        let guard = tracing::subscriber::set_default(Registry::default().with(captured.clone()));
+        (captured, guard)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use tracing::Level;
+
     use super::*;
 
     fn user() -> User {
@@ -255,6 +330,33 @@ mod tests {
         assert!(!after_lookups(0, 100).exceeds(100));
         // An auth microservice that is down fails every lookup.
         assert!(after_lookups(0, 10_000).exceeds(100));
+    }
+
+    #[test]
+    fn test_a_failed_lookup_is_logged_at_info_level() {
+        let (captured, _guard) = log_capture::capture();
+        assert_eq!(
+            decide::<&str>(Err("unexpected response status code: 404 Not Found")),
+            Decision::Skip
+        );
+        assert_eq!(
+            captured.messages(Level::INFO),
+            ["Could not look up user in auth microservice: unexpected response status code: 404 Not Found"]
+        );
+        assert!(captured.messages(Level::WARN).is_empty());
+    }
+
+    #[test]
+    fn test_failed_lookups_get_one_warning_per_run() {
+        let (captured, _guard) = log_capture::capture();
+        after_lookups(0, 0).warn_about_failed_lookups();
+        assert!(captured.messages(Level::WARN).is_empty());
+
+        after_lookups(2, 9_218).warn_about_failed_lookups();
+        assert_eq!(
+            captured.messages(Level::WARN),
+            ["9218 of 10000 lookups in the auth microservice failed; each is logged at info level"]
+        );
     }
 
     #[test]

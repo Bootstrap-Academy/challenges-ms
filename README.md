@@ -188,7 +188,7 @@ The cached values tagged with the user id are dropped afterwards.
 Because the auth microservice logs and swallows a failing call, a periodic sweep catches the deletions that were lost:
 
 ```bash
-challenges sweep-deleted-users   # or `cargo run -- sweep-deleted-users` in the dev setup
+cargo run -- sweep-deleted-users   # in the dev setup; on hosts with the NixOS module see below
 ```
 
 It walks the distinct user ids referenced anywhere in the database in batches, asks the auth microservice for each one and then deletes the data of every user that no longer exists there.
@@ -196,8 +196,10 @@ The walk includes the first-completion records, so it also reaches an account th
 
 A user counts as deleted only if the auth microservice answers `404` with its `UserNotFoundError` (`{"detail": "User not found"}`).
 Any other answer, including a `404` for a route that does not exist, keeps the user's data and counts as an error.
+A lookup gives up after 10 seconds.
+Each failed lookup is logged at info level, and the run adds one warning with the number of failed lookups.
 If more users are missing, or more lookups fail, than both `max_missing` and `max_missing_share` of the checked users allow, a broken auth microservice is more likely than that many lost deletions: the run deletes nothing, logs an error with the counts and exits with a failure.
-After checking that these accounts really have been deleted and why the lookups failed, run the sweep once with a higher limit, e.g. `DELETED_USER_SWEEP__MAX_MISSING=200 challenges sweep-deleted-users`.
+After checking that these accounts really have been deleted and why the lookups failed, run the sweep once with a higher limit (see below for hosts with the NixOS module).
 
 The settings live in the `[deleted_user_sweep]` section of `config.toml` and can be overridden with environment variables (`__` separates the section from the property):
 
@@ -210,7 +212,22 @@ The settings live in the `[deleted_user_sweep]` section of `config.toml` and can
 
 The base url of the auth microservice is `services.auth` (`SERVICES__AUTH`).
 
-In the NixOS module the sweep is a oneshot service with a timer, enabled through `academy.backend.challenges.sweepDeletedUsers.enable` (`interval`, default `daily`, and `randomizedDelay`, default `5m`).
+In the NixOS module the sweep is the oneshot service `academy-challenges-sweep-deleted-users` with a timer, enabled through `academy.backend.challenges.sweepDeletedUsers.enable` (`interval`, default `daily`, `randomizedDelay`, default `5m`, and `timeout`, default `2h`, after which systemd stops the run and marks the unit as failed).
+The service provides the configuration file, the secrets and the database user, so on such a host the sweep runs through the service and not by calling the binary.
+To run it once by hand:
+
+```bash
+systemctl start academy-challenges-sweep-deleted-users
+```
+
+To run it once with a higher limit, put the override into a runtime drop-in and remove it right afterwards; a drop-in that stays would raise the limit for every following night until the next reboot:
+
+```bash
+printf '[Service]\nEnvironment=DELETED_USER_SWEEP__MAX_MISSING=200\n' \
+  | systemctl edit --runtime --stdin --drop-in=catch-up academy-challenges-sweep-deleted-users
+systemctl start academy-challenges-sweep-deleted-users
+systemctl revert academy-challenges-sweep-deleted-users
+```
 
 ## License
 

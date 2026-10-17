@@ -78,6 +78,14 @@
             type = types.str;
             default = "5m";
           };
+          # Each lookup gives up after 10 s, but they run one after another, so a
+          # stalled auth service could keep a run on a large database going for
+          # about a day. systemd stops the run after this time and marks the
+          # unit as failed.
+          timeout = mkOption {
+            type = types.str;
+            default = "2h";
+          };
         };
       };
 
@@ -111,7 +119,12 @@
             // lib.optionalAttrs cfg.sweepDeletedUsers.enable {
               academy-challenges-sweep-deleted-users = {
                 inherit environment;
-                serviceConfig = serviceConfig // {Type = "oneshot";};
+                serviceConfig =
+                  serviceConfig
+                  // {
+                    Type = "oneshot";
+                    TimeoutStartSec = cfg.sweepDeletedUsers.timeout;
+                  };
                 script = ''
                   ${self.packages.${pkgs.system}.default}/bin/challenges sweep-deleted-users
                 '';
