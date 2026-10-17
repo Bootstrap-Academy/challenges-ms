@@ -37,6 +37,10 @@ challenges = "http://localhost:8005"
 [deleted_user_sweep]
 batch_size = 500
 rate_limit = 10  # auth microservice requests per second
+# A run in which more users are missing, or more lookups fail, than both of these
+# deletes nothing and fails.
+max_missing = 25
+max_missing_share = 0.01  # of the checked users
 
 [challenges]
 host = "127.0.0.1"
